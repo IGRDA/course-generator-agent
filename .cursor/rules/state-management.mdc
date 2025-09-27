@@ -1,0 +1,89 @@
+---
+globs: main/*.py,agents/**/*.py
+---
+
+# State Management with Pydantic
+
+This project uses Pydantic for type-safe state management. Follow these patterns for consistency.
+
+## Core State Models
+All state models are defined in [main/state.py](mdc:main/state.py):
+- `CourseState` - Main workflow state
+- `Module` - Course module container  
+- `Submodule` - Module subdivision
+- `Section` - Individual content section
+
+## Pydantic Best Practices
+
+### Field Definitions
+- Use `Field(...)` for required fields with descriptions
+- Use `Field(default=value)` for optional fields
+- Always provide meaningful descriptions
+- Use appropriate types (`str`, `int`, `List[Type]`)
+
+### Model Configuration
+```python
+model_config = {
+    "extra": "forbid"  # Prevent stray fields
+}
+```
+
+### Validation Rules
+- Prefer built-in Pydantic validators
+- Use descriptive error messages
+- Validate at model level when possible
+
+## State Handling Patterns
+
+### Creating New State
+```python
+# Use keyword arguments for clarity
+state = CourseState(
+    title="Course Title",
+    n_modules=3,
+    n_submodules=2,
+    n_sections=4,
+    n_words=500,
+    modules=[]
+)
+```
+
+### Modifying Existing State
+```python
+# In-place modification for efficiency
+state.modules[0].submodules[1].sections[2].theory = "New content"
+```
+
+### Serialization
+- Use `state.model_dump_json(indent=2)` for readable output
+- Use `state.model_dump()` for dict representation
+- Models support direct JSON serialization
+
+## Workflow Integration
+- `CourseState` is the primary state object passed between workflow nodes
+- Each agent receives and returns the same state instance
+- Configuration fields (language, concurrency, etc.) are part of the state
+- Use type hints consistently: `def func(state: CourseState) -> CourseState`
+
+## Extension Patterns
+When adding new fields to models:
+1. Add to the appropriate model class in [main/state.py](mdc:main/state.py)
+2. Use `Field(default=...)` for backward compatibility
+3. Update workflow nodes that use the new fields
+4. Consider validation requirements
+
+## Common Operations
+```python
+# Count total sections
+total_sections = sum(
+    len(submodule.sections) 
+    for module in state.modules 
+    for submodule in module.submodules
+)
+
+# Iterate through all sections
+for module in state.modules:
+    for submodule in module.submodules:
+        for section in submodule.sections:
+            # Process section
+```

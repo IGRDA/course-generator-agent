@@ -1,0 +1,147 @@
+---
+globs: **/*.py
+---
+
+# Async Patterns and Concurrency
+
+This project uses asyncio for parallel processing. Follow these patterns for efficient concurrent operations.
+
+## Core Async Patterns
+
+### Semaphore-based Concurrency Control
+```python
+import asyncio
+
+async def parallel_processor(items: list, concurrency: int = 8):
+    """Process items in parallel with controlled concurrency."""
+    sem = asyncio.Semaphore(concurrency)
+    
+    async def process_one(sem: asyncio.Semaphore, item):
+        async with sem:
+            # Your async processing logic
+            return await process_item(item)
+    
+    # Execute all tasks concurrently
+    results = await asyncio.gather(
+        *(process_one(sem, item) for item in items)
+    )
+    return results
+```
+
+### Error Handling in Parallel Operations
+```python
+async def safe_process_one(sem: asyncio.Semaphore, item, fallback_value):
+    """Process with error handling and fallback."""
+    async with sem:
+        try:
+            result = await process_item(item)
+            print(f"✓ Processed {item}")
+            return result
+        except Exception as e:
+            print(f"✗ Error processing {item}: {e}")
+            return fallback_value
+```
+
+## Project-Specific Patterns
+
+### Section Theory Generation Pattern
+```python
+class ParallelProcessor:
+    def __init__(self, state: CourseState, concurrency: int = 8):
+        self.state = state
+        self.concurrency = concurrency
+        self._tasks = []
+    
+    def plan_tasks(self):
+        """Collect all tasks to be processed."""
+        self._tasks.clear()
+        # Build task list from state
+    
+    async def run(self) -> CourseState:
+        """Execute all tasks in parallel."""
+        sem = asyncio.Semaphore(self.concurrency)
+        await asyncio.gather(
+            *(self._run_one(sem, task) for task in self._tasks)
+        )
+        return self.state
+```
+
+### In-place State Updates
+```python
+async def update_section(
+    sem: asyncio.Semaphore,
+    state: CourseState,
+    module_idx: int,
+    submodule_idx: int, 
+    section_idx: int
+):
+    """Update section content in-place."""
+    async with sem:
+        try:
+            content = await generate_content(...)
+            # Update state directly
+            state.modules[module_idx].submodules[submodule_idx].sections[section_idx].content = content
+        except Exception as e:
+            # Set fallback content
+            state.modules[module_idx].submodules[submodule_idx].sections[section_idx].content = fallback
+```
+
+## Workflow Integration
+
+### Sync to Async Bridge
+```python
+def workflow_node(state: CourseState) -> CourseState:
+    """Bridge sync workflow node to async processing."""
+    concurrency = getattr(state, 'concurrency', 8)
+    
+    # Run async processing from sync context
+    updated_state = asyncio.run(
+        parallel_process_state(state, concurrency)
+    )
+    
+    return updated_state
+```
+
+### Configuration
+- Use `CourseState.concurrency` field for dynamic control
+- Default concurrency: 8 (balance between speed and resource usage)
+- Allow runtime configuration via state parameters
+
+## Best Practices
+
+### Task Planning
+1. **Collect First**: Build complete task list before execution
+2. **Index-based**: Use indices for in-place state updates
+3. **Context Preservation**: Pass all necessary context to tasks
+
+### Error Handling
+1. **Individual Failures**: Don't let one failure stop all tasks
+2. **Fallback Content**: Provide meaningful fallback values
+3. **Progress Logging**: Log success/failure for each task
+4. **Graceful Degradation**: Continue with partial results
+
+### Performance Considerations
+- **Concurrency Limits**: Respect API rate limits and system resources
+- **Memory Usage**: Consider memory impact of large parallel operations
+- **Progress Feedback**: Provide user feedback for long-running operations
+
+### Common Async Utilities
+```python
+async def with_timeout(coro, timeout_seconds: float):
+    """Add timeout to async operations."""
+    try:
+        return await asyncio.wait_for(coro, timeout=timeout_seconds)
+    except asyncio.TimeoutError:
+        print(f"Operation timed out after {timeout_seconds}s")
+        return None
+
+async def retry_async(func, max_retries: int = 3, delay: float = 1.0):
+    """Retry async function with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            await asyncio.sleep(delay * (2 ** attempt))
+```

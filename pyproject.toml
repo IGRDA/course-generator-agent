@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "course-generator-agent"
+version = "0.1.0"
+description = "AI-powered course content generator"
+authors = [{name = "Your Name", email = "your.email@example.com"}]
+dependencies = [
+    "langchain-mistralai",
+    "langchain",
+    "pydantic",
+    "langgraph",
+    #"graphviz",  # Pure Python package for DOT file generation
+    #"playwright",  # For web automation and rendering
+]
+
+[project.optional-dependencies]
+# Optional dependencies for advanced visualization
+visualization = [
+    "pygraphviz",  # Requires system GraphViz: brew install graphviz
+]
+# Optional dependencies for alternative rendering methods
+rendering = [
+    "pyppeteer",  # Alternative to playwright
+]
+
+# Removed script entry until main() function is restored
+# [project.scripts]
+# course-generator = "agents.index_generator.agent:main"
+
+[tool.setuptools.packages.find]
+include = ["agents*", "main*", "tools*"]
