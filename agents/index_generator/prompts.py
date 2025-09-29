@@ -25,7 +25,7 @@ Follow these steps carefully, and output ONLY valid JSON that satisfies the sche
 
 4) Output format:
    - Return ONLY valid JSON that conforms to the schema below (no code fences, no extra commentary).
-   - The top-level object is the CourseState.
+   - The top-level object contains the course content structure.
 
 IMPORTANT: Write all course titles, module titles, submodule titles, and section titles in {language}.
 

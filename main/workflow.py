@@ -1,40 +1,41 @@
 import asyncio
 import json
-from main.state import CourseState
+from main.state import CourseState, CourseConfig
 from agents.index_generator.agent import generate_course_state
 from agents.section_theory_generator.agent import generate_all_section_theories
 from langgraph.graph import StateGraph, START, END
 
 def generate_skeleton_node(state: CourseState) -> CourseState:
-    """Generate the course skeleton with empty theories"""
+    """Generate the course skeleton with empty theories while preserving config"""
     print("Generating course skeleton...")
     
-    # Extract generation parameters from state (assuming they exist or use defaults)
-    title = getattr(state, 'title', 'Default Course Title')
-    total_pages = getattr(state, 'total_pages', 100)
-    description = getattr(state, 'description', '')
-    language = getattr(state, 'language', 'English')
-    max_retries = getattr(state, 'max_retries', 3)
+    # Use config from the existing state
+    config = state.config
     
-    # Generate new course state skeleton (with empty theories as per existing prompt)
-    skeleton_state = generate_course_state(
-        title=title,
-        total_pages=total_pages,
-        description=description,
-        language=language,
-        max_retries=max_retries
+    # Generate new course content skeleton (with empty theories)
+    content_skeleton = generate_course_state(
+        title=state.title,
+        total_pages=config.total_pages,
+        description=config.description,
+        language=config.language,
+        max_retries=config.max_retries,
+        words_per_page=config.words_per_page
     )
     
+    # Preserve original config, update only content fields
+    state.title = content_skeleton.title
+    state.modules = content_skeleton.modules
+    
     print("Course skeleton generated successfully!")
-    return skeleton_state
+    return state
 
 
 def generate_theories_node(state: CourseState) -> CourseState:
     """Generate all section theories in parallel"""
     print("Generating section theories in parallel...")
     
-    # Extract concurrency setting from state, default to 8
-    concurrency = getattr(state, 'concurrency', 8)
+    # Use concurrency setting from config
+    concurrency = state.config.concurrency
     
     # Run the async theory generation
     updated_state = asyncio.run(
@@ -76,26 +77,30 @@ if __name__ == "__main__":
     with open("workflow_graph.png", "wb") as f:
         f.write(graph_viz)
     
-    # Create a minimal initial CourseState that will be populated during generation
-    # We only need to set the generation parameters as attributes
-    initial_state = CourseState(
-        title="Introduction to Modern Data Engineering",
-        n_modules=1,  # Will be overridden by skeleton generation
-        n_submodules=1,  # Will be overridden by skeleton generation
-        n_sections=1,  # Will be overridden by skeleton generation
-        n_words=400,  # Will be overridden by skeleton generation
-        modules=[]  # Will be populated by skeleton generation
+    # Create initial CourseState with config and minimal content
+    config = CourseConfig(
+        total_pages=5,  # Total pages for the course
+        words_per_page=400,  # Target words per page
+        description="A practical course covering data ingestion, warehousing, orchestration, and observability.",
+        language="Euskera",  # Can be changed to any language (e.g., "Spanish", "French", "German", etc.)
+        max_retries=3,
+        concurrency=1  # Number of concurrent section theory generations
     )
     
-    # Set generation parameters as attributes for the workflow nodes
-    initial_state.total_pages = 5  # Increased to match the parallel example
-    initial_state.description = "A practical course covering data ingestion, warehousing, orchestration, and observability."
-    initial_state.language = "Euskera"  # Can be changed to any language (e.g., "Spanish", "French", "German", etc.)
-    initial_state.max_retries = 3
-    initial_state.concurrency = 1  # Number of concurrent section theory generations
+    initial_state = CourseState(
+        config=config,
+        title="Introduction to Modern Data Engineering",
+        modules=[]  # Will be populated by skeleton generation
+    )
     
     # Run the graph
     result = app.invoke(initial_state)
     
     # Print the final course state
-    print(result)
+    print("Workflow completed successfully!")
+    
+    # Extract the final state from LangGraph result (which is a dictionary)
+    final_state = result if isinstance(result, CourseState) else CourseState.model_validate(result)
+    
+    # Pretty print the final course state
+    print(final_state.model_dump_json(indent=2))

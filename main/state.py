@@ -23,25 +23,40 @@ class Module(BaseModel):
         ..., description="List of submodules in this module"
     )
 
-# ---- Course State ----
-class CourseState(BaseModel):
-    title: str = Field(..., description="Title of the course")
-    n_modules: int = Field(..., description="Number of modules in the course")
-    n_submodules: int = Field(..., description="Number of submodules per module")
-    n_sections: int = Field(..., description="Number of sections per submodule")
-    n_words: int = Field(..., description="Target number of words per section")
-    
-    modules: List[Module] = Field(
-        ..., description="Full course structure with all modules"
-    )
-    
-    # Workflow configuration fields
+# ---- Course Configuration ----
+class CourseConfig(BaseModel):
+    """Configuration parameters for course generation - should not be modified by agents"""
     total_pages: int = Field(default=100, description="Total number of pages for the course")
+    words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")
-    language: str = Field(default="English", description="Language for the course content generation")
+    language: str = Field(default="English", description="Language for the content generation")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
 
-    model_config = {
-        "extra": "forbid"  # prevent stray fields
-    }
+# ---- Course State ----
+class CourseState(BaseModel):
+    """Main course state - agents should only modify content fields"""
+    # Configuration (should not be modified by agents)
+    config: CourseConfig = Field(..., description="Course generation configuration")
+    
+    # Content fields (can be modified by agents)
+    title: str = Field(..., description="Title of the course")
+    modules: List[Module] = Field(
+        default_factory=list, description="Full course structure with all modules"
+    )
+    
+    @property
+    def description(self) -> str:
+        return self.config.description
+    
+    @property
+    def language(self) -> str:
+        return self.config.language
+    
+    @property
+    def max_retries(self) -> int:
+        return self.config.max_retries
+    
+    @property
+    def concurrency(self) -> int:
+        return self.config.concurrency

@@ -36,6 +36,9 @@ async def generate_section_theory(
     # Extract context from course state
     module = course_state.modules[module_idx]
     submodule = module.submodules[submodule_idx]
+
+    n_words = course_state.config.total_pages * course_state.config.words_per_page // sum(len(submodule.sections) for module in course_state.modules for submodule in module.submodules)
+
     
     # Format the prompt with context
     prompt = section_theory_prompt.format(
@@ -44,7 +47,7 @@ async def generate_section_theory(
         submodule_title=submodule.title,
         section_title=section_title,
         language=course_state.language,
-        n_words=course_state.n_words
+        n_words=n_words
     )
     
     # Generate content using the LLM
