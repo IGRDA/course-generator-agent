@@ -79,12 +79,12 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
-        total_pages=5,  # Total pages for the course
+        total_pages=10,  # Total pages for the course
         words_per_page=400,  # Target words per page
         description="A practical course covering data ingestion, warehousing, orchestration, and observability.",
         language="Euskera",  # Can be changed to any language (e.g., "Spanish", "French", "German", etc.)
         max_retries=3,
-        concurrency=1  # Number of concurrent section theory generations
+        concurrency=4  # Number of concurrent section theory generations
     )
     
     initial_state = CourseState(

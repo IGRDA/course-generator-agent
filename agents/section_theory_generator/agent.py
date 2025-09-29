@@ -14,21 +14,47 @@ llm = ChatMistralAI(
 )
 
 
+async def retry_async_llm_call(llm_call_func, max_retries: int = 3, delay: float = 1.0):
+    """
+    Retry async LLM function call with exponential backoff.
+    
+    Args:
+        llm_call_func: Async function that makes the LLM call
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries in seconds
+        
+    Returns:
+        Result of the LLM call
+    """
+    for attempt in range(max_retries):
+        try:
+            return await llm_call_func()
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            print(f"✗ LLM call failed (attempt {attempt + 1}/{max_retries}): {e}")
+            await asyncio.sleep(delay * (2 ** attempt))
+    
+    # This should never be reached due to the raise in the loop
+    raise Exception("Max retries exceeded")
+
+
 async def generate_section_theory(
     course_state: CourseState,
     module_idx: int,
     submodule_idx: int, 
-    section_title: str
+    section_title: str,
+    max_retries: int = 3
 ) -> str:
     """
-    Generate theory content for a specific section using Mistral AI.
+    Generate theory content for a specific section using Mistral AI with retry logic.
     
     Args:
         course_state: The full course state for context
         module_idx: Index of the module (0-based)
         submodule_idx: Index of the submodule (0-based) 
-        section_idx: Index of the section (0-based)
         section_title: Title of the section
+        max_retries: Maximum number of retry attempts for LLM calls
         
     Returns:
         Generated theory content as string
@@ -50,8 +76,11 @@ async def generate_section_theory(
         n_words=n_words
     )
     
-    # Generate content using the LLM
-    response = await llm.ainvoke(prompt)
+    # Generate content using the LLM with retry logic
+    async def make_llm_call():
+        return await llm.ainvoke(prompt)
+    
+    response = await retry_async_llm_call(make_llm_call, max_retries)
     
     return response.content.strip()
 
@@ -65,10 +94,12 @@ class ParallelSectionUpdater:
     def __init__(
         self,
         course_state: CourseState,
-        concurrency: int = 8
+        concurrency: int = 8,
+        max_retries: int = 5
     ):
         self.course_state = course_state
         self.concurrency = concurrency
+        self.max_retries = max_retries
         self._tasks = []  # list of (m_idx, sm_idx, s_idx, title)
     
     def plan_all_sections(self) -> None:
@@ -84,7 +115,7 @@ class ParallelSectionUpdater:
         async with sem:
             try:
                 theory = await generate_section_theory(
-                    self.course_state, m_idx, sm_idx, title
+                    self.course_state, m_idx, sm_idx, title, self.max_retries
                 )
                 # Update the course state in-place
                 self.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx].theory = theory
@@ -112,17 +143,18 @@ class ParallelSectionUpdater:
         return self.course_state
 
 
-async def generate_all_section_theories(course_state: CourseState, concurrency: int = 8) -> CourseState:
+async def generate_all_section_theories(course_state: CourseState, concurrency: int = 8, max_retries: int = 3) -> CourseState:
     """
     Main function to generate all section theories in parallel.
     
     Args:
         course_state: CourseState with skeleton structure (empty theories)
         concurrency: Number of concurrent requests to make
+        max_retries: Maximum number of retry attempts for each LLM call
         
     Returns:
         Updated CourseState with all theories filled
     """
-    updater = ParallelSectionUpdater(course_state, concurrency)
+    updater = ParallelSectionUpdater(course_state, concurrency, max_retries)
     return await updater.run()
 
