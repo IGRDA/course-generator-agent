@@ -8,6 +8,10 @@ class Section(BaseModel):
         default="", 
         description="Text of the section, expected to be ~n_words words. Can be empty initially for skeleton generation."
     )
+    html: str = Field(
+        default="",
+        description="HTML formatted version of the theory content. Generated after theory content."
+    )
 
 # ---- Submodule level ----
 class Submodule(BaseModel):
