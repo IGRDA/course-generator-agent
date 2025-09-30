@@ -12,8 +12,6 @@ dependencies = [
     "langchain",
     "pydantic",
     "langgraph",
-    #"graphviz",  # Pure Python package for DOT file generation
-    #"playwright",  # For web automation and rendering
 ]
 
 [project.optional-dependencies]
