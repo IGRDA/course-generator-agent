@@ -13,6 +13,9 @@ dependencies = [
     "langchain-community",
     "pydantic",
     "langgraph",
+    "ddgs",
+    "requests",
+    "beautifulsoup4",
 ]
 
 [project.optional-dependencies]
