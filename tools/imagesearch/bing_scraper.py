@@ -103,7 +103,7 @@ def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
 
 
 if __name__ == "__main__":
-    results = search_bing_images.invoke({"query": "petrov defense", "max_results": 10})
+    results = search_bing_images.invoke({"query": "data engineering", "max_results": 10})
     print(f"Found {len(results)} images:")
     for i, img in enumerate(results, 1):
         if "error" in img:
