@@ -46,5 +46,5 @@ def search_openverse_images(query: str, max_results: int = 5) -> List[dict]:
 
 
 if __name__ == "__main__":
-    results = search_openverse_images("airflow")
+    results = search_openverse_images.invoke({"query": "apache airflow", "max_results": 5})
     print(results)

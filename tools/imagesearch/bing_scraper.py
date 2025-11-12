@@ -1,34 +1,17 @@
-"""Bing image search scraper tool (no API key required)."""
+"""Simple Bing image search scraper - returns image URLs."""
 
 from typing import List
+import requests
+from bs4 import BeautifulSoup
 from langchain_core.tools import tool
-
-
-def is_valid_image_url(url: str) -> bool:
-    """Validate if URL points to an actual image."""
-    if not url or not isinstance(url, str):
-        return False
-    
-    # Must be HTTP/HTTPS
-    if not url.startswith(('http://', 'https://')):
-        return False
-    
-    # Common image extensions
-    image_exts = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg')
-    url_lower = url.lower()
-    
-    # Check extension or format parameter
-    has_image_ext = any(ext in url_lower for ext in image_exts)
-    has_format_param = 'format=jpg' in url_lower or 'format=png' in url_lower
-    
-    return has_image_ext or has_format_param
+import json
+import re
 
 
 @tool
 def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
     """
-    Search for images on Bing by scraping search results.
-    No API key required, no rate limits.
+    Search for images on Bing.
     
     Args:
         query: Search query for images
@@ -37,77 +20,72 @@ def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
     Returns:
         List of image results with URLs and metadata
     """
-    import requests
-    from bs4 import BeautifulSoup
-    import json
-    import re
-    
     try:
         url = "https://www.bing.com/images/search"
-        params = {"q": query, "first": 1, "count": max_results * 2}
         
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
+        # Use parameters that match browser searches
+        params = {
+            "q": query,
+            "form": "HDRSC2",  # This tells Bing it's an image search form
+            "first": 1,
+            "tsc": "ImageHoverTitle"  # Image search specific
         }
         
-        response = requests.get(url, params=params, headers=headers, timeout=10)
-        response.raise_for_status()
+        # More complete headers to mimic a real browser
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Referer": "https://www.bing.com/"
+        }
+        
+        response = requests.get(url, params=params, headers=headers)
+        
         
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
         
-        # Method 1: Parse JSON from 'm' attribute in anchor tags
+        # Parse JSON from anchor tags
         for a_tag in soup.find_all('a', class_='iusc'):
             if len(results) >= max_results:
                 break
             
             m_attr = a_tag.get('m')
             if m_attr:
-                try:
-                    data = json.loads(m_attr)
-                    image_url = data.get("murl", "")
-                    
-                    # Only add if it's a valid image URL
-                    if image_url and is_valid_image_url(image_url):
-                        results.append({
-                            "url": image_url,
-                            "thumbnail_url": data.get("turl", image_url),
-                            "description": data.get("t", ""),
-                            "author": "Unknown"
-                        })
-                except:
-                    continue
+                data = json.loads(m_attr)
+                image_url = data.get("murl")
+                if image_url:
+                    results.append({
+                        "url": image_url,
+                        "thumbnail_url": data.get("turl", image_url),
+                        "description": data.get("t", ""),
+                        "author": data.get("purl", "Unknown")
+                    })
         
-        # Method 2: Parse from script tags containing image data
-        if len(results) < max_results:
+        # Fallback: parse from script tags
+        if not results:
             scripts = soup.find_all('script')
             for script in scripts:
                 if script.string and 'murl' in script.string:
-                    # Find all image URLs in script
                     urls = re.findall(r'"murl":"(https?://[^"]+)"', script.string)
-                    for img_url in urls:
-                        if len(results) >= max_results:
-                            break
-                        if is_valid_image_url(img_url):
-                            results.append({
-                                "url": img_url,
-                                "thumbnail_url": img_url,
-                                "description": "",
-                                "author": "Unknown"
-                            })
+                    for image_url in urls[:max_results]:
+                        results.append({
+                            "url": image_url,
+                            "thumbnail_url": image_url,
+                            "description": "",
+                            "author": "Unknown"
+                        })
+                    break
         
-        return results if results else [{"error": "No images found"}]
+        return results[:max_results]
         
     except Exception as e:
-        return [{"error": f"Bing search failed: {str(e)}"}]
+        return [{"error": f"Bing image search failed: {str(e)}"}]
 
 
 if __name__ == "__main__":
-    results = search_bing_images.invoke({"query": "data engineering", "max_results": 10})
-    print(f"Found {len(results)} images:")
-    for i, img in enumerate(results, 1):
-        if "error" in img:
-            print(f"  {i}. Error: {img['error']}")
-        else:
-            print(f"  {i}. {img['description'][:50] if img['description'] else 'No description'}")
-            print(f"     URL: {img['url'][:80]}...")
+    images = search_bing_images.invoke({"query": "piramide poblacional 2025 españa", "max_results": 20})
+    print(f"\nFound {len(images)} images:")
+    for i, url in enumerate(images, 1):
+        print(f"{i}. {url}")

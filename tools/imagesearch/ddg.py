@@ -42,5 +42,5 @@ def search_ddg_images(query: str, max_results: int = 5) -> List[dict]:
 
 
 if __name__ == "__main__":
-    results = search_ddg_images("petrov defense")
+    results = search_ddg_images.invoke({"query": "petrov defense", "max_results": 5})
     print(results)
