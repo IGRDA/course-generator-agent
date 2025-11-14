@@ -1,7 +1,11 @@
 import os
-import asyncio
+from typing import Annotated
+from operator import add
+from pydantic import BaseModel, Field
 from main.state import CourseState
 from langchain_mistralai import ChatMistralAI
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send, RetryPolicy
 from .prompts import section_theory_prompt
 
 
@@ -14,147 +18,201 @@ llm = ChatMistralAI(
 )
 
 
-async def retry_async_llm_call(llm_call_func, max_retries: int = 3, delay: float = 1.0):
-    """
-    Retry async LLM function call with exponential backoff.
-    
-    Args:
-        llm_call_func: Async function that makes the LLM call
-        max_retries: Maximum number of retry attempts
-        delay: Initial delay between retries in seconds
-        
-    Returns:
-        Result of the LLM call
-    """
-    for attempt in range(max_retries):
-        try:
-            return await llm_call_func()
-        except Exception as e:
-            if attempt == max_retries - 1:
-                raise e
-            print(f"✗ LLM call failed (attempt {attempt + 1}/{max_retries}): {e}")
-            await asyncio.sleep(delay * (2 ** attempt))
-    
-    # This should never be reached due to the raise in the loop
-    raise Exception("Max retries exceeded")
+# ---- State for individual section task ----
+class SectionTask(BaseModel):
+    """State for processing a single section"""
+    course_state: CourseState
+    module_idx: int
+    submodule_idx: int
+    section_idx: int
+    section_title: str
+    theory: str = ""
 
 
-async def generate_section_theory(
-    course_state: CourseState,
-    module_idx: int,
-    submodule_idx: int, 
-    section_title: str,
-    max_retries: int = 3
-) -> str:
+# ---- State for aggregating results ----
+class TheoryGenerationState(BaseModel):
+    """State for the theory generation subgraph"""
+    course_state: CourseState
+    completed_sections: Annotated[list[dict], add] = Field(default_factory=list)
+    total_sections: int = 0
+
+
+def plan_sections(state: TheoryGenerationState) -> dict:
     """
-    Generate theory content for a specific section using Mistral AI with retry logic.
+    Update the total_sections count in the state.
+    The actual Send objects are created by continue_to_sections().
+    """
+    section_count = 0
     
-    Args:
-        course_state: The full course state for context
-        module_idx: Index of the module (0-based)
-        submodule_idx: Index of the submodule (0-based) 
-        section_title: Title of the section
-        max_retries: Maximum number of retry attempts for LLM calls
-        
-    Returns:
-        Generated theory content as string
+    for module in state.course_state.modules:
+        for submodule in module.submodules:
+            section_count += len(submodule.sections)
+    
+    print(f"📋 Planning {section_count} sections for parallel generation")
+    
+    return {"total_sections": section_count}
+
+
+def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
+    """
+    Fan-out: Create a Send for each section to process in parallel.
+    This is used as a conditional edge function.
+    """
+    sends = []
+    
+    for m_idx, module in enumerate(state.course_state.modules):
+        for sm_idx, submodule in enumerate(module.submodules):
+            for s_idx, section in enumerate(submodule.sections):
+                # Create a task for each section
+                task = SectionTask(
+                    course_state=state.course_state,
+                    module_idx=m_idx,
+                    submodule_idx=sm_idx,
+                    section_idx=s_idx,
+                    section_title=section.title
+                )
+                # Send to the generate_section node
+                sends.append(Send("generate_section", task))
+    
+    return sends
+
+
+def generate_section(state: SectionTask) -> dict:
+    """
+    Generate theory for a single section.
+    LangGraph's built-in retry mechanism handles failures automatically.
     """
     # Extract context from course state
-    module = course_state.modules[module_idx]
-    submodule = module.submodules[submodule_idx]
-
-    n_words = course_state.config.total_pages * course_state.config.words_per_page // sum(len(submodule.sections) for module in course_state.modules for submodule in module.submodules)
-
+    module = state.course_state.modules[state.module_idx]
+    submodule = module.submodules[state.submodule_idx]
+    
+    # Calculate target word count
+    total_sections = sum(
+        len(submodule.sections) 
+        for module in state.course_state.modules 
+        for submodule in module.submodules
+    )
+    n_words = state.course_state.config.total_pages * state.course_state.config.words_per_page // total_sections
     
     # Format the prompt with context
     prompt = section_theory_prompt.format(
-        course_title=course_state.title,
+        course_title=state.course_state.title,
         module_title=module.title,
         submodule_title=submodule.title,
-        section_title=section_title,
-        language=course_state.language,
+        section_title=state.section_title,
+        language=state.course_state.language,
         n_words=n_words
     )
     
-    # Generate content using the LLM with retry logic
-    async def make_llm_call():
-        return await llm.ainvoke(prompt)
+    # Generate content using the LLM (retry handled by LangGraph)
+    response = llm.invoke(prompt)
+    theory = response.content.strip()
     
-    response = await retry_async_llm_call(make_llm_call, max_retries)
+    print(f"✓ Generated theory for Module {state.module_idx+1}, "
+          f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
     
-    return response.content.strip()
+    # Return the completed section info
+    return {
+        "completed_sections": [{
+            "module_idx": state.module_idx,
+            "submodule_idx": state.submodule_idx,
+            "section_idx": state.section_idx,
+            "theory": theory
+        }]
+    }
 
 
-class ParallelSectionUpdater:
+def reduce_sections(state: TheoryGenerationState) -> dict:
     """
-    Executor that generates theory content for all sections in parallel.
-    Uses the existing CourseState and integrates with LangGraph workflow.
+    Fan-in: Aggregate all generated theories back into the course state.
     """
+    print(f"📦 Reducing {len(state.completed_sections)} completed sections")
     
-    def __init__(
-        self,
-        course_state: CourseState,
-        concurrency: int = 8,
-        max_retries: int = 5
-    ):
-        self.course_state = course_state
-        self.concurrency = concurrency
-        self.max_retries = max_retries
-        self._tasks = []  # list of (m_idx, sm_idx, s_idx, title)
-    
-    def plan_all_sections(self) -> None:
-        """Collect every section as a 'node' to run."""
-        self._tasks.clear()
-        for m_idx, module in enumerate(self.course_state.modules):
-            for sm_idx, submodule in enumerate(module.submodules):
-                for s_idx, section in enumerate(submodule.sections):
-                    self._tasks.append((m_idx, sm_idx, s_idx, section.title))
-    
-    async def _run_one(self, sem: asyncio.Semaphore, m_idx, sm_idx, s_idx, title):
-        """Generate theory for one section with semaphore for concurrency control."""
-        async with sem:
-            try:
-                theory = await generate_section_theory(
-                    self.course_state, m_idx, sm_idx, title, self.max_retries
-                )
-                # Update the course state in-place
-                self.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx].theory = theory
-                print(f"✓ Generated theory for Module {m_idx+1}, Submodule {sm_idx+1}, Section {s_idx+1}")
-            except Exception as e:
-                print(f"✗ Error generating theory for Module {m_idx+1}, Submodule {sm_idx+1}, Section {s_idx+1}: {e}")
-                # Set a fallback theory content
-                fallback_theory = f"Theory content for {title} (generation failed, please regenerate this section)"
-                self.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx].theory = fallback_theory
-    
-    async def run(self) -> CourseState:
-        """Execute all section theory generation in parallel."""
-        if not self._tasks:
-            self.plan_all_sections()
+    # Update course state with all generated theories
+    for section_info in state.completed_sections:
+        m_idx = section_info["module_idx"]
+        sm_idx = section_info["submodule_idx"]
+        s_idx = section_info["section_idx"]
+        theory = section_info["theory"]
         
-        print(f"Starting parallel generation of {len(self._tasks)} sections with concurrency {self.concurrency}")
-        
-        sem = asyncio.Semaphore(self.concurrency)
-        await asyncio.gather(
-            *(self._run_one(sem, m_idx, sm_idx, s_idx, title) 
-              for (m_idx, sm_idx, s_idx, title) in self._tasks)
-        )
-        
-        print("All section theories generated!")
-        return self.course_state
+        state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx].theory = theory
+    
+    print(f"✅ All {state.total_sections} section theories generated successfully!")
+    
+    return {"course_state": state.course_state}
 
 
-async def generate_all_section_theories(course_state: CourseState, concurrency: int = 8, max_retries: int = 3) -> CourseState:
+def build_theory_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
     """
-    Main function to generate all section theories in parallel.
+    Build the theory generation subgraph using Send for dynamic parallelization.
+    
+    Args:
+        max_retries: Number of retries for each section generation
+        initial_delay: Initial delay in seconds before first retry
+        backoff_factor: Multiplier for exponential backoff (e.g., 2.0 means delays of 1s, 2s, 4s, 8s...)
+    """
+    graph = StateGraph(TheoryGenerationState)
+    
+    # Configure retry policy with exponential backoff
+    retry_policy = RetryPolicy(
+        max_attempts=max_retries,
+        initial_interval=initial_delay,
+        backoff_factor=backoff_factor,
+        max_interval=60.0  # Cap maximum delay at 60 seconds
+    )
+    
+    # Add nodes
+    graph.add_node("plan_sections", plan_sections)
+    graph.add_node("generate_section", generate_section, retry=retry_policy)
+    graph.add_node("reduce_sections", reduce_sections)
+    
+    # Add edges
+    graph.add_edge(START, "plan_sections")
+    # Use conditional edges to send tasks dynamically to generate_section
+    graph.add_conditional_edges("plan_sections", continue_to_sections, ["generate_section"])
+    # All generate_section tasks feed into reduce_sections
+    graph.add_edge("generate_section", "reduce_sections")
+    graph.add_edge("reduce_sections", END)
+    
+    return graph.compile()
+
+
+def generate_all_section_theories(
+    course_state: CourseState, 
+    concurrency: int = 8, 
+    max_retries: int = 3,
+    initial_delay: float = 1.0,
+    backoff_factor: float = 2.0
+) -> CourseState:
+    """
+    Main function to generate all section theories using LangGraph Send pattern.
     
     Args:
         course_state: CourseState with skeleton structure (empty theories)
-        concurrency: Number of concurrent requests to make
+        concurrency: Number of concurrent requests (not used directly, LangGraph handles this)
         max_retries: Maximum number of retry attempts for each LLM call
+        initial_delay: Initial delay in seconds before first retry (default: 1.0)
+        backoff_factor: Multiplier for exponential backoff (default: 2.0)
         
     Returns:
         Updated CourseState with all theories filled
     """
-    updater = ParallelSectionUpdater(course_state, concurrency, max_retries)
-    return await updater.run()
+    print(f"🚀 Starting parallel generation with max_retries={max_retries}, "
+          f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
+    
+    # Build the graph with retry configuration
+    graph = build_theory_generation_graph(
+        max_retries=max_retries,
+        initial_delay=initial_delay,
+        backoff_factor=backoff_factor
+    )
+    
+    # Initialize state
+    initial_state = TheoryGenerationState(course_state=course_state)
+    
+    # Execute the graph (LangGraph handles parallelization automatically)
+    # Note: concurrency is controlled by LangGraph's executor settings
+    result = graph.invoke(initial_state)
+    
+    return result["course_state"]
 

@@ -32,15 +32,18 @@ def generate_skeleton_node(state: CourseState) -> CourseState:
 
 
 def generate_theories_node(state: CourseState) -> CourseState:
-    """Generate all section theories in parallel"""
+    """Generate all section theories in parallel using LangGraph Send"""
     print("Generating section theories in parallel...")
     
-    # Use concurrency setting from config
+    # Use config settings
     concurrency = state.config.concurrency
+    max_retries = state.config.max_retries
     
-    # Run the async theory generation
-    updated_state = asyncio.run(
-        generate_all_section_theories(state, concurrency)
+    # Run theory generation (no longer async, uses LangGraph subgraph)
+    updated_state = generate_all_section_theories(
+        state, 
+        concurrency=concurrency,
+        max_retries=max_retries
     )
     
     print("All section theories generated successfully!")
