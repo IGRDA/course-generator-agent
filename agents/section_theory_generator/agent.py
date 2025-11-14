@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from main.state import CourseState
 from langchain_mistralai import ChatMistralAI
 from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from .prompts import (
@@ -116,23 +117,7 @@ def reflect_and_improve(
     num_queries: int = 3
 ) -> str:
     """
-    Apply reflection pattern to improve section content:
-    1. Generate verification queries
-    2. Execute web searches
-    3. Reflect on content quality
-    4. Regenerate if needed
-    
-    Args:
-        theory: Initial generated theory
-        section_title: Section title
-        module_title: Module title
-        submodule_title: Submodule title
-        language: Target language
-        n_words: Target word count
-        num_queries: Number of verification queries to generate
-        
-    Returns:
-        Improved theory content
+    Apply reflection pattern: generate queries → parallel search → reflect → regenerate if needed
     """
     try:
         # Step 1: Generate verification queries
@@ -145,16 +130,21 @@ def reflect_and_improve(
             "k": num_queries
         })
         
-        # Step 2: Execute web searches for each query
-        search_results = []
-        for i, query in enumerate(query_list.queries):
+        # Step 2: Execute all web searches in parallel
+        def safe_search(query: str, idx: int) -> str:
             try:
                 result = web_search(query, max_results=3)
-                search_results.append(f"Query {i+1}: {query}\nResult: {result}\n")
+                return f"Query {idx}: {query}\nResult: {result}\n"
             except Exception as e:
-                search_results.append(f"Query {i+1}: {query}\nResult: Search failed - {str(e)}\n")
+                return f"Query {idx}: {query}\nResult: Search failed - {str(e)}\n"
         
-        all_search_results = "\n".join(search_results)
+        parallel_searches = {
+            f"search_{i}": RunnableLambda(lambda x, q=q, idx=i+1: safe_search(q, idx))
+            for i, q in enumerate(query_list.queries)
+        }
+        
+        search_results = RunnableParallel(**parallel_searches).invoke({})
+        all_search_results = "\n".join(search_results.values())
         
         # Step 3: Reflect on content quality
         reflection_chain = reflection_prompt | llm.with_structured_output(Reflection)
@@ -166,7 +156,7 @@ def reflect_and_improve(
             "search_results": all_search_results
         })
         
-        # Step 4: Regenerate if improvements needed
+        # Step 4: Regenerate if needed
         if reflection_result.needs_revision:
             regeneration_chain = regeneration_prompt | llm | StrOutputParser()
             improved_theory = regeneration_chain.invoke({
