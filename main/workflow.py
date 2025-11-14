@@ -1,5 +1,3 @@
-import asyncio
-import json
 from main.state import CourseState, CourseConfig
 from agents.index_generator.agent import generate_course_state
 from agents.section_theory_generator.agent import generate_all_section_theories
@@ -38,7 +36,7 @@ def generate_theories_node(state: CourseState) -> CourseState:
     concurrency = state.config.concurrency
     max_retries = state.config.max_retries
     
-    # Run theory generation (no longer async, uses LangGraph subgraph)
+    # Run theory generation
     updated_state = generate_all_section_theories(
         state, 
         concurrency=concurrency,
