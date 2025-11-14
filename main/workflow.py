@@ -3,7 +3,6 @@ import json
 from main.state import CourseState, CourseConfig
 from agents.index_generator.agent import generate_course_state
 from agents.section_theory_generator.agent import generate_all_section_theories
-from agents.section_html_generator.agent import generate_all_section_html
 from langgraph.graph import StateGraph, START, END
 
 def generate_skeleton_node(state: CourseState) -> CourseState:
@@ -50,37 +49,19 @@ def generate_theories_node(state: CourseState) -> CourseState:
     return updated_state
 
 
-def generate_html_node(state: CourseState) -> CourseState:
-    """Generate HTML for all section theories in parallel"""
-    print("Generating HTML for all sections in parallel...")
-    
-    # Use concurrency setting from config
-    concurrency = state.config.concurrency
-    
-    # Run the async HTML generation
-    updated_state = asyncio.run(
-        generate_all_section_html(state, concurrency)
-    )
-    
-    print("All section HTML generated successfully!")
-    return updated_state
-
-
 # Build the graph
 def build_course_generation_graph():
     """Build and return the course generation graph"""
     graph = StateGraph(CourseState)
     
-    # Add nodes for three-step generation
+    # Add nodes for two-step generation
     graph.add_node("generate_skeleton", generate_skeleton_node)
     graph.add_node("generate_theories", generate_theories_node)
-    graph.add_node("generate_html", generate_html_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_skeleton")
     graph.add_edge("generate_skeleton", "generate_theories")
-    graph.add_edge("generate_theories", "generate_html")
-    graph.add_edge("generate_html", END)
+    graph.add_edge("generate_theories", END)
     
     return graph.compile()
 
