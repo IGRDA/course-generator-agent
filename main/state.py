@@ -30,7 +30,7 @@ class Module(BaseModel):
 # ---- Course Configuration ----
 class CourseConfig(BaseModel):
     """Configuration parameters for course generation - should not be modified by agents"""
-    total_pages: int = Field(default=100, description="Total number of pages for the course")
+    total_pages: int = Field(default=50, description="Total number of pages for the course")
     words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")
     language: str = Field(default="English", description="Language for the content generation")
