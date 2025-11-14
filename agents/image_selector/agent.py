@@ -15,7 +15,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from langchain_mistralai import ChatMistralAI
 from tools.imagesearch.bing_scraper import search_bing_images
-from prompts import image_evaluation_prompt
+from .prompts import image_evaluation_prompt
 
 
 # Model configuration
