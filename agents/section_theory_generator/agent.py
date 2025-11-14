@@ -4,6 +4,7 @@ from operator import add
 from pydantic import BaseModel, Field
 from main.state import CourseState
 from langchain_mistralai import ChatMistralAI
+from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from .prompts import section_theory_prompt
@@ -79,7 +80,7 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
 
 def generate_section(state: SectionTask) -> dict:
     """
-    Generate theory for a single section.
+    Generate theory for a single section using LCEL chain.
     LangGraph's built-in retry mechanism handles failures automatically.
     """
     # Extract context from course state
@@ -94,19 +95,17 @@ def generate_section(state: SectionTask) -> dict:
     )
     n_words = state.course_state.config.total_pages * state.course_state.config.words_per_page // total_sections
     
-    # Format the prompt with context
-    prompt = section_theory_prompt.format(
-        course_title=state.course_state.title,
-        module_title=module.title,
-        submodule_title=submodule.title,
-        section_title=state.section_title,
-        language=state.course_state.language,
-        n_words=n_words
-    )
-    
-    # Generate content using the LLM (retry handled by LangGraph)
-    response = llm.invoke(prompt)
-    theory = response.content.strip()
+    # Generate content using LCEL chain (retry handled by LangGraph)
+    # LCEL chain for section theory generation
+    section_chain = section_theory_prompt | llm | StrOutputParser()
+    theory = section_chain.invoke({
+        "course_title": state.course_state.title,
+        "module_title": module.title,
+        "submodule_title": submodule.title,
+        "section_title": state.section_title,
+        "language": state.course_state.language,
+        "n_words": n_words
+    }).strip()
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")

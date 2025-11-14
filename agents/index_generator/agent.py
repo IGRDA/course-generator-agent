@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from main.state import CourseState, CourseConfig, Module
 from langchain_mistralai import ChatMistralAI
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
+from langchain_core.output_parsers import StrOutputParser
 from .prompts import gen_prompt, retry_prompt
 from .utils import compute_layout
 
@@ -23,7 +24,7 @@ llm = ChatMistralAI(
 course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 
 # -------------------------------------------------------
-# Agennt function: generate with retry-on-parse-failure
+# LCEL Chain: generate with retry-on-parse-failure
 # -------------------------------------------------------
 def generate_course_state(
     title: str,
@@ -41,26 +42,30 @@ def generate_course_state(
     total_course_words = total_pages * words_per_page
     n_words = max(1, total_course_words // total_sections)
 
-    # Create fix_parser with configurable max_retries
+    # Create LCEL chain with retry logic
+    # First try with standard parser
+    chain = gen_prompt | llm | StrOutputParser()
+    
+    # Create fix_parser for fallback
     fix_parser = RetryWithErrorOutputParser.from_llm(
         llm=llm,
         parser=course_parser,
         max_retries=max_retries,
     )
 
-    payload = gen_prompt.format(
-        course_title=title,
-        course_description=description or "",
-        language=language,
-        n_modules=n_modules,
-        n_submodules=n_submodules,
-        n_sections=n_sections,
-        n_words=n_words,
-        format_instructions=course_parser.get_format_instructions(),
-    )
+    # Invoke the chain
+    raw = chain.invoke({
+        "course_title": title,
+        "course_description": description or "",
+        "language": language,
+        "n_modules": n_modules,
+        "n_submodules": n_submodules,
+        "n_sections": n_sections,
+        "n_words": n_words,
+        "format_instructions": course_parser.get_format_instructions(),
+    })
 
-    raw = llm.invoke(payload).content
-
+    # Try to parse, with fallback to retry parser
     try:
         course_content = course_parser.parse(raw)
     except Exception:
