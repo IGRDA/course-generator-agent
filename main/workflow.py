@@ -35,12 +35,16 @@ def generate_theories_node(state: CourseState) -> CourseState:
     # Use config settings
     concurrency = state.config.concurrency
     max_retries = state.config.max_retries
+    use_reflection = state.config.use_reflection
+    num_reflection_queries = state.config.num_reflection_queries
     
     # Run theory generation
     updated_state = generate_all_section_theories(
         state, 
         concurrency=concurrency,
-        max_retries=max_retries
+        max_retries=max_retries,
+        use_reflection=use_reflection,
+        num_reflection_queries=num_reflection_queries
     )
     
     print("All section theories generated successfully!")
@@ -82,15 +86,17 @@ if __name__ == "__main__":
     config = CourseConfig(
         total_pages=5,  # Total pages for the course
         words_per_page=400,  # Target words per page
-        description="A practical course covering data ingestion, warehousing, orchestration, and observability.",
-        language="Euskera",  # Can be changed to any language (e.g., "Spanish", "French", "German", etc.)
+        description="",
+        language="Español",  # Can be changed to any language (e.g., "Spanish", "French", "German", etc.)
         max_retries=3,
-        concurrency=4  # Number of concurrent section theory generations
+        concurrency=4,  # Number of concurrent section theory generations
+        use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
+        num_reflection_queries=3  # Number of verification queries per section (default: 3)
     )
     
     initial_state = CourseState(
         config=config,
-        title="Introduction to Modern Data Engineering",
+        title="Reforma legal de España 2024",
         modules=[]  # Will be populated by skeleton generation
     )
     

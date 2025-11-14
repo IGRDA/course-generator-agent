@@ -32,6 +32,8 @@ class CourseConfig(BaseModel):
     language: str = Field(default="English", description="Language for the content generation")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
+    use_reflection: bool = Field(default=False, description="Whether to use reflection pattern for fact verification")
+    num_reflection_queries: int = Field(default=5, description="Number of verification queries to generate during reflection")
 
 # ---- Course State ----
 class CourseState(BaseModel):

@@ -1,5 +1,5 @@
 import os
-from typing import Annotated
+from typing import Annotated, List
 from operator import add
 from pydantic import BaseModel, Field
 from main.state import CourseState
@@ -7,7 +7,13 @@ from langchain_mistralai import ChatMistralAI
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
-from .prompts import section_theory_prompt
+from .prompts import (
+    section_theory_prompt,
+    query_generation_prompt,
+    reflection_prompt,
+    regeneration_prompt
+)
+from tools.websearch.search import web_search
 
 
 MODEL_NAME = os.getenv("MISTRAL_MODEL_NAME", "mistral-small-latest")
@@ -19,6 +25,24 @@ llm = ChatMistralAI(
 )
 
 
+# ---- Pydantic models for structured outputs ----
+class QueryList(BaseModel):
+    """List of search queries for fact verification"""
+    queries: List[str] = Field(
+        description="List of search queries to verify facts, formulas, laws, dates, and concepts"
+    )
+
+
+class Reflection(BaseModel):
+    """Reflection and critique of section content"""
+    critique: str = Field(
+        description="Detailed critique identifying factual errors, outdated info, or improvements needed"
+    )
+    needs_revision: bool = Field(
+        description="Whether the content needs to be regenerated based on findings"
+    )
+
+
 # ---- State for individual section task ----
 class SectionTask(BaseModel):
     """State for processing a single section"""
@@ -28,6 +52,8 @@ class SectionTask(BaseModel):
     section_idx: int
     section_title: str
     theory: str = ""
+    use_reflection: bool = True
+    num_queries: int = 3
 
 
 # ---- State for aggregating results ----
@@ -70,7 +96,9 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
                     module_idx=m_idx,
                     submodule_idx=sm_idx,
                     section_idx=s_idx,
-                    section_title=section.title
+                    section_title=section.title,
+                    use_reflection=state.course_state.config.use_reflection,
+                    num_queries=state.course_state.config.num_reflection_queries
                 )
                 # Send to the generate_section node
                 sends.append(Send("generate_section", task))
@@ -78,9 +106,95 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
     return sends
 
 
+def reflect_and_improve(
+    theory: str,
+    section_title: str,
+    module_title: str,
+    submodule_title: str,
+    language: str,
+    n_words: int,
+    num_queries: int = 3
+) -> str:
+    """
+    Apply reflection pattern to improve section content:
+    1. Generate verification queries
+    2. Execute web searches
+    3. Reflect on content quality
+    4. Regenerate if needed
+    
+    Args:
+        theory: Initial generated theory
+        section_title: Section title
+        module_title: Module title
+        submodule_title: Submodule title
+        language: Target language
+        n_words: Target word count
+        num_queries: Number of verification queries to generate
+        
+    Returns:
+        Improved theory content
+    """
+    try:
+        # Step 1: Generate verification queries
+        query_chain = query_generation_prompt | llm.with_structured_output(QueryList)
+        query_list = query_chain.invoke({
+            "theory": theory,
+            "section_title": section_title,
+            "module_title": module_title,
+            "submodule_title": submodule_title,
+            "k": num_queries
+        })
+        
+        # Step 2: Execute web searches for each query
+        search_results = []
+        for i, query in enumerate(query_list.queries):
+            try:
+                result = web_search(query, max_results=3)
+                search_results.append(f"Query {i+1}: {query}\nResult: {result}\n")
+            except Exception as e:
+                search_results.append(f"Query {i+1}: {query}\nResult: Search failed - {str(e)}\n")
+        
+        all_search_results = "\n".join(search_results)
+        
+        # Step 3: Reflect on content quality
+        reflection_chain = reflection_prompt | llm.with_structured_output(Reflection)
+        reflection_result = reflection_chain.invoke({
+            "theory": theory,
+            "section_title": section_title,
+            "module_title": module_title,
+            "submodule_title": submodule_title,
+            "search_results": all_search_results
+        })
+        
+        # Step 4: Regenerate if improvements needed
+        if reflection_result.needs_revision:
+            regeneration_chain = regeneration_prompt | llm | StrOutputParser()
+            improved_theory = regeneration_chain.invoke({
+                "theory": theory,
+                "section_title": section_title,
+                "module_title": module_title,
+                "submodule_title": submodule_title,
+                "reflection": reflection_result.critique,
+                "search_results": all_search_results,
+                "language": language,
+                "n_words": n_words
+            }).strip()
+            
+            print(f"  ↻ Reflection suggested improvements, regenerated content")
+            return improved_theory
+        else:
+            print(f"  ✓ Reflection: content is accurate")
+            return theory
+            
+    except Exception as e:
+        print(f"  ⚠ Reflection failed: {str(e)}, using original content")
+        return theory
+
+
 def generate_section(state: SectionTask) -> dict:
     """
     Generate theory for a single section using LCEL chain.
+    Optionally applies reflection pattern for fact verification and improvement.
     LangGraph's built-in retry mechanism handles failures automatically.
     """
     # Extract context from course state
@@ -95,8 +209,7 @@ def generate_section(state: SectionTask) -> dict:
     )
     n_words = state.course_state.config.total_pages * state.course_state.config.words_per_page // total_sections
     
-    # Generate content using LCEL chain (retry handled by LangGraph)
-    # LCEL chain for section theory generation
+    # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
     theory = section_chain.invoke({
         "course_title": state.course_state.title,
@@ -109,6 +222,18 @@ def generate_section(state: SectionTask) -> dict:
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
+    
+    # Apply reflection pattern if enabled
+    if state.use_reflection:
+        theory = reflect_and_improve(
+            theory=theory,
+            section_title=state.section_title,
+            module_title=module.title,
+            submodule_title=submodule.title,
+            language=state.course_state.language,
+            n_words=n_words,
+            num_queries=state.num_queries
+        )
     
     # Return the completed section info
     return {
@@ -181,7 +306,9 @@ def generate_all_section_theories(
     concurrency: int = 8, 
     max_retries: int = 3,
     initial_delay: float = 1.0,
-    backoff_factor: float = 2.0
+    backoff_factor: float = 2.0,
+    use_reflection: bool = False,
+    num_reflection_queries: int = 3
 ) -> CourseState:
     """
     Main function to generate all section theories using LangGraph Send pattern.
@@ -192,12 +319,18 @@ def generate_all_section_theories(
         max_retries: Maximum number of retry attempts for each LLM call
         initial_delay: Initial delay in seconds before first retry (default: 1.0)
         backoff_factor: Multiplier for exponential backoff (default: 2.0)
+        use_reflection: Whether to use reflection pattern for fact verification (default: False)
+        num_reflection_queries: Number of verification queries to generate (default: 3)
         
     Returns:
         Updated CourseState with all theories filled
     """
+    reflection_msg = f", reflection={'ON' if use_reflection else 'OFF'}"
+    if use_reflection:
+        reflection_msg += f" (queries={num_reflection_queries})"
+    
     print(f"🚀 Starting parallel generation with max_retries={max_retries}, "
-          f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
+          f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}{reflection_msg}")
     
     # Build the graph with retry configuration
     graph = build_theory_generation_graph(
