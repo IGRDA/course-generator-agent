@@ -185,7 +185,7 @@ def reflect_and_improve(
 
 def generate_section(state: SectionTask) -> dict:
     """
-    Generate theory for a single section using LCEL chain.
+    Generate theory for a single section.
     Optionally applies reflection pattern for fact verification and improvement.
     LangGraph's built-in retry mechanism handles failures automatically.
     """

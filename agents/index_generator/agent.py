@@ -25,7 +25,7 @@ llm = ChatMistralAI(
 course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 
 # -------------------------------------------------------
-# LCEL Chain: generate with retry-on-parse-failure
+# Chain: Generate course index/state with retry-on-parse-failure
 # -------------------------------------------------------
 def generate_course_state(
     title: str,
