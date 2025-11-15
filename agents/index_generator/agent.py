@@ -5,6 +5,7 @@ from main.state import CourseState, CourseConfig, Module
 from langchain_mistralai import ChatMistralAI
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
+from langsmith import traceable
 from .prompts import gen_prompt, retry_prompt
 from .utils import compute_layout
 
@@ -26,6 +27,7 @@ course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 # -------------------------------------------------------
 # LCEL Chain: generate with retry-on-parse-failure
 # -------------------------------------------------------
+@traceable(name="generate_course_state")
 def generate_course_state(
     title: str,
     total_pages: int,

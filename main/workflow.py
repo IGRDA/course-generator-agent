@@ -2,7 +2,9 @@ from main.state import CourseState, CourseConfig
 from agents.index_generator.agent import generate_course_state
 from agents.section_theory_generator.agent import generate_all_section_theories
 from langgraph.graph import StateGraph, START, END
+from langsmith import traceable
 
+@traceable(name="generate_skeleton_node")
 def generate_skeleton_node(state: CourseState) -> CourseState:
     """Generate the course skeleton with empty theories while preserving config"""
     print("Generating course skeleton...")
@@ -28,6 +30,7 @@ def generate_skeleton_node(state: CourseState) -> CourseState:
     return state
 
 
+@traceable(name="generate_theories_node")
 def generate_theories_node(state: CourseState) -> CourseState:
     """Generate all section theories in parallel using LangGraph Send"""
     print("Generating section theories in parallel...")
@@ -73,14 +76,6 @@ if __name__ == "__main__":
     
     # Build the graph
     app = build_course_generation_graph()
-    
-    
-    # Save the graph visualization
-    graph_viz = app.get_graph().draw_mermaid_png()
-        
-    # Save to file
-    with open("workflow_graph.png", "wb") as f:
-        f.write(graph_viz)
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(

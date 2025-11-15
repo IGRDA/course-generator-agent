@@ -8,6 +8,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
+from langsmith import traceable
 from .prompts import (
     section_theory_prompt,
     query_generation_prompt,
@@ -65,6 +66,7 @@ class TheoryGenerationState(BaseModel):
     total_sections: int = 0
 
 
+@traceable(name="plan_sections")
 def plan_sections(state: TheoryGenerationState) -> dict:
     """
     Update the total_sections count in the state.
@@ -81,6 +83,7 @@ def plan_sections(state: TheoryGenerationState) -> dict:
     return {"total_sections": section_count}
 
 
+@traceable(name="continue_to_sections")
 def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
     """
     Fan-out: Create a Send for each section to process in parallel.
@@ -107,6 +110,7 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
     return sends
 
 
+@traceable(name="reflect_and_improve")
 def reflect_and_improve(
     theory: str,
     section_title: str,
@@ -181,6 +185,7 @@ def reflect_and_improve(
         return theory
 
 
+@traceable(name="generate_section")
 def generate_section(state: SectionTask) -> dict:
     """
     Generate theory for a single section using LCEL chain.
@@ -236,6 +241,7 @@ def generate_section(state: SectionTask) -> dict:
     }
 
 
+@traceable(name="reduce_sections")
 def reduce_sections(state: TheoryGenerationState) -> dict:
     """
     Fan-in: Aggregate all generated theories back into the course state.
@@ -256,6 +262,7 @@ def reduce_sections(state: TheoryGenerationState) -> dict:
     return {"course_state": state.course_state}
 
 
+@traceable(name="build_theory_generation_graph")
 def build_theory_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
     """
     Build the theory generation subgraph using Send for dynamic parallelization.
@@ -291,6 +298,7 @@ def build_theory_generation_graph(max_retries: int = 3, initial_delay: float = 1
     return graph.compile()
 
 
+@traceable(name="generate_all_section_theories")
 def generate_all_section_theories(
     course_state: CourseState, 
     concurrency: int = 8, 

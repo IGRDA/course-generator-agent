@@ -16,6 +16,7 @@ dependencies = [
     "ddgs",
     "requests",
     "beautifulsoup4",
+    "langsmith",
 ]
 
 [project.optional-dependencies]
