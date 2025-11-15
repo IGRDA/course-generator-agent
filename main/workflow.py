@@ -2,10 +2,8 @@ from main.state import CourseState, CourseConfig
 from agents.index_generator.agent import generate_course_state
 from agents.section_theory_generator.agent import generate_all_section_theories
 from langgraph.graph import StateGraph, START, END
-from langsmith import traceable
 
-@traceable(name="generate_skeleton_node")
-def generate_skeleton_node(state: CourseState) -> CourseState:
+def generate_index_node(state: CourseState) -> CourseState:
     """Generate the course skeleton with empty theories while preserving config"""
     print("Generating course skeleton...")
     
@@ -30,7 +28,6 @@ def generate_skeleton_node(state: CourseState) -> CourseState:
     return state
 
 
-@traceable(name="generate_theories_node")
 def generate_theories_node(state: CourseState) -> CourseState:
     """Generate all section theories in parallel using LangGraph Send"""
     print("Generating section theories in parallel...")
@@ -60,12 +57,12 @@ def build_course_generation_graph():
     graph = StateGraph(CourseState)
     
     # Add nodes for two-step generation
-    graph.add_node("generate_skeleton", generate_skeleton_node)
+    graph.add_node("generate_index", generate_index_node)
     graph.add_node("generate_theories", generate_theories_node)
     
     # Add edges for sequential execution
-    graph.add_edge(START, "generate_skeleton")
-    graph.add_edge("generate_skeleton", "generate_theories")
+    graph.add_edge(START, "generate_index")
+    graph.add_edge("generate_index", "generate_theories")
     graph.add_edge("generate_theories", END)
     
     return graph.compile()
@@ -95,8 +92,11 @@ if __name__ == "__main__":
         modules=[]  # Will be populated by skeleton generation
     )
     
-    # Run the graph
-    result = app.invoke(initial_state)
+    # Run the graph with custom trace name
+    result = app.invoke(
+        initial_state,
+        config={"run_name": f"{initial_state.title}"}
+    )
     
     # Print the final course state
     print("Workflow completed successfully!")

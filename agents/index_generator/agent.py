@@ -27,7 +27,6 @@ course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 # -------------------------------------------------------
 # LCEL Chain: generate with retry-on-parse-failure
 # -------------------------------------------------------
-@traceable(name="generate_course_state")
 def generate_course_state(
     title: str,
     total_pages: int,

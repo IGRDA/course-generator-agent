@@ -1,10 +1,7 @@
 """Web search tool using LangChain's built-in DuckDuckGo integration."""
 
 from langchain_community.tools import DuckDuckGoSearchRun
-from langsmith import traceable
 
-
-@traceable(name="web_search")
 def web_search(query: str, max_results: int = 5) -> str:
     """
     Search the web using DuckDuckGo via LangChain.
