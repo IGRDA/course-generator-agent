@@ -12,6 +12,7 @@ dependencies = [
     "langchain-mistralai",
     "langchain",
     "langchain-community",
+    "langchain-google-genai",
     "pydantic",
     "langgraph",
     "ddgs",
