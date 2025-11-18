@@ -3,17 +3,20 @@ from typing import Callable, Dict
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
+from .groq.client import build_groq_chat_model
 from .mistral.client import build_mistral_chat_model
 from .openai.client import build_openai_chat_model
 
 Builder = Callable[..., BaseChatModel]
 
 BUILDERS: Dict[str, Builder] = {
+    "groq": build_groq_chat_model,
     "mistral": build_mistral_chat_model,
     "openai": build_openai_chat_model,
 }
 
 MODEL_ENV_VARS = {
+    "groq": "GROQ_MODEL_NAME",
     "mistral": "MISTRAL_MODEL_NAME",
     "openai": "OPENAI_MODEL_NAME",
 }
