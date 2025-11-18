@@ -1,15 +1,14 @@
-import os
 from typing import List
 from pydantic import BaseModel, Field
 from main.state import CourseState, CourseConfig, Module
-from langchain_mistralai import ChatMistralAI
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langsmith import traceable
+from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import gen_prompt, retry_prompt
 from .utils import compute_layout
 
-MODEL_NAME = os.getenv("MISTRAL_MODEL_NAME", "mistral-small-latest")
+MODEL_NAME = resolve_text_model_name()
 
 # Content-only model for LLM output (no config fields)
 class CourseContent(BaseModel):
@@ -17,10 +16,10 @@ class CourseContent(BaseModel):
     title: str = Field(..., description="Title of the course")
     modules: List[Module] = Field(..., description="Full course structure with all modules")
 
-llm = ChatMistralAI(
-    model=MODEL_NAME,
-    temperature=0.5,
-)
+llm_kwargs = {"temperature": 0.0 ,
+              "model_name": MODEL_NAME}
+
+llm = create_text_llm(**llm_kwargs)
 
 course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 

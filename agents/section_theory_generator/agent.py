@@ -1,14 +1,13 @@
-import os
 from typing import Annotated, List
 from operator import add
 from pydantic import BaseModel, Field
 from main.state import CourseState
-from langchain_mistralai import ChatMistralAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from langsmith import traceable
+from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import (
     section_theory_prompt,
     query_generation_prompt,
@@ -18,13 +17,13 @@ from .prompts import (
 from tools.websearch.search import web_search
 
 
-MODEL_NAME = os.getenv("MISTRAL_MODEL_NAME", "mistral-small-latest")
+MODEL_NAME = resolve_text_model_name()
 
 # Initialize the LLM for section theory generation
-llm = ChatMistralAI(
-    model=MODEL_NAME,
-    temperature=0.7,  # Slightly higher temperature for more creative content
-)
+llm_kwargs = {"temperature": 0.0 ,
+              "model_name": MODEL_NAME}
+
+llm = create_text_llm(**llm_kwargs)
 
 
 # ---- Pydantic models for structured outputs ----
@@ -181,7 +180,6 @@ def reflect_and_improve(
     except Exception as e:
         print(f"  ⚠ Reflection failed: {str(e)}, using original content")
         return theory
-
 
 def generate_section(state: SectionTask) -> dict:
     """
