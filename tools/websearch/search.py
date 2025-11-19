@@ -23,5 +23,6 @@ def web_search(query: str, max_results: int = 5) -> str:
     except Exception as e:
         return f"Search failed: {str(e)}"
 
-# Default search tool instance
-search_tool = DuckDuckGoSearchRun(max_results=5)
+if __name__ == "__main__":
+    result = web_search("Python async programming")
+    print(result)
