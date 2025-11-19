@@ -134,7 +134,7 @@ def reflect_and_improve(
         # Step 2: Execute all web searches in parallel
         def safe_search(query: str, idx: int) -> str:
             try:
-                result = web_search(query, max_results=3)
+                result = web_search(query, max_results=num_queries)
                 return f"Query {idx}: {query}\nResult: {result}\n"
             except Exception as e:
                 return f"Query {idx}: {query}\nResult: Search failed - {str(e)}\n"
