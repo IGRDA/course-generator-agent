@@ -82,7 +82,7 @@ def generate_course_state(
     
     # Return CourseState with config and generated content
     return CourseState(
-        config= CourseConfig(),
+        config=CourseConfig(),
         title=course_content.title,
         modules=course_content.modules
     )

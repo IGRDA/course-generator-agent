@@ -77,8 +77,9 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
+        title="Reforma legal de España 2024",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
-        web_search_provider="wikipedia",  # Web search provider: ddg | tavily | wikipedia
+        web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=5,  # Total pages for the course
         words_per_page=400,  # Target words per page
         description="",
@@ -91,7 +92,7 @@ if __name__ == "__main__":
     
     initial_state = CourseState(
         config=config,
-        title="Reforma legal de España 2024",
+        title=config.title,  # Initialize from config, can be refined during generation
         modules=[]  # Will be populated by skeleton generation
     )
     

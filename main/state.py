@@ -26,6 +26,7 @@ class Module(BaseModel):
 # ---- Course Configuration ----
 class CourseConfig(BaseModel):
     """Configuration parameters for course generation - should not be modified by agents"""
+    title: str = Field(default="", description="Initial title of the course")
     text_llm_provider: str = Field(default="mistral", description="LLM provider for text generation (mistral | gemini | groq | openai)")
     web_search_provider: str = Field(default="ddg", description="Web search provider (ddg | tavily)")
     total_pages: int = Field(default=50, description="Total number of pages for the course")
@@ -44,7 +45,7 @@ class CourseState(BaseModel):
     config: CourseConfig = Field(..., description="Course generation configuration")
     
     # Content fields (can be modified by agents)
-    title: str = Field(..., description="Title of the course")
+    title: str = Field(..., description="Title of the course (initialized from config, can be refined by agents)")
     modules: List[Module] = Field(
         default_factory=list, description="Full course structure with all modules"
     )
