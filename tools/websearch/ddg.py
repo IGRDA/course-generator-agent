@@ -26,3 +26,4 @@ def web_search(query: str, max_results: int = 5) -> str:
 if __name__ == "__main__":
     result = web_search("Python async programming")
     print(result)
+

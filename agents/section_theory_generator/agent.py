@@ -14,7 +14,7 @@ from .prompts import (
     reflection_prompt,
     regeneration_prompt
 )
-from tools.websearch.search import web_search
+from tools.websearch.ddg import web_search
 
 
 MODEL_NAME = resolve_text_model_name()
