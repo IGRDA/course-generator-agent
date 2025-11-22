@@ -17,7 +17,8 @@ def generate_index_node(state: CourseState) -> CourseState:
         description=config.description,
         language=config.language,
         max_retries=config.max_retries,
-        words_per_page=config.words_per_page
+        words_per_page=config.words_per_page,
+        provider=config.text_llm_provider
     )
     
     # Preserve original config, update only content fields
@@ -76,6 +77,7 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
+        text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         total_pages=5,  # Total pages for the course
         words_per_page=400,  # Target words per page
         description="",

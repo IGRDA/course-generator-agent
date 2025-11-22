@@ -17,15 +17,6 @@ from .prompts import (
 from tools.websearch.ddg import web_search
 
 
-MODEL_NAME = resolve_text_model_name()
-
-# Initialize the LLM for section theory generation
-llm_kwargs = {"temperature": 0.0 ,
-              "model_name": MODEL_NAME}
-
-llm = create_text_llm(**llm_kwargs)
-
-
 # ---- Pydantic models for structured outputs ----
 class QueryList(BaseModel):
     """List of search queries for fact verification"""
@@ -115,12 +106,20 @@ def reflect_and_improve(
     submodule_title: str,
     language: str,
     n_words: int,
-    num_queries: int = 3
+    num_queries: int,
+    provider: str
 ) -> str:
     """
     Apply reflection pattern: generate queries → parallel search → reflect → regenerate if needed
     """
     try:
+        # Create LLM with specified provider
+        model_name = resolve_text_model_name(provider)
+        llm_kwargs = {"temperature": 0.0}
+        if model_name:
+            llm_kwargs["model_name"] = model_name
+        llm = create_text_llm(provider=provider, **llm_kwargs)
+        
         # Step 1: Generate verification queries
         query_chain = query_generation_prompt | llm.with_structured_output(QueryList)
         query_list = query_chain.invoke({
@@ -190,6 +189,7 @@ def generate_section(state: SectionTask) -> dict:
     # Extract context from course state
     module = state.course_state.modules[state.module_idx]
     submodule = module.submodules[state.submodule_idx]
+    provider = state.course_state.config.text_llm_provider
     
     # Calculate target word count
     total_sections = sum(
@@ -198,6 +198,13 @@ def generate_section(state: SectionTask) -> dict:
         for submodule in module.submodules
     )
     n_words = state.course_state.config.total_pages * state.course_state.config.words_per_page // total_sections
+    
+    # Create LLM with specified provider
+    model_name = resolve_text_model_name(provider)
+    llm_kwargs = {"temperature": 0.0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=provider, **llm_kwargs)
     
     # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
@@ -222,7 +229,8 @@ def generate_section(state: SectionTask) -> dict:
             submodule_title=submodule.title,
             language=state.course_state.language,
             n_words=n_words,
-            num_queries=state.num_queries
+            num_queries=state.num_queries,
+            provider=provider
         )
     
     # Return the completed section info

@@ -8,18 +8,11 @@ from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import gen_prompt, retry_prompt
 from .utils import compute_layout
 
-MODEL_NAME = resolve_text_model_name()
-
 # Content-only model for LLM output (no config fields)
 class CourseContent(BaseModel):
     """Course content without configuration - used for skeleton generation"""
     title: str = Field(..., description="Title of the course")
     modules: List[Module] = Field(..., description="Full course structure with all modules")
-
-llm_kwargs = {"temperature": 0.0 ,
-              "model_name": MODEL_NAME}
-
-llm = create_text_llm(**llm_kwargs)
 
 course_parser = PydanticOutputParser(pydantic_object=CourseContent)
 
@@ -33,6 +26,7 @@ def generate_course_state(
     language: str = "English",
     max_retries: int = 3,
     words_per_page: int = 400,
+    provider: str = "mistral",
 ) -> CourseState:
     """Generate course skeleton and return CourseState with embedded config"""
     n_modules, n_submodules, n_sections = compute_layout(total_pages)
@@ -41,6 +35,13 @@ def generate_course_state(
     total_sections = n_modules * n_submodules * n_sections
     total_course_words = total_pages * words_per_page
     n_words = max(1, total_course_words // total_sections)
+
+    # Create LLM with specified provider
+    model_name = resolve_text_model_name(provider)
+    llm_kwargs = {"temperature": 0.0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=provider, **llm_kwargs)
 
     # Create LCEL chain with retry logic
     # First try with standard parser
@@ -98,6 +99,7 @@ if __name__ == "__main__":
         description=desc,
         max_retries=5,
         words_per_page=400,
+        provider="mistral",
     )
 
     print(course_state.model_dump_json(indent=2))

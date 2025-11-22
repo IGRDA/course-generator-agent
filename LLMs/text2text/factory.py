@@ -30,39 +30,47 @@ def available_text_llms() -> list[str]:
     return sorted(BUILDERS.keys())
 
 
-def create_text_llm(provider: str | None = None, **kwargs) -> BaseChatModel:
+def create_text_llm(provider: str, **kwargs) -> BaseChatModel:
     """
     Instantiate a text-to-text LLM using the registered factory builders.
 
     Args:
-        provider: Optional provider override. Falls back to the ``TEXT_LLM_PROVIDER``
-            environment variable, then to ``mistral``.
+        provider: LLM provider name (mistral | gemini | groq | openai).
         **kwargs: Extra keyword arguments forwarded to the underlying builder.
 
     Returns:
         A ``BaseChatModel`` ready for use in LangChain pipelines.
     """
-    choice = provider or kwargs.pop("provider", None)
-    if not choice:
-        choice = os.getenv("TEXT_LLM_PROVIDER", "mistral")
+    if not provider:
+        raise ValueError(
+            "Provider is required. Must be one of: mistral, gemini, groq, openai"
+        )
 
-    key = choice.lower()
+    key = provider.lower()
     try:
         builder = BUILDERS[key]
     except KeyError as exc:
         available = ", ".join(available_text_llms())
         raise ValueError(
-            f"Unsupported text LLM provider '{choice}'. "
+            f"Unsupported text LLM provider '{provider}'. "
             f"Available providers: {available}"
         ) from exc
 
     return builder(**kwargs)
 
 
-def resolve_text_model_name(provider: str | None = None) -> str | None:
+def resolve_text_model_name(provider: str) -> str | None:
     """
-    Return the provider-specific model override env (if any).
+    Return the provider-specific model name from environment variable.
+    
+    Args:
+        provider: LLM provider name (mistral | gemini | groq | openai).
+    
+    Returns:
+        Model name from environment variable, or None if not set.
     """
-    choice = provider or os.getenv("TEXT_LLM_PROVIDER", "")
-    env_var = MODEL_ENV_VARS.get(choice.lower())
+    if not provider:
+        return None
+    
+    env_var = MODEL_ENV_VARS.get(provider.lower())
     return os.getenv(env_var) if env_var else None
