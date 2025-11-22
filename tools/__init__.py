@@ -1,6 +1,6 @@
 """Tools module for course generator utilities."""
 
-from .websearch import web_search
+from .websearch import ddg_search
 from .imagesearch import (
     search_openverse_images,
     search_ddg_images,
@@ -8,7 +8,7 @@ from .imagesearch import (
 )
 
 __all__ = [
-    "web_search",
+    "ddg_search",
     "search_openverse_images",
     "search_ddg_images",
     "search_bing_images"
