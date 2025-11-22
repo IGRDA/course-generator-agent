@@ -20,6 +20,7 @@ dependencies = [
     "requests",
     "beautifulsoup4",
     "langsmith",
+    "wikipedia",
 ]
 
 [project.optional-dependencies]
