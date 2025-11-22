@@ -78,6 +78,7 @@ if __name__ == "__main__":
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
+        web_search_provider="ddg",  # Web search provider: ddg | tavily
         total_pages=5,  # Total pages for the course
         words_per_page=400,  # Target words per page
         description="",

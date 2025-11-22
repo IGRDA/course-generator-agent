@@ -1,11 +1,10 @@
-"""Openverse image search tool."""
+"""Openverse image search."""
 
 from typing import List
-from langchain_core.tools import tool
+import requests
 
 
-@tool
-def search_openverse_images(query: str, max_results: int = 5) -> List[dict]:
+def search_images(query: str, max_results: int = 5) -> List[dict]:
     """
     Search for images on Openverse (Creative Commons).
     
@@ -16,14 +15,9 @@ def search_openverse_images(query: str, max_results: int = 5) -> List[dict]:
     Returns:
         List of image results with URLs and metadata
     """
-    import requests
-    
     try:
         url = "https://api.openverse.org/v1/images/"
-        params = {
-            "q": query,
-            "page_size": max_results
-        }
+        params = {"q": query, "page_size": max_results}
         
         response = requests.get(url, params=params, timeout=10)
         response.raise_for_status()
@@ -44,7 +38,3 @@ def search_openverse_images(query: str, max_results: int = 5) -> List[dict]:
     except Exception as e:
         return [{"error": f"Openverse search failed: {str(e)}"}]
 
-
-if __name__ == "__main__":
-    results = search_openverse_images.invoke({"query": "apache airflow", "max_results": 5})
-    print(results)

@@ -1,4 +1,3 @@
-from .ddg import web_search as ddg_search
-from .tavily import web_search as tavily_search
+from .factory import create_web_search, available_search_providers
 
-__all__ = ["ddg_search", "tavily_search"]
+__all__ = ["create_web_search", "available_search_providers"]

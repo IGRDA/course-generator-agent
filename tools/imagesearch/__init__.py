@@ -1,9 +1,3 @@
-from .openverse import search_openverse_images
-from .ddg import search_ddg_images
-from .bing import search_bing_images
+from .factory import create_image_search, available_image_search_providers
 
-__all__ = [
-    "search_openverse_images",
-    "search_ddg_images",
-    "search_bing_images"
-]
+__all__ = ["create_image_search", "available_image_search_providers"]

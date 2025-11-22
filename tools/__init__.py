@@ -1,15 +1,11 @@
 """Tools module for course generator utilities."""
 
-from .websearch import ddg_search
-from .imagesearch import (
-    search_openverse_images,
-    search_ddg_images,
-    search_bing_images
-)
+from .websearch import create_web_search, available_search_providers
+from .imagesearch import create_image_search, available_image_search_providers
 
 __all__ = [
-    "ddg_search",
-    "search_openverse_images",
-    "search_ddg_images",
-    "search_bing_images"
+    "create_web_search",
+    "available_search_providers",
+    "create_image_search",
+    "available_image_search_providers"
 ]

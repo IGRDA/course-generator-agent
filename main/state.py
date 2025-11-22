@@ -27,6 +27,7 @@ class Module(BaseModel):
 class CourseConfig(BaseModel):
     """Configuration parameters for course generation - should not be modified by agents"""
     text_llm_provider: str = Field(default="mistral", description="LLM provider for text generation (mistral | gemini | groq | openai)")
+    web_search_provider: str = Field(default="ddg", description="Web search provider (ddg | tavily)")
     total_pages: int = Field(default=50, description="Total number of pages for the course")
     words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")

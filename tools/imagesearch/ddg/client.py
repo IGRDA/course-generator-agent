@@ -1,11 +1,9 @@
-"""DuckDuckGo image search tool."""
+"""DuckDuckGo image search."""
 
 from typing import List
-from langchain_core.tools import tool
 
 
-@tool
-def search_ddg_images(query: str, max_results: int = 5) -> List[dict]:
+def search_images(query: str, max_results: int = 5) -> List[dict]:
     """
     Search for images on DuckDuckGo.
     
@@ -21,10 +19,7 @@ def search_ddg_images(query: str, max_results: int = 5) -> List[dict]:
         
         results = []
         with DDGS() as ddgs:
-            images = ddgs.images(
-                keywords=query,
-                max_results=max_results
-            )
+            images = ddgs.images(keywords=query, max_results=max_results)
             
             for image in images:
                 results.append({
@@ -39,8 +34,3 @@ def search_ddg_images(query: str, max_results: int = 5) -> List[dict]:
     except Exception as e:
         return [{"error": f"DuckDuckGo image search failed: {str(e)}"}]
 
-
-
-if __name__ == "__main__":
-    results = search_ddg_images.invoke({"query": "petrov defense", "max_results": 5})
-    print(results)

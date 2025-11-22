@@ -8,13 +8,14 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from langsmith import traceable
 from LLMs.text2text import create_text_llm, resolve_text_model_name
+from tools.websearch import create_web_search
+from tools.imagesearch import create_image_search  # Import for testing
 from .prompts import (
     section_theory_prompt,
     query_generation_prompt,
     reflection_prompt,
     regeneration_prompt
 )
-from tools.websearch.ddg import web_search
 
 
 # ---- Pydantic models for structured outputs ----
@@ -107,7 +108,8 @@ def reflect_and_improve(
     language: str,
     n_words: int,
     num_queries: int,
-    provider: str
+    provider: str,
+    web_search_provider: str
 ) -> str:
     """
     Apply reflection pattern: generate queries → parallel search → reflect → regenerate if needed
@@ -119,6 +121,9 @@ def reflect_and_improve(
         if model_name:
             llm_kwargs["model_name"] = model_name
         llm = create_text_llm(provider=provider, **llm_kwargs)
+        
+        # Create web search function with specified provider
+        web_search = create_web_search(web_search_provider)
         
         # Step 1: Generate verification queries
         query_chain = query_generation_prompt | llm.with_structured_output(QueryList)
@@ -230,7 +235,8 @@ def generate_section(state: SectionTask) -> dict:
             language=state.course_state.language,
             n_words=n_words,
             num_queries=state.num_queries,
-            provider=provider
+            provider=provider,
+            web_search_provider=state.course_state.config.web_search_provider
         )
     
     # Return the completed section info

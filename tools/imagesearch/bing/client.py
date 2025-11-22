@@ -1,15 +1,13 @@
-"""Simple Bing image search scraper - returns image URLs."""
+"""Bing image search."""
 
 from typing import List
 import requests
 from bs4 import BeautifulSoup
-from langchain_core.tools import tool
 import json
 import re
 
 
-@tool
-def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
+def search_images(query: str, max_results: int = 5) -> List[dict]:
     """
     Search for images on Bing.
     
@@ -23,15 +21,13 @@ def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
     try:
         url = "https://www.bing.com/images/search"
         
-        # Use parameters that match browser searches
         params = {
             "q": query,
-            "form": "HDRSC2",  # This tells Bing it's an image search form
+            "form": "HDRSC2",
             "first": 1,
-            "tsc": "ImageHoverTitle"  # Image search specific
+            "tsc": "ImageHoverTitle"
         }
         
-        # More complete headers to mimic a real browser
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
@@ -41,8 +37,6 @@ def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
         }
         
         response = requests.get(url, params=params, headers=headers)
-        
-        
         soup = BeautifulSoup(response.text, 'html.parser')
         results = []
         
@@ -83,9 +77,3 @@ def search_bing_images(query: str, max_results: int = 5) -> List[dict]:
     except Exception as e:
         return [{"error": f"Bing image search failed: {str(e)}"}]
 
-
-if __name__ == "__main__":
-    images = search_bing_images.invoke({"query": "piramide poblacional 2025 españa", "max_results": 20})
-    print(f"\nFound {len(images)} images:")
-    for i, url in enumerate(images, 1):
-        print(f"{i}. {url}")
