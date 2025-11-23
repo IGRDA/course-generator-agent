@@ -77,3 +77,21 @@ def search_images(query: str, max_results: int = 5) -> List[dict]:
     except Exception as e:
         return [{"error": f"Bing image search failed: {str(e)}"}]
 
+
+if __name__ == "__main__":
+    query = "python programming"
+    max_results = 5
+    
+    print(f"🔍 Searching images for: '{query}'")
+    print("-" * 80)
+    
+    results = search_images(query, max_results)
+    
+    print(f"\n📸 Found {len(results)} images:\n")
+    for i, img in enumerate(results, 1):
+        if "error" in img:
+            print(f"❌ {img['error']}")
+        else:
+            print(f"{i}. {img.get('description', 'No description')}")
+            print(f"   URL: {img['url']}")
+            print()

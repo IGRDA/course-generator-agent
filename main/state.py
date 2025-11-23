@@ -126,6 +126,7 @@ class CourseConfig(BaseModel):
     words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")
     language: str = Field(default="English", description="Language for the content generation")
+    pdf_syllabus_path: str = Field(default="", description="Path to PDF syllabus file")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
     use_reflection: bool = Field(default=False, description="Whether to use reflection pattern for fact verification")

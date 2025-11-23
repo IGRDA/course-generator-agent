@@ -303,6 +303,62 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
             background: #f9f9f9;
         }}
         
+        /* Table of Contents */
+        .table-of-contents {{
+            background: #f8f9fa;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            padding: 30px;
+            margin: 40px 0;
+        }}
+        .table-of-contents h2 {{
+            color: #667eea;
+            font-size: 1.8em;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }}
+        .toc-module {{
+            margin: 20px 0;
+        }}
+        .toc-module-title {{
+            color: #667eea;
+            font-size: 1.3em;
+            font-weight: 600;
+            margin: 15px 0 10px;
+        }}
+        .toc-submodule {{
+            margin-left: 20px;
+            margin-top: 10px;
+        }}
+        .toc-submodule-title {{
+            color: #764ba2;
+            font-size: 1.15em;
+            font-weight: 500;
+            margin: 8px 0 5px;
+        }}
+        .toc-sections {{
+            margin-left: 40px;
+            list-style: none;
+            padding: 0;
+        }}
+        .toc-sections li {{
+            margin: 5px 0;
+        }}
+        .toc-sections a {{
+            color: #2c3e50;
+            text-decoration: none;
+            display: block;
+            padding: 5px 10px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }}
+        .toc-sections a:hover {{
+            background: #e0e7ff;
+            color: #667eea;
+            transform: translateX(5px);
+        }}
+        
         /* Footer */
         footer {{ 
             text-align: center;
@@ -330,6 +386,31 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
                {sum(len(sm.sections) for m in course_state.modules for sm in m.submodules)} Secciones</p>
         </header>
 """
+    
+    # Generate Table of Contents
+    html += '<div class="table-of-contents">'
+    html += '<h2>📑 Índice del Curso</h2>'
+    
+    section_counter = 0
+    for module_idx, module in enumerate(course_state.modules, 1):
+        html += f'<div class="toc-module">'
+        html += f'<div class="toc-module-title">Módulo {module_idx}: {escape_html(module.title)}</div>'
+        
+        for submodule_idx, submodule in enumerate(module.submodules, 1):
+            html += f'<div class="toc-submodule">'
+            html += f'<div class="toc-submodule-title">{module_idx}.{submodule_idx} {escape_html(submodule.title)}</div>'
+            html += '<ul class="toc-sections">'
+            
+            for section_idx, section in enumerate(submodule.sections, 1):
+                section_counter += 1
+                html += f'<li><a href="#section-{section_counter}">{module_idx}.{submodule_idx}.{section_idx} {escape_html(section.title)}</a></li>'
+            
+            html += '</ul>'
+            html += '</div>'
+        
+        html += '</div>'
+    
+    html += '</div>'
     
     # Render all modules
     section_counter = 0

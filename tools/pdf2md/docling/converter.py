@@ -5,12 +5,16 @@ from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
 import os
 from pathlib import Path
 
-def convert_pdf_to_markdown(pdf_path: str | Path):
+def convert_pdf_to_markdown(pdf_path: str | Path, return_string: bool = False):
     """
-    Convert PDF to Markdown with images extracted to a separate folder.
+    Convert PDF to Markdown with optional image extraction.
     
     Args:
         pdf_path: Path to the PDF file
+        return_string: If True, return markdown as string; if False, save to file and return path
+    
+    Returns:
+        str: Markdown content if return_string=True, otherwise path to saved markdown file
     """
     # Setup paths
     pdf_path = Path(pdf_path).resolve()
@@ -21,21 +25,20 @@ def convert_pdf_to_markdown(pdf_path: str | Path):
     # Extract document name from path
     doc_name = pdf_path.stem
     
-    # Create output folders: OUTPUT/docling/doc_name/images
+    # Create output folders: OUTPUT/docling/doc_name
     # Using project root or CWD for output
     # Assuming the script is run from project root
     output_base = Path.cwd() / "OUTPUT" / "docling" / doc_name
-    images_dir = output_base / "images"
-    images_dir.mkdir(parents=True, exist_ok=True)
+    output_base.mkdir(parents=True, exist_ok=True)
     
     print(f"Processing: {pdf_path}")
     print(f"Output directory: {output_base}")
 
-    # Step 1: Configure pipeline to extract images
+    # Step 1: Configure pipeline - no image extraction, tables as text
     pipeline_options = PdfPipelineOptions()
     pipeline_options.images_scale = 2.0  # Higher quality (2x DPI)
-    pipeline_options.generate_picture_images = False  # Extract pictures/figures
-    pipeline_options.generate_table_images = True  # Extract tables as images
+    pipeline_options.generate_picture_images = False  # No pictures/figures extraction
+    pipeline_options.generate_table_images = False  # Tables as text, not images
     
     # Step 2: Convert document with image extraction
     converter = DocumentConverter(
@@ -50,55 +53,32 @@ def convert_pdf_to_markdown(pdf_path: str | Path):
         print(f"Error converting PDF: {e}")
         raise
 
-    # Step 3: Save images to separate folder
-    picture_counter = 0
-    table_counter = 0
-    
-    # Iterate through the document to find pictures and tables
-    # Note: iterate_items() might need adjustment based on exact docling version structure
-    # The user code used result.document.iterate_items()
-    
-    for element, _level in result.document.iterate_items():
-        if isinstance(element, PictureItem) and pipeline_options.generate_picture_images:
-            picture_counter += 1
-            image_filename = f"{doc_name}_picture_{picture_counter}.png"
-            image_path = images_dir / image_filename
-            
-            try:
-                image = element.get_image(result.document)
-                if image:
-                    with image_path.open("wb") as fp:
-                        image.save(fp, "PNG")
-            except Exception as e:
-                print(f"Warning: Failed to save picture {picture_counter}: {e}")
+    # Step 3: Get markdown content
+    # If return_string=True, return as string; otherwise save to file
+    if return_string:
+        # Export markdown to string
+        markdown_content = result.document.export_to_markdown()
+        print(f"✓ Markdown extracted from PDF (text only, no images)")
+        return markdown_content
+    else:
+        # Step 4: Export markdown to file
+        markdown_path = output_base / f"{doc_name}.md"
+        result.document.save_as_markdown(
+            markdown_path,
+            image_mode=ImageRefMode.EMBEDDED  # Embed or skip images
+        )
         
-        elif isinstance(element, TableItem) and pipeline_options.generate_table_images:
-            table_counter += 1
-            image_filename = f"{doc_name}_table_{table_counter}.png"
-            image_path = images_dir / image_filename
-            
-            try:
-                image = element.get_image(result.document)
-                if image:
-                    with image_path.open("wb") as fp:
-                        image.save(fp, "PNG")
-            except Exception as e:
-                print(f"Warning: Failed to save table {table_counter}: {e}")
-    
-    # Step 4: Export markdown with image references
-    markdown_path = output_base / f"{doc_name}.md"
-    result.document.save_as_markdown(
-        markdown_path,
-        image_mode=ImageRefMode.REFERENCED  # Links to saved images
-    )
-    
-    print(f"✓ Markdown saved to: {markdown_path}")
-    print(f"✓ Images saved to: {images_dir}")
-    print(f"✓ Extracted {picture_counter} pictures and {table_counter} tables")
-    
-    return markdown_path
+        print(f"✓ Markdown saved to: {markdown_path}")
+        return str(markdown_path)
 
 if __name__ == "__main__":    
     # Default test file if none provided
-    pdf_file =  "test.pdf"
-    convert_pdf_to_markdown(pdf_file)
+    pdf_file = "test.pdf"
+    
+    # Test file mode (saves to disk)
+    result_path = convert_pdf_to_markdown(pdf_file, return_string=False)
+    print(f"Saved markdown to: {result_path}")
+    
+    # Test string mode (returns content)
+    # markdown_content = convert_pdf_to_markdown(pdf_file, return_string=True)
+    # print(f"Extracted {len(markdown_content)} characters")

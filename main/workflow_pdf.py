@@ -1,23 +1,26 @@
 from main.state import CourseState, CourseConfig
-from agents.index_generator.agent import generate_course_state
+from agents.pdf_index_generator.agent import generate_course_state_from_pdf
 from agents.section_theory_generator.agent import generate_all_section_theories
 from agents.activities_generator.agent import generate_all_section_activities
 from agents.html_formatter.agent import generate_all_section_html
 from agents.html_formatter.exporter import export_to_html
 from langgraph.graph import StateGraph, START, END
 
-def generate_index_node(state: CourseState) -> CourseState:
-    """Generate the course skeleton with empty theories while preserving config"""
-    print("Generating course skeleton...")
+def generate_index_from_pdf_node(state: CourseState) -> CourseState:
+    """Generate the course skeleton from PDF syllabus with empty theories while preserving config"""
+    print("Generating course skeleton from PDF syllabus...")
     
     # Use config from the existing state
     config = state.config
     
-    # Generate new course content skeleton (with empty theories)
-    content_skeleton = generate_course_state(
-        title=state.title,
+    # Validate PDF path
+    if not config.pdf_syllabus_path:
+        raise ValueError("pdf_syllabus_path must be specified in CourseConfig")
+    
+    # Generate new course content skeleton from PDF (with empty theories)
+    content_skeleton = generate_course_state_from_pdf(
+        pdf_path=config.pdf_syllabus_path,
         total_pages=config.total_pages,
-        description=config.description,
         language=config.language,
         max_retries=config.max_retries,
         words_per_page=config.words_per_page,
@@ -28,7 +31,7 @@ def generate_index_node(state: CourseState) -> CourseState:
     state.title = content_skeleton.title
     state.modules = content_skeleton.modules
     
-    print("Course skeleton generated successfully!")
+    print("Course skeleton generated successfully from PDF!")
     return state
 
 
@@ -90,23 +93,6 @@ def calculate_metadata_node(state: CourseState) -> CourseState:
                 section.id = f"{submodule.id}.{section.index}"
                 if not section.description:
                     section.description = section.title
-                
-                # Assign default duration if not set
-                # Default: 0.1 hours (~6 minutes) per section
-                section_duration = 0.1
-                
-                # Store in section (note: Section model doesn't have duration field in my previous update? 
-                # Wait, I checked state.py and I didn't add duration to Section, only to Module/Submodule.
-                # Let's check the plan.
-                # Plan said: "Add id (str), index (int), description (str). Add other_elements field... Remove..."
-                # It did NOT explicitly say add duration to Section, but "Aggregate durations up to Submodule and Module levels" implies sections have duration?
-                # Or I calculate submodule duration based on fixed value per section?
-                # The `minimum_module.json` has duration on Module (30) and Submodule (5). Does it have it on Section?
-                # Checking `minimum_module.json` content from history...
-                # "sections": [ { "title": "...", "description": "...", "id": "1.1.1", "other_elements": {...}, "html": {...} } ]
-                # Section DOES NOT have duration in the example JSON.
-                # So I should just sum up default values for Submodule/Module.
-                pass
             
             # Calculate submodule duration: 0.1 hours per section
             submodule.duration = len(submodule.sections) * 0.1
@@ -133,20 +119,20 @@ def generate_html_node(state: CourseState) -> CourseState:
 
 
 # Build the graph
-def build_course_generation_graph():
-    """Build and return the course generation graph"""
+def build_course_generation_graph_from_pdf():
+    """Build and return the course generation graph that uses PDF syllabus"""
     graph = StateGraph(CourseState)
     
     # Add nodes for complete course generation pipeline
-    graph.add_node("generate_index", generate_index_node)
+    graph.add_node("generate_index_from_pdf", generate_index_from_pdf_node)
     graph.add_node("generate_theories", generate_theories_node)
     graph.add_node("generate_activities", generate_activities_node)
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
     
     # Add edges for sequential execution
-    graph.add_edge(START, "generate_index")
-    graph.add_edge("generate_index", "generate_theories")
+    graph.add_edge(START, "generate_index_from_pdf")
+    graph.add_edge("generate_index_from_pdf", "generate_theories")
     graph.add_edge("generate_theories", "generate_activities")
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
@@ -163,42 +149,42 @@ if __name__ == "__main__":
     # Ensure you have set: export MISTRAL_API_KEY=your_key
     
     # Build the graph
-    app = build_course_generation_graph()
+    app = build_course_generation_graph_from_pdf()
     
-    # Create initial CourseState with config and minimal content
+    # Create initial CourseState with config and PDF path
+    # Note: title and description are NOT hardcoded - they will be extracted from the PDF
     config = CourseConfig(
-        title="Quantum Computing and Information Theory",
+        pdf_syllabus_path="test.pdf",  # Path to your PDF syllabus
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=15,  # Total pages for the course
+        total_pages=200,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
-        description="",
         max_retries=8,
         concurrency=5,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
-        num_reflection_queries=7,  # Number of verification queries per section (default: 3)
+        num_reflection_queries=5,  # Number of verification queries per section (default: 3)
         # Activities configuration
         activities_concurrency=4,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
-        num_activities_per_section=0,  # Number of quiz activities (+ multiple_choice + multi_selection)
+        num_activities_per_section=2,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
         html_concurrency=4,  # Number of concurrent HTML generations
-        html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards" | "formulas"
+        html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards"
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True  # Include table elements
     )
     
     initial_state = CourseState(
         config=config,
-        title=config.title,  # Initialize from config, can be refined during generation
-        modules=[]  # Will be populated by skeleton generation
+        title="",  # Will be extracted from PDF
+        modules=[]  # Will be populated by PDF skeleton generation
     )
     
-    # Run the graph with custom trace name
+    # Run the graph
     result = app.invoke(
         initial_state,
-        config={"run_name": f"{initial_state.title}"}
+        config={"run_name": "PDF Course Generation"}
     )
     
     # Print the final course state
@@ -237,3 +223,5 @@ if __name__ == "__main__":
     print(f"   Total Sections: {total_sections}")
     print(f"   Language: {final_state.language}")
     print(f"   Format: {final_state.config.html_format}")
+    print(f"   Source: {final_state.config.pdf_syllabus_path}")
+
