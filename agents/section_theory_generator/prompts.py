@@ -12,6 +12,9 @@ Course Context:
 - Section: {section_title}
 - Target Language: {language}
 
+Style Guidelines:
+{style_guidelines}
+
 Requirements:
 - Write approximately {n_words} words of educational content
 - Create engaging, informative theory that fits the section topic
@@ -26,6 +29,51 @@ Generate comprehensive theory content for this section:
 """
 
 section_theory_prompt = PromptTemplate.from_template(SECTION_THEORY_TEMPLATE)
+
+
+# ============================================================================
+# STYLE STRATEGIES
+# ============================================================================
+
+STYLE_COURSE_INTRO = """
+- This is the very first section of the entire course.
+- Welcome the student warmly and establish the course's value.
+- Set expectations and motivate the learning journey.
+- Maintain an encouraging, professional, and inviting tone.
+"""
+
+STYLE_MODULE_START = """
+- This is the first section of a new module.
+- Briefly introduce the module's theme and how it builds on previous content.
+- Establish the relevance of this module to the overall course.
+- Use a transitional tone that connects to what came before.
+- Keep it concise - no lengthy welcomes.
+"""
+
+STYLE_SUBMODULE_START = """
+- This is the first section of a new submodule.
+- Provide a brief contextual bridge from the previous submodule.
+- Introduce the specific focus of this submodule.
+- Use a focused, professional tone.
+- Avoid generic phrases like "In this section..." or "We will now...".
+"""
+
+STYLE_CONTINUATION = """
+- This is a continuation section within the same submodule.
+- DO NOT write any introduction or transition.
+- DIVE STRAIGHT into the content. Start immediately with the core concept, definition, or explanation.
+- Maintain a direct, information-dense style.
+- Assume the student is already engaged and in learning mode.
+- Avoid all meta-commentary about structure or what will be covered.
+"""
+
+STYLE_DEEP_DIVE = """
+- This section goes deeper into a topic already introduced.
+- Start with the assumption that foundational concepts are understood.
+- Use a more technical and detailed tone.
+- Present advanced aspects, edge cases, or nuanced perspectives.
+- Maintain rigor without repeating basics.
+"""
 
 
 # ============================================================================

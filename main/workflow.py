@@ -167,17 +167,17 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
-        title="Dynamo DB",
+        title="Mental models and cognitive biases in startup creation",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=50,  # Total pages for the course
-        words_per_page=450,  # Target words per page
+        total_pages=15,  # Total pages for the course
+        words_per_page=400,  # Target words per page
         language="Español",        
         description="",
         max_retries=8,
-        concurrency=4,  # Number of concurrent section theory generations
+        concurrency=5,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
-        num_reflection_queries=5,  # Number of verification queries per section (default: 3)
+        num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Activities configuration
         activities_concurrency=4,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"

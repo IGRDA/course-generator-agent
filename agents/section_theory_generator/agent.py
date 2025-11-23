@@ -13,7 +13,12 @@ from .prompts import (
     section_theory_prompt,
     query_generation_prompt,
     reflection_prompt,
-    regeneration_prompt
+    regeneration_prompt,
+    STYLE_COURSE_INTRO,
+    STYLE_MODULE_START,
+    STYLE_SUBMODULE_START,
+    STYLE_CONTINUATION,
+    STYLE_DEEP_DIVE
 )
 
 
@@ -96,6 +101,44 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
                 sends.append(Send("generate_section", task))
     
     return sends
+
+
+def select_style_guidelines(
+    module_idx: int,
+    submodule_idx: int,
+    section_idx: int,
+    total_sections_in_submodule: int
+) -> str:
+    """
+    Select appropriate style guidelines based on section position in the course structure.
+    
+    Args:
+        module_idx: Index of the current module
+        submodule_idx: Index of the current submodule
+        section_idx: Index of the current section
+        total_sections_in_submodule: Total number of sections in the current submodule
+    
+    Returns:
+        Style guidelines string to inject into the prompt
+    """
+    # Course introduction - very first section
+    if module_idx == 0 and submodule_idx == 0 and section_idx == 0:
+        return STYLE_COURSE_INTRO
+    
+    # Module start - first section of a new module (but not the first module)
+    if submodule_idx == 0 and section_idx == 0:
+        return STYLE_MODULE_START
+    
+    # Submodule start - first section of a new submodule (but not first of module)
+    if section_idx == 0:
+        return STYLE_SUBMODULE_START
+    
+    # Deep dive - later sections in a submodule (last half)
+    if section_idx >= total_sections_in_submodule // 2 and total_sections_in_submodule > 2:
+        return STYLE_DEEP_DIVE
+    
+    # Default continuation - middle sections
+    return STYLE_CONTINUATION
 
 
 def reflect_and_improve(
@@ -209,6 +252,14 @@ def generate_section(state: SectionTask) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
+    # Determine style guidelines based on position
+    style_guidelines = select_style_guidelines(
+        module_idx=state.module_idx,
+        submodule_idx=state.submodule_idx,
+        section_idx=state.section_idx,
+        total_sections_in_submodule=len(submodule.sections)
+    )
+    
     # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
     theory = section_chain.invoke({
@@ -217,7 +268,8 @@ def generate_section(state: SectionTask) -> dict:
         "submodule_title": submodule.title,
         "section_title": state.section_title,
         "language": state.course_state.language,
-        "n_words": n_words
+        "n_words": n_words,
+        "style_guidelines": style_guidelines
     }).strip()
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
