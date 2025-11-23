@@ -3,7 +3,6 @@ from pydantic import BaseModel, Field
 from main.state import CourseState, CourseConfig, Module
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
-from langsmith import traceable
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from tools.imagesearch import create_image_search  # Import for testing
 from .prompts import gen_prompt, retry_prompt

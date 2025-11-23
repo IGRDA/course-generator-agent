@@ -208,3 +208,10 @@ __marimo__/
 
 # Environment variables
 env.example
+
+oldjs/
+
+# Generated course output
+output/
+
+.DS_Store

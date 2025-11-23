@@ -6,7 +6,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
-from langsmith import traceable
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from tools.websearch import create_web_search
 from tools.imagesearch import create_image_search  # Import for testing
@@ -99,7 +98,6 @@ def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
     return sends
 
 
-@traceable(name="reflect_and_improve")
 def reflect_and_improve(
     theory: str,
     section_title: str,
