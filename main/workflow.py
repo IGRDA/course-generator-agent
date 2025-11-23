@@ -119,10 +119,10 @@ if __name__ == "__main__":
         title="Modelos Mentales y Sesgos Cognitivos",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=50,  # Total pages for the course
+        total_pages=15,  # Total pages for the course
         words_per_page=450,  # Target words per page
-        language="Español",        description="Modelos mentales y herramientas de pensamiento. laa navaja de Ockham, la inversión, el costo de oportunidad, sesgo de supervivencia, el martillo que todo son clabos,  para analizar problemas y diseñar soluciones más inteligentes , el dilema del prisionero, pareto, causa raiz, paradoja de Simpson, reducción al absurdo, margen de seguridad, etc...",
-
+        language="Español",        
+        description="Modelos mentales y herramientas de pensamiento. laa navaja de Ockham, la inversión, el costo de oportunidad, sesgo de supervivencia, el martillo que todo son clabos,  para analizar problemas y diseñar soluciones más inteligentes , el dilema del prisionero, pareto, causa raiz, paradoja de Simpson, reducción al absurdo, margen de seguridad, etc...",
         max_retries=3,
         concurrency=4,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)

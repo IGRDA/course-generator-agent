@@ -6,7 +6,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 DEFAULT_MODEL = "mistral-small-latest"
 
 
-class RetryingChatMistralAI(ChatMistralAI):
+class ChatMistral(ChatMistralAI):
     """ChatMistralAI with exponential backoff retry (20s-500s)."""
     
     def _generate(self, *args, **kwargs):
@@ -16,7 +16,7 @@ class RetryingChatMistralAI(ChatMistralAI):
             reraise=True
         )
         def _call():
-            return super(RetryingChatMistralAI, self)._generate(*args, **kwargs)
+            return super(ChatMistral, self)._generate(*args, **kwargs)
         return _call()
     
     async def _agenerate(self, *args, **kwargs):
@@ -26,7 +26,7 @@ class RetryingChatMistralAI(ChatMistralAI):
             reraise=True
         )
         async def _acall():
-            return await super(RetryingChatMistralAI, self)._agenerate(*args, **kwargs)
+            return await super(ChatMistral, self)._agenerate(*args, **kwargs)
         return await _acall()
 
 
@@ -44,7 +44,7 @@ def build_mistral_chat_model(
         or os.getenv("MISTRAL_API_KEY")
     )
 
-    return RetryingChatMistralAI(
+    return ChatMistral(
         model=model,
         temperature=temperature,
         max_retries=0,  # Disable internal retries
