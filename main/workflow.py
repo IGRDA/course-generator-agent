@@ -170,7 +170,7 @@ if __name__ == "__main__":
         title="Quantum Computing and Information Theory",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=15,  # Total pages for the course
+        total_pages=10,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
         description="",
@@ -181,7 +181,7 @@ if __name__ == "__main__":
         # Activities configuration
         activities_concurrency=4,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
-        num_activities_per_section=0,  # Number of quiz activities (+ multiple_choice + multi_selection)
+        num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
         html_concurrency=4,  # Number of concurrent HTML generations
         html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards" | "formulas"

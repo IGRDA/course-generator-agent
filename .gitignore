@@ -207,7 +207,7 @@ marimo/_lsp/
 __marimo__/
 
 # Environment variables
-env.inaki
+env.secrets
 
 oldjs/
 oldjsfeedback/
