@@ -21,6 +21,7 @@ dependencies = [
     "beautifulsoup4",
     "langsmith",
     "wikipedia",
+    "docling",
 ]
 
 [project.optional-dependencies]

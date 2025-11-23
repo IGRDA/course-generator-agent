@@ -214,5 +214,6 @@ oldjsfeedback/
 
 # Generated course output
 output/
+test.pdf
 
 .DS_Store

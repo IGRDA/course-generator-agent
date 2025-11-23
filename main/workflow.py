@@ -170,7 +170,7 @@ if __name__ == "__main__":
         title="Dynamo DB",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=500,  # Total pages for the course
+        total_pages=50,  # Total pages for the course
         words_per_page=450,  # Target words per page
         language="Español",        
         description="",

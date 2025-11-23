@@ -204,7 +204,7 @@ def generate_section(state: SectionTask) -> dict:
     
     # Create LLM with specified provider
     model_name = resolve_text_model_name(provider)
-    llm_kwargs = {"temperature": 0.0}
+    llm_kwargs = {"temperature": 0.2}
     if model_name:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
