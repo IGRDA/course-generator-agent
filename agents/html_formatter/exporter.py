@@ -8,6 +8,8 @@ from main.state import CourseState, Section, HtmlElement
 
 def escape_html(text: str) -> str:
     """Escape HTML special characters."""
+    if not isinstance(text, str):
+        return str(text)
     return (text
             .replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -19,44 +21,64 @@ def escape_html(text: str) -> str:
 def render_element(element: HtmlElement) -> str:
     """Render a single HTML element based on its type."""
     if element.type == "p":
-        return f"<p>{escape_html(str(element.content))}</p>"
+        return f"<p>{escape_html(element.content)}</p>"
     
     elif element.type == "ul":
-        items = "".join(f"<li>{escape_html(str(item))}</li>" for item in element.content)
-        return f"<ul>{items}</ul>"
+        if isinstance(element.content, list):
+            items = "".join(f"<li>{escape_html(str(item))}</li>" for item in element.content)
+            return f"<ul>{items}</ul>"
+        return ""
     
     elif element.type == "quote":
         quote_data = element.content
-        quote_text = escape_html(str(quote_data.get("quote", "")))
-        author = escape_html(str(quote_data.get("author", "")))
-        return f'<blockquote class="quote"><p>{quote_text}</p><footer>— {author}</footer></blockquote>'
+        if isinstance(quote_data, dict):
+            quote_text = escape_html(str(quote_data.get("quote", "")))
+            author = escape_html(str(quote_data.get("author", "")))
+            return f'<blockquote class="quote"><p>{quote_text}</p><footer>— {author}</footer></blockquote>'
+        return ""
     
     elif element.type == "table":
         table_data = element.content
-        title = escape_html(str(table_data.get("title", "")))
-        headers = table_data.get("headers", [])
-        rows = table_data.get("rows", [])
+        if isinstance(table_data, dict):
+            title = escape_html(str(table_data.get("title", "")))
+            headers = table_data.get("headers", [])
+            rows = table_data.get("rows", [])
+            
+            html = f'<div class="table-container"><h4>{title}</h4><table>'
+            
+            # Headers
+            if headers:
+                html += "<thead><tr>"
+                for header in headers:
+                    html += f"<th>{escape_html(str(header))}</th>"
+                html += "</tr></thead>"
+            
+            # Rows
+            if rows:
+                html += "<tbody>"
+                for row in rows:
+                    html += "<tr>"
+                    for cell in row:
+                        html += f"<td>{escape_html(str(cell))}</td>"
+                    html += "</tr>"
+                html += "</tbody>"
+            
+            html += "</table></div>"
+            return html
+        return ""
         
-        html = f'<div class="table-container"><h4>{title}</h4><table>'
-        
-        # Headers
-        if headers:
-            html += "<thead><tr>"
-            for header in headers:
-                html += f"<th>{escape_html(str(header))}</th>"
-            html += "</tr></thead>"
-        
-        # Rows
-        if rows:
-            html += "<tbody>"
-            for row in rows:
-                html += "<tr>"
-                for cell in row:
-                    html += f"<td>{escape_html(str(cell))}</td>"
-                html += "</tr>"
-            html += "</tbody>"
-        
-        html += "</table></div>"
+    elif element.type == "paragraphs":
+        # Render nested blocks
+        html = '<div class="content-items">'
+        if isinstance(element.content, list):
+            for block in element.content:
+                html += '<div class="content-item">'
+                html += f'<h4 class="item-title"><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                html += '<div class="item-body">'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div></div>'
+        html += '</div>'
         return html
     
     return ""
@@ -68,29 +90,21 @@ def render_section(section: Section, section_num: int) -> str:
     html += f'<h3 class="section-title">{escape_html(section.title)}</h3>'
     
     # HTML Structure
-    if section.html_structure:
-        structure = section.html_structure
-        
-        # Intro
-        html += '<div class="section-intro">'
-        html += render_element(structure.intro)
-        html += '</div>'
-        
-        # Content items displayed sequentially
-        html += '<div class="content-items">'
-        for item in structure.content.items:
-            html += '<div class="content-item">'
-            html += f'<h4 class="item-title"><i class="{item.icon}"></i> {escape_html(item.title)}</h4>'
-            html += '<div class="item-body">'
-            for element in item.elements:
+    if section.html:
+        # Iterate through theory elements
+        for element in section.html.theory:
+            # Wrap intro in specific class if it's the first p
+            if element == section.html.theory[0] and element.type == "p":
+                html += '<div class="section-intro">'
                 html += render_element(element)
-            html += '</div></div>'
-        html += '</div>'
-        
-        # Conclusion
-        html += '<div class="section-conclusion">'
-        html += render_element(structure.conclusion)
-        html += '</div>'
+                html += '</div>'
+            # Wrap conclusion in specific class if it's the last p
+            elif element == section.html.theory[-1] and element.type == "p":
+                html += '<div class="section-conclusion">'
+                html += render_element(element)
+                html += '</div>'
+            else:
+                html += render_element(element)
     
     html += '</section>'
     return html
@@ -347,4 +361,3 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
     # Write to file
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
-

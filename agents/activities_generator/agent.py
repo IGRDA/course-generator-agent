@@ -2,7 +2,7 @@ from typing import Annotated, List
 import random
 from operator import add
 from pydantic import BaseModel, Field
-from main.state import CourseState, GlossaryTerm, Activity, FinalActivity
+from main.state import CourseState, GlossaryTerm, Activity, FinalActivity, OtherElements
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
@@ -51,9 +51,12 @@ def select_activity_types(mode: str, num: int, section_idx: int) -> tuple[List[s
 class ActivitiesOutput(BaseModel):
     """Complete activities output for a section"""
     glossary: List[GlossaryTerm] = Field(..., min_length=1, max_length=4, description="1-4 glossary terms")
-    key_concept: str = Field(..., description="One sentence key concept summary")
+    key_concept: str = Field(..., alias="keyConcept", description="One sentence key concept summary")
     activities: List[Activity] = Field(..., min_length=1, description="List of activities")
     final_activities: List[FinalActivity] = Field(..., min_length=1, description="List of final activities")
+
+    class Config:
+        populate_by_name = True
 
 
 # ---- State for individual section task ----
@@ -206,10 +209,14 @@ def reduce_activities(state: ActivitiesGenerationState) -> dict:
         s_idx = activity_info["section_idx"]
         
         section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
-        section.glossary = activity_info["glossary"]
-        section.key_concept = activity_info["key_concept"]
-        section.activities = activity_info["activities"]
-        section.final_activities = activity_info["final_activities"]
+        
+        # Instantiate OtherElements and assign to section
+        section.other_elements = OtherElements(
+            glossary=activity_info["glossary"],
+            keyConcept=activity_info["key_concept"],
+            activities=activity_info["activities"],
+            final_activities=activity_info["final_activities"]
+        )
     
     print(f"✅ All {state.total_sections} section activities generated successfully!")
     
@@ -286,4 +293,3 @@ def generate_all_section_activities(
     result = graph.invoke(initial_state)
     
     return result["course_state"]
-

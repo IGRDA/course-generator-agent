@@ -72,7 +72,6 @@ class SectionHtmlTask(BaseModel):
     section_idx: int
     section_title: str
     theory: str
-    html_format: str
     include_quotes: bool
     include_tables: bool
 
@@ -102,7 +101,6 @@ def continue_to_html(state: HtmlFormattingState) -> list[Send]:
     """Fan-out: Create a Send for each section to process in parallel."""
     sends = []
     
-    html_format = state.course_state.config.html_format
     include_quotes = state.course_state.config.include_quotes_in_html
     include_tables = state.course_state.config.include_tables_in_html
     
@@ -117,7 +115,6 @@ def continue_to_html(state: HtmlFormattingState) -> list[Send]:
                     section_idx=s_idx,
                     section_title=section.title,
                     theory=section.theory,
-                    html_format=html_format,
                     include_quotes=include_quotes,
                     include_tables=include_tables
                 )
@@ -173,7 +170,6 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     raw = chain.invoke({
         "theory": state.theory,
         "section_title": state.section_title,
-        "html_format": state.html_format,
         "language": state.course_state.language,
         "quote_instruction": quote_instruction,
         "table_instruction": table_instruction,
@@ -220,7 +216,7 @@ def reduce_html(state: HtmlFormattingState) -> dict:
         s_idx = html_info["section_idx"]
         
         section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
-        section.html_structure = html_info["html_structure"]
+        section.html = html_info["html_structure"]
     
     print(f"✅ All {state.total_sections} section HTML structures generated successfully!")
     
@@ -297,4 +293,3 @@ def generate_all_section_html(
     result = graph.invoke(initial_state)
     
     return result["course_state"]
-

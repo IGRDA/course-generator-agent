@@ -69,6 +69,55 @@ def generate_activities_node(state: CourseState) -> CourseState:
     return updated_state
 
 
+def calculate_metadata_node(state: CourseState) -> CourseState:
+    """Calculate indices, IDs, and durations for all course elements"""
+    print("Calculating course metadata (IDs, Indices, Durations)...")
+    
+    for m_idx, module in enumerate(state.modules):
+        module.index = m_idx + 1
+        module.id = str(module.index)
+        if not module.description:
+            module.description = module.title
+            
+        for sm_idx, submodule in enumerate(module.submodules):
+            submodule.index = sm_idx + 1
+            submodule.id = f"{module.id}.{submodule.index}"
+            if not submodule.description:
+                submodule.description = submodule.title
+            
+            for s_idx, section in enumerate(submodule.sections):
+                section.index = s_idx + 1
+                section.id = f"{submodule.id}.{section.index}"
+                if not section.description:
+                    section.description = section.title
+                
+                # Assign default duration if not set
+                # Default: 0.1 hours (~6 minutes) per section
+                section_duration = 0.1
+                
+                # Store in section (note: Section model doesn't have duration field in my previous update? 
+                # Wait, I checked state.py and I didn't add duration to Section, only to Module/Submodule.
+                # Let's check the plan.
+                # Plan said: "Add id (str), index (int), description (str). Add other_elements field... Remove..."
+                # It did NOT explicitly say add duration to Section, but "Aggregate durations up to Submodule and Module levels" implies sections have duration?
+                # Or I calculate submodule duration based on fixed value per section?
+                # The `minimum_module.json` has duration on Module (30) and Submodule (5). Does it have it on Section?
+                # Checking `minimum_module.json` content from history...
+                # "sections": [ { "title": "...", "description": "...", "id": "1.1.1", "other_elements": {...}, "html": {...} } ]
+                # Section DOES NOT have duration in the example JSON.
+                # So I should just sum up default values for Submodule/Module.
+                pass
+            
+            # Calculate submodule duration: 0.1 hours per section
+            submodule.duration = len(submodule.sections) * 0.1
+            
+        # Calculate module duration
+        module.duration = sum(sm.duration for sm in module.submodules)
+        
+    print("Metadata calculation completed!")
+    return state
+
+
 def generate_html_node(state: CourseState) -> CourseState:
     """Generate HTML structure for all sections in parallel"""
     print("Generating HTML structures in parallel...")
@@ -92,13 +141,15 @@ def build_course_generation_graph():
     graph.add_node("generate_index", generate_index_node)
     graph.add_node("generate_theories", generate_theories_node)
     graph.add_node("generate_activities", generate_activities_node)
+    graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index")
     graph.add_edge("generate_index", "generate_theories")
     graph.add_edge("generate_theories", "generate_activities")
-    graph.add_edge("generate_activities", "generate_html")
+    graph.add_edge("generate_activities", "calculate_metadata")
+    graph.add_edge("calculate_metadata", "generate_html")
     graph.add_edge("generate_html", END)
     
     return graph.compile()
@@ -116,14 +167,14 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
-        title="Modelos Mentales y Sesgos Cognitivos",
+        title="Dynamo DB",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=15,  # Total pages for the course
+        total_pages=500,  # Total pages for the course
         words_per_page=450,  # Target words per page
         language="Español",        
-        description="Modelos mentales y herramientas de pensamiento. laa navaja de Ockham, la inversión, el costo de oportunidad, sesgo de supervivencia, el martillo que todo son clabos,  para analizar problemas y diseñar soluciones más inteligentes , el dilema del prisionero, pareto, causa raiz, paradoja de Simpson, reducción al absurdo, margen de seguridad, etc...",
-        max_retries=3,
+        description="",
+        max_retries=8,
         concurrency=4,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=5,  # Number of verification queries per section (default: 3)
@@ -133,7 +184,7 @@ if __name__ == "__main__":
         num_activities_per_section=0,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
         html_concurrency=4,  # Number of concurrent HTML generations
-        html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards"
+        html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards" | "formulas"
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True  # Include table elements
     )
@@ -169,7 +220,8 @@ if __name__ == "__main__":
     # Save JSON file
     json_path = os.path.join(output_dir, f"{base_filename}.json")
     with open(json_path, 'w', encoding='utf-8') as f:
-        f.write(final_state.model_dump_json(indent=2))
+        # Use by_alias=True to ensure keyConcept is serialized as keyConcept
+        f.write(final_state.model_dump_json(indent=2, by_alias=True))
     print(f"\n✅ JSON saved to: {json_path}")
     
     # Save HTML file

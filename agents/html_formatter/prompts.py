@@ -20,83 +20,77 @@ THEORY TEXT:
 {theory}
 
 SECTION TITLE: {section_title}
-FORMAT TYPE: {html_format}
 
 REQUIREMENTS:
 
 1. INTRO (required):
+   - First element in the theory list
    - Type: "p" (paragraph)
    - Content: A compelling introduction paragraph (2-3 sentences)
 
-2. CONTENT (required):
-   - Format: Must be "{html_format}" (tabs | accordion | timeline | cards)
-   - Items: Minimum 3 items, each representing a key aspect of the theory
+2. MAIN CONTENT (required):
+   - Use "paragraphs" type for the main body content
+   - Content is a list of blocks, each representing a key aspect
+   - Minimum 3 blocks
    
-   For each item:
+   For each block in "paragraphs":
    - Title: Short, descriptive title (3-6 words)
    - Icon: Material Design Icon name (e.g., "mdi-book", "mdi-lightbulb", "mdi-chart-line")
      Suggested icon based on section: {suggested_icon}
-   - Elements: Minimum 2 elements per item
+   - Elements: Minimum 2 elements per block
    
-   Element types:
+   Element types inside blocks:
    - "p": Paragraph text (string content)
    - "ul": Bullet list (array of strings)
    {quote_instruction}
    {table_instruction}
 
 3. CONCLUSION (required):
+   - Last element in the theory list
    - Type: "p" (paragraph)
    - Content: A summary or closing thought (2-3 sentences)
 
 EXAMPLE STRUCTURE:
 {{
-  "intro": {{
-    "type": "p",
-    "content": "Introduction paragraph explaining the main topic..."
-  }},
-  "content": {{
-    "format": "{html_format}",
-    "items": [
-      {{
-        "title": "First Key Concept",
-        "icon": "mdi-lightbulb",
-        "elements": [
-          {{"type": "p", "content": "Explanation of the first concept..."}},
-          {{"type": "ul", "content": ["Point 1", "Point 2", "Point 3"]}}
-        ]
-      }},
-      {{
-        "title": "Second Key Concept",
-        "icon": "mdi-chart-line",
-        "elements": [
-          {{"type": "p", "content": "Explanation of the second concept..."}},
-          {{"type": "p", "content": "Additional detail..."}}
-        ]
-      }},
-      {{
-        "title": "Third Key Concept",
-        "icon": "mdi-cog",
-        "elements": [
-          {{"type": "p", "content": "Explanation of the third concept..."}},
-          {{"type": "ul", "content": ["Detail 1", "Detail 2"]}}
-        ]
-      }}
-    ]
-  }},
-  "conclusion": {{
-    "type": "p",
-    "content": "Summary paragraph tying together the key concepts..."
-  }}
+  "theory": [
+    {{
+      "type": "p",
+      "content": "Introduction paragraph explaining the main topic..."
+    }},
+    {{
+      "type": "paragraphs",
+      "content": [
+        {{
+          "title": "First Key Concept",
+          "icon": "mdi-lightbulb",
+          "elements": [
+            {{"type": "p", "content": "Explanation of the first concept..."}},
+            {{"type": "ul", "content": ["Point 1", "Point 2", "Point 3"]}}
+          ]
+        }},
+        {{
+          "title": "Second Key Concept",
+          "icon": "mdi-chart-line",
+          "elements": [
+            {{"type": "p", "content": "Explanation of the second concept..."}},
+            {{"type": "p", "content": "Additional detail..."}}
+          ]
+        }}
+      ]
+    }},
+    {{
+      "type": "p",
+      "content": "Summary paragraph tying together the key concepts..."
+    }}
+  ]
 }}
 
 {format_instructions}
 
 IMPORTANT:
-- All formats (tabs, accordion, timeline, cards) use the SAME structure
-- Only the "format" field value changes
-- Ensure minimum 3 items in content
-- Each item must have at least 2 elements
-- Intro and conclusion must be type "p"
+- The root object must contain a "theory" list
+- Intro and conclusion MUST be simple "p" elements at the start and end of the list
+- The main content MUST be wrapped in a "paragraphs" element
 - Choose icons that match the content theme
 """)
 ])
@@ -115,12 +109,9 @@ Please fix the errors and return valid JSON following these requirements:
 {format_instructions}
 
 Common issues to check:
-1. Intro and conclusion must have type "p" (not "ul", "quote", or "table")
-2. Content format must match the specified format exactly
-3. Must have at least 3 items in content
-4. Each item must have at least 2 elements
-5. Element types must be "p", "ul", "quote", or "table"
-6. Quotes need both "author" and "quote" fields
-7. Tables need "title", "headers" (array), and "rows" (array of arrays)
+1. Root object must have "theory" list
+2. "paragraphs" content must be a list of blocks with title, icon, and elements
+3. Element types must be "p", "ul", "quote", "table", or "paragraphs"
+4. Quotes need both "author" and "quote" fields
+5. Tables need "title", "headers" (array), and "rows" (array of arrays)
 """)
-

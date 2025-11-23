@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Union, Literal, Dict, Any
 from pydantic import BaseModel, Field
 
 # ---- Activity Models ----
@@ -43,49 +43,50 @@ class FinalActivity(BaseModel):
     type: Literal["group_activity", "discussion_forum", "individual_project", "open_ended_quiz"] = Field(..., description="Type of final activity")
     content: FinalActivityContent = Field(..., description="Final activity content")
 
+# ---- Other Elements ----
+class OtherElements(BaseModel):
+    glossary: List[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
+    activities: List[Activity] = Field(default_factory=list, description="Interactive activities for the section")
+    key_concept: str = Field(default="", alias="keyConcept", description="Key concept summary for the section")
+    final_activities: List[FinalActivity] = Field(default_factory=list, description="Final assessment activities for the section")
+
+    class Config:
+        populate_by_name = True
+
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
-    type: Literal["p", "ul", "quote", "table"] = Field(..., description="Type of HTML element")
-    content: Union[str, List[str], dict] = Field(..., description="Content of the element")
+    type: Literal["p", "ul", "quote", "table", "paragraphs"] = Field(..., description="Type of HTML element")
+    content: Union[str, List[str], Dict[str, Any], List['ParagraphBlock']] = Field(..., description="Content of the element")
 
-class HtmlItem(BaseModel):
-    title: str = Field(..., description="Title of the content item")
+class ParagraphBlock(BaseModel):
+    title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")
-    elements: List[HtmlElement] = Field(..., min_length=2, description="List of HTML elements")
-
-class HtmlContent(BaseModel):
-    format: Literal["tabs", "accordion", "timeline", "cards"] = Field(..., description="Format type for content display")
-    items: List[HtmlItem] = Field(..., min_length=3, description="List of content items")
+    elements: List[HtmlElement] = Field(..., description="List of HTML elements within this block")
 
 class HtmlStructure(BaseModel):
-    intro: HtmlElement = Field(..., description="Introduction paragraph (type must be 'p')")
-    content: HtmlContent = Field(..., description="Main content structure")
-    conclusion: HtmlElement = Field(..., description="Conclusion paragraph (type must be 'p')")
+    theory: List[HtmlElement] = Field(..., description="List of HTML elements forming the section theory")
+
+# Update forward references for recursive definition
+HtmlElement.model_rebuild()
 
 # ---- Section level ----
 class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
+    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1.1')")
+    index: int = Field(default=0, description="Sequential index of the section")
+    description: str = Field(default="", description="Description of the section")
+    
     theory: str = Field(
         default="", 
         description="Text of the section, expected to be ~n_words words. Can be empty initially for skeleton generation."
     )
-    glossary: List[GlossaryTerm] = Field(
-        default_factory=list,
-        description="Glossary terms for the section"
+    
+    other_elements: Optional[OtherElements] = Field(
+        default=None,
+        description="Interactive elements and metadata nested structure"
     )
-    key_concept: str = Field(
-        default="",
-        description="Key concept summary for the section"
-    )
-    activities: List[Activity] = Field(
-        default_factory=list,
-        description="Interactive activities for the section"
-    )
-    final_activities: List[FinalActivity] = Field(
-        default_factory=list,
-        description="Final assessment activities for the section"
-    )
-    html_structure: Optional[HtmlStructure] = Field(
+    
+    html: Optional[HtmlStructure] = Field(
         default=None,
         description="Structured HTML format for the section content"
     )
@@ -93,6 +94,11 @@ class Section(BaseModel):
 # ---- Submodule level ----
 class Submodule(BaseModel):
     title: str = Field(..., description="Title of the submodule")
+    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1')")
+    index: int = Field(default=0, description="Sequential index of the submodule")
+    description: str = Field(default="", description="Description of the submodule")
+    duration: float = Field(default=0.0, description="Duration in hours")
+    
     sections: List[Section] = Field(
         ..., description="List of sections in this submodule"
     )
@@ -100,6 +106,12 @@ class Submodule(BaseModel):
 # ---- Module level ----
 class Module(BaseModel):
     title: str = Field(..., description="Title of the module")
+    id: str = Field(default="", description="Hierarchical ID (e.g., '1')")
+    index: int = Field(default=0, description="Sequential index of the module")
+    description: str = Field(default="", description="Description of the module")
+    duration: float = Field(default=0.0, description="Duration in hours")
+    type: Literal["module"] = Field(default="module", description="Type identifier")
+    
     submodules: List[Submodule] = Field(
         ..., description="List of submodules in this module"
     )
