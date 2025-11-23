@@ -167,7 +167,7 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
-        title="Quantum Computing and Information Theory",
+        title="Chess masterclass",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=10,  # Total pages for the course

@@ -18,13 +18,14 @@ def generate_index_from_pdf_node(state: CourseState) -> CourseState:
         raise ValueError("pdf_syllabus_path must be specified in CourseConfig")
     
     # Generate new course content skeleton from PDF (with empty theories)
+    # Always use OpenAI for PDF index generation
     content_skeleton = generate_course_state_from_pdf(
         pdf_path=config.pdf_syllabus_path,
         total_pages=config.total_pages,
         language=config.language,
         max_retries=config.max_retries,
         words_per_page=config.words_per_page,
-        provider=config.text_llm_provider
+        provider="openai"  # Hardcoded to use OpenAI for PDF analysis
     )
     
     # Preserve original config, update only content fields
@@ -146,7 +147,6 @@ if __name__ == "__main__":
     import json
     from datetime import datetime
     
-    # Ensure you have set: export MISTRAL_API_KEY=your_key
     
     # Build the graph
     app = build_course_generation_graph_from_pdf()

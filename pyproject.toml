@@ -22,6 +22,7 @@ dependencies = [
     "langsmith",
     "wikipedia",
     "docling",
+    "easyocr>=1.7.0"  # PDF to Markdown conversion
 ]
 
 [project.optional-dependencies]
