@@ -2,39 +2,36 @@ import math
 
 
 def get_module_count(total_pages: int) -> int:
-    """Determine number of modules based on course size"""
-    if total_pages <= 50:  # small courses
-        return min(8, max(5, total_pages // 10))
-    elif total_pages <= 500:  # medium courses
-        return min(12, max(8, 8 + (total_pages - 50) // 50))
-    else:  # large courses (>500)
-        return min(20, max(12, 12 + (total_pages - 500) // 100))
+    """Determine number of modules using smooth logarithmic scaling."""
+    if total_pages <= 0:
+        raise ValueError("total_pages must be a positive integer")
+
+    log_pages = math.log10(total_pages)
+    n_modules = 2 + (log_pages * 3)
+    return max(1, min(30, round(n_modules)))
 
 
-def compute_layout(total_pages: int, target_pages_per_section: int = 4) -> tuple[int, int, int]:
+def compute_layout(total_pages: int) -> tuple[int, int, int]:
     """
     Compute course layout: (n_modules, n_submodules, n_sections)
-    Target: ~4 pages per section with balanced distribution
+    Uses logarithmic scaling so density grows smoothly across course sizes.
     """
     if total_pages <= 0:
         raise ValueError("total_pages must be a positive integer")
-    
+
+    log_pages = math.log10(total_pages)
     n_modules = get_module_count(total_pages)
-    target_sections = max(1, total_pages // target_pages_per_section)
-    sections_per_module = max(1, target_sections // n_modules)
-    
-    # Distribute into submodules (2-6 submodules per module)
-    if sections_per_module <= 3:
-        n_submodules = 1
-        n_sections = sections_per_module
-    elif sections_per_module <= 8:
-        n_submodules = 2
-        n_sections = max(1, sections_per_module // 2)
-    elif sections_per_module <= 18:
-        n_submodules = 3
-        n_sections = max(1, sections_per_module // 3)
-    else:
-        n_submodules = min(6, max(3, int(math.sqrt(sections_per_module))))
-        n_sections = max(1, sections_per_module // n_submodules)
-    
+
+    pages_per_module = total_pages / n_modules
+    submodule_scale = math.log10(max(pages_per_module, 1))
+    n_submodules = 1 + (submodule_scale * 2)
+    n_submodules = max(1, min(8, round(n_submodules)))
+
+    target_pages_per_section = 2 + (log_pages * 0.5)
+    target_pages_per_section = max(2, min(6, target_pages_per_section))
+
+    pages_per_submodule = pages_per_module / n_submodules
+    raw_sections = pages_per_submodule / target_pages_per_section
+    n_sections = max(1, round(raw_sections))
+
     return n_modules, n_submodules, n_sections
