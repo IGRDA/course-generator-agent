@@ -158,7 +158,13 @@ def build_course_generation_graph():
 if __name__ == "__main__":
     import os
     import json
+    import argparse
     from datetime import datetime
+    
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Generate a course")
+    parser.add_argument("--total-pages", type=int, default=2, help="Total pages for the course (default: 2)")
+    args = parser.parse_args()
     
     # Ensure you have set: export MISTRAL_API_KEY=your_key
     
@@ -170,7 +176,7 @@ if __name__ == "__main__":
         title="Chess masterclass",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
-        total_pages=10,  # Total pages for the course
+        total_pages=args.total_pages,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
         description="",
