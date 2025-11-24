@@ -3,8 +3,6 @@ import os
 from langchain_mistralai import ChatMistralAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-DEFAULT_MODEL = "mistral-small-latest"
-
 
 class ChatMistral(ChatMistralAI):
     """ChatMistralAI with exponential backoff retry (20s-500s)."""
@@ -37,7 +35,9 @@ def build_mistral_chat_model(
     **kwargs,
 ) -> ChatMistralAI:
     """Build a ChatMistralAI client with custom exponential backoff."""
-    model = model_name or os.getenv("MISTRAL_MODEL_NAME", DEFAULT_MODEL)
+    model = model_name or os.getenv("MISTRAL_MODEL_NAME")
+    if not model:
+        raise ValueError("MISTRAL_MODEL_NAME environment variable must be set")
     mistral_api_key = (
         kwargs.pop("mistral_api_key", None)
         or kwargs.pop("api_key", None)
