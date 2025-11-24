@@ -160,7 +160,7 @@ if __name__ == "__main__":
         total_pages=200,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
-        max_retries=7,
+        max_retries=8,
         concurrency=5,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=5,  # Number of verification queries per section (default: 3)
