@@ -29,19 +29,19 @@ jobs:
       - name: Run workflow
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          GEMINI_MODEL_NAME: ${{ secrets.GEMINI_MODEL_NAME }}
+          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME }}
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
-          MISTRAL_MODEL_NAME: ${{ secrets.MISTRAL_MODEL_NAME }}
-          PIXTRAL_MODEL: ${{ secrets.PIXTRAL_MODEL }}
+          MISTRAL_MODEL_NAME: ${{ vars.MISTRAL_MODEL_NAME }}
+          PIXTRAL_MODEL: ${{ vars.PIXTRAL_MODEL }}
           PIXTRAL_API_KEY: ${{ secrets.PIXTRAL_API_KEY }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENAI_MODEL_NAME: ${{ secrets.OPENAI_MODEL_NAME }}
+          OPENAI_MODEL_NAME: ${{ vars.OPENAI_MODEL_NAME }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GROQ_MODEL_NAME: ${{ secrets.GROQ_MODEL_NAME }}
-          LANGSMITH_TRACING: ${{ secrets.LANGSMITH_TRACING }}
-          LANGSMITH_ENDPOINT: ${{ secrets.LANGSMITH_ENDPOINT }}
+          GROQ_MODEL_NAME: ${{ vars.GROQ_MODEL_NAME }}
+          LANGSMITH_TRACING: ${{ vars.LANGSMITH_TRACING }}
+          LANGSMITH_ENDPOINT: ${{ vars.LANGSMITH_ENDPOINT }}
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: ${{ secrets.LANGSMITH_PROJECT }}
+          LANGSMITH_PROJECT: ${{ vars.LANGSMITH_PROJECT }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
         run: |
           python3 -m main.workflow --total-pages 2
