@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    environment: course-generator-agent
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+      
+      - name: Run workflow
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL_NAME: ${{ vars.GEMINI_MODEL_NAME }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          MISTRAL_MODEL_NAME: ${{ vars.MISTRAL_MODEL_NAME }}
+          PIXTRAL_MODEL: ${{ vars.PIXTRAL_MODEL }}
+          PIXTRAL_API_KEY: ${{ secrets.PIXTRAL_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_MODEL_NAME: ${{ vars.OPENAI_MODEL_NAME }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL_NAME: ${{ vars.GROQ_MODEL_NAME }}
+          LANGSMITH_TRACING: ${{ vars.LANGSMITH_TRACING }}
+          LANGSMITH_ENDPOINT: ${{ vars.LANGSMITH_ENDPOINT }}
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: ${{ vars.LANGSMITH_PROJECT }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+        run: |
+          python3 -m main.workflow --total-pages 2
+
