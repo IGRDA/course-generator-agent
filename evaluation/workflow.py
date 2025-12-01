@@ -667,9 +667,6 @@ def run_evaluation(
         max_concurrency=1,  # Sequential to ensure proper feedback logging
     )
     
-    print(f"\n✅ Experiment completed!")
-    print(f"   View results at: https://smith.langchain.com")
-    
     return results
 
 
@@ -719,19 +716,6 @@ def quick_evaluate(
     )
     
     return results
-
-
-def print_results_summary(results):
-    """Print a summary of evaluation results."""
-    print("\n" + "=" * 60)
-    print("📊 EVALUATION SUMMARY")
-    print("=" * 60)
-    print("\n✅ Evaluation completed successfully!")
-    print("   All metrics have been logged to LangSmith.")
-    print("\n" + "=" * 60)
-    print("🔗 View detailed results and comparisons at:")
-    print("   https://smith.langchain.com")
-    print("=" * 60)
 
 
 # ---- CLI ----
@@ -797,7 +781,6 @@ def main():
             max_retries=args.max_retries,
             steps=args.steps if args.steps else None,
         )
-        print_results_summary(results)
         
     elif args.command == "quick":
         results = quick_evaluate(
@@ -807,7 +790,6 @@ def main():
             experiment_prefix=args.experiment_prefix,
             steps=args.steps if args.steps else None,
         )
-        print_results_summary(results)
         
     else:
         parser.print_help()
