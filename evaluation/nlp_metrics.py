@@ -23,33 +23,24 @@ def compute_readability(text: str) -> Dict[str, Any]:
     Returns:
         Dictionary with readability scores
     """
-    try:
-        import textstat
-        from langdetect import detect
-        
-        # Detect language and set for textstat
-        try:
-            lang = detect(text)
-            textstat.set_lang(lang)
-        except:
-            lang = "en"
-            textstat.set_lang("en")
-        
-        return {
-            "language_detected": lang,
-            "flesch_reading_ease": textstat.flesch_reading_ease(text),
-            "flesch_kincaid_grade": textstat.flesch_kincaid_grade(text),
-            "smog_index": textstat.smog_index(text),
-            "avg_sentence_length": textstat.words_per_sentence(text),
-            "lexicon_count": textstat.lexicon_count(text),
-            "syllable_count": textstat.syllable_count(text),
-            "coleman_liau_index": textstat.coleman_liau_index(text),
-            "automated_readability_index": textstat.automated_readability_index(text),
-        }
-    except ImportError:
-        return {"error": "textstat not installed - run: pip install textstat langdetect"}
-    except Exception as e:
-        return {"error": f"Readability analysis failed: {str(e)}"}
+    import textstat
+    from langdetect import detect
+    
+    # Detect language and set for textstat
+    lang = detect(text)
+    textstat.set_lang(lang)
+    
+    return {
+        "language_detected": lang,
+        "flesch_reading_ease": textstat.flesch_reading_ease(text),
+        "flesch_kincaid_grade": textstat.flesch_kincaid_grade(text),
+        "smog_index": textstat.smog_index(text),
+        "avg_sentence_length": textstat.words_per_sentence(text),
+        "lexicon_count": textstat.lexicon_count(text),
+        "syllable_count": textstat.syllable_count(text),
+        "coleman_liau_index": textstat.coleman_liau_index(text),
+        "automated_readability_index": textstat.automated_readability_index(text),
+    }
 
 
 @traceable(name="compute_repetition_metrics")
@@ -64,45 +55,42 @@ def compute_repetition_metrics(text: str, preprocess: bool = True) -> Dict[str, 
     Returns:
         Dictionary with repetition metrics
     """
+    # Preprocess
+    if preprocess:
+        text = text.lower()
+        text = re.sub(r'\s+', ' ', text)
+        # Keep letters and basic punctuation
+        text = re.sub(r'[^a-zA-Záéíóúñüäößàèùçâêîôûœæ\s]', '', text)
+    
+    # Tokenize (simple split, or use nltk if available)
     try:
-        # Preprocess
-        if preprocess:
-            text = text.lower()
-            text = re.sub(r'\s+', ' ', text)
-            # Keep letters and basic punctuation
-            text = re.sub(r'[^a-zA-Záéíóúñüäößàèùçâêîôûœæ\s]', '', text)
-        
-        # Tokenize (simple split, or use nltk if available)
-        try:
-            import nltk
-            tokens = nltk.word_tokenize(text)
-        except:
-            tokens = text.split()
-        
-        # Filter to alphabetic tokens only
-        tokens = [t for t in tokens if t.isalpha()]
-        
-        if len(tokens) < 10:
-            return {"error": "Not enough tokens for analysis"}
-        
-        # Type-Token Ratio (TTR)
-        ttr = len(set(tokens)) / len(tokens)
-        
-        # N-gram metrics
-        ngram_results = {}
-        for n in [2, 3, 4]:
-            rep_rate, entropy = _compute_ngram_metrics(tokens, n)
-            ngram_results[f"{n}gram_repetition_rate"] = rep_rate
-            ngram_results[f"{n}gram_entropy"] = entropy
-        
-        return {
-            "total_tokens": len(tokens),
-            "unique_tokens": len(set(tokens)),
-            "type_token_ratio": round(ttr, 4),
-            **ngram_results
-        }
-    except Exception as e:
-        return {"error": f"Repetition analysis failed: {str(e)}"}
+        import nltk
+        tokens = nltk.word_tokenize(text)
+    except:
+        tokens = text.split()
+    
+    # Filter to alphabetic tokens only
+    tokens = [t for t in tokens if t.isalpha()]
+    
+    if len(tokens) < 10:
+        return {"error": "Not enough tokens for analysis"}
+    
+    # Type-Token Ratio (TTR)
+    ttr = len(set(tokens)) / len(tokens)
+    
+    # N-gram metrics
+    ngram_results = {}
+    for n in [2, 3, 4]:
+        rep_rate, entropy = _compute_ngram_metrics(tokens, n)
+        ngram_results[f"{n}gram_repetition_rate"] = rep_rate
+        ngram_results[f"{n}gram_entropy"] = entropy
+    
+    return {
+        "total_tokens": len(tokens),
+        "unique_tokens": len(set(tokens)),
+        "type_token_ratio": round(ttr, 4),
+        **ngram_results
+    }
 
 
 def _compute_ngram_metrics(tokens: List[str], n: int) -> tuple:

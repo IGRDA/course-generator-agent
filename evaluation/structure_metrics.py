@@ -123,11 +123,7 @@ def find_duplicate_titles(
     Returns:
         Dictionary with duplicate title information
     """
-    try:
-        from rapidfuzz import fuzz
-    except ImportError:
-        # Fallback to exact matching only
-        return _find_exact_duplicates(course_state)
+    from rapidfuzz import fuzz
     
     results = {
         "module_duplicates": [],
