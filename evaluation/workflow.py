@@ -6,7 +6,10 @@ Uses proper LangSmith experiments, datasets, and evaluators for:
 - Single trace per complete evaluation (via LangGraph)
 
 Usage:
-    # Create a dataset from course outputs
+    # Create a dataset from course outputs (auto-generates name from course title)
+    python -m evaluation.workflow create-dataset --inputs output/*.json
+    
+    # Create a dataset with custom name
     python -m evaluation.workflow create-dataset --inputs output/*.json --name my-courses
     
     # Run evaluation experiment
@@ -53,30 +56,53 @@ def get_client() -> Client:
 
 def create_dataset(
     input_files: List[str],
-    dataset_name: str,
-    description: str = "Course generation outputs for evaluation"
-) -> str:
+    dataset_name: Optional[str] = None,
+    description: str = "Course generation outputs for evaluation",
+    use_existing: bool = False,
+) -> tuple[str, str]:
     """
     Create a LangSmith dataset from course JSON files.
     
     Args:
         input_files: List of paths to course JSON files
-        dataset_name: Name for the dataset
+        dataset_name: Name for the dataset (optional - auto-generated from course title if not provided)
         description: Dataset description
+        use_existing: If True, add examples to existing dataset; if False, error on conflict
         
     Returns:
-        Dataset ID
+        Tuple of (dataset_id, dataset_name)
     """
     client = get_client()
     
-    # Create dataset
-    dataset = client.create_dataset(
-        dataset_name=dataset_name,
-        description=description,
-    )
+    # Auto-generate dataset name from course title if not provided
+    if dataset_name is None:
+        if not input_files:
+            raise ValueError("No input files provided")
+        
+        # Load first file to extract title
+        first_file = input_files[0]
+        if not os.path.exists(first_file):
+            raise FileNotFoundError(f"File not found: {first_file}")
+        
+        course_state = load_course_state(first_file)
+        # Sanitize title for dataset name: lowercase, replace spaces/special chars with hyphens
+        sanitized_title = course_state.title.lower()
+        sanitized_title = ''.join(c if c.isalnum() or c.isspace() else '-' for c in sanitized_title)
+        dataset_name = '-'.join(sanitized_title.split())
+        
+        print(f"📝 Auto-generated dataset name from course title: {dataset_name}")
     
-    print(f"📦 Created dataset: {dataset_name} (ID: {dataset.id})")
-    
+    existing_datasets = {ds.name: ds for ds in client.list_datasets()}
+    if dataset_name in existing_datasets:
+        dataset = existing_datasets[dataset_name]
+        print(f"📦 Using existing dataset: {dataset_name} (ID: {dataset.id})")
+    else:
+        # Create new dataset
+        dataset = client.create_dataset(
+            dataset_name=dataset_name,
+            description=description,
+        )
+        print(f"📦 Created dataset: {dataset_name} (ID: {dataset.id})")
     # Add examples
     for file_path in input_files:
         if not os.path.exists(file_path):
@@ -105,7 +131,7 @@ def create_dataset(
             print(f"   ✗ Failed to add {file_path}: {e}")
     
     print(f"\n✅ Dataset created with {len(input_files)} examples")
-    return str(dataset.id)
+    return str(dataset.id), dataset_name
 
 
 def list_datasets():
@@ -635,13 +661,14 @@ def quick_evaluate(
     Returns:
         Experiment results
     """
-    # Create temporary dataset name
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    dataset_name = f"temp-eval-{timestamp}"
-    
-    # Create dataset with single file
+    # Create dataset with single file - name will be auto-generated from course title
     print(f"\n📦 Creating temporary dataset...")
-    create_dataset([input_file], dataset_name, "Temporary dataset for quick evaluation")
+    dataset_id, dataset_name = create_dataset(
+        [input_file], 
+        dataset_name=None, 
+        description="Temporary dataset for quick evaluation",
+        use_existing=True  # Reuse existing dataset for quick evaluations
+    )
     
     # Run evaluation
     results = run_evaluation(
@@ -681,7 +708,7 @@ def main():
     # Create dataset command
     create_parser = subparsers.add_parser("create-dataset", help="Create a LangSmith dataset")
     create_parser.add_argument("--inputs", type=str, required=True, help="Glob pattern for input JSON files")
-    create_parser.add_argument("--name", type=str, required=True, help="Dataset name")
+    create_parser.add_argument("--name", type=str, default=None, help="Dataset name (optional - auto-generated from course title if not provided)")
     create_parser.add_argument("--description", type=str, default="Course generation outputs", help="Dataset description")
     
     # List datasets command
@@ -710,7 +737,13 @@ def main():
         if not input_files:
             print(f"No files found matching: {args.inputs}")
             return
-        create_dataset(input_files, args.name, args.description)
+        dataset_id, dataset_name = create_dataset(
+            input_files, 
+            args.name, 
+            args.description,
+            use_existing=args.use_existing
+        )
+        print(f"\n💡 Use this dataset name for evaluation: {dataset_name}")
         
     elif args.command == "list-datasets":
         list_datasets()
