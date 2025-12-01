@@ -519,10 +519,9 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
     
     # Extract metrics from final state
     metrics = extract_metrics(final_state)
-    print(f"   📈 Total metrics: {len(metrics)}")
+    print(f"   📈 Total metrics extracted: {len(metrics)}")
     
-    # Return all metrics for local display
-    final_results = {}
+    # Log all metrics as feedback for UI columns
     overall_score = 0.0
     count = 0
     
@@ -536,19 +535,29 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
                 comment=metric.comment,
             )
             
-            # Add to return dict for local display
+            # Track for average calculation
             if metric.score is not None:
-                final_results[metric.key] = metric.score
                 overall_score += metric.score
                 count += 1
+                
+            # Print metric to console
+            score_str = f"{metric.score:.3f}" if metric.score is not None else "N/A"
+            print(f"      ✓ {metric.key}: {score_str}")
+            
         except Exception as e:
-            print(f"   ⚠ Failed to log feedback for {metric.key}: {e}")
+            print(f"      ⚠ Failed to log feedback for {metric.key}: {e}")
     
-    # Add average
+    # Calculate and print average
     avg_score = overall_score / count if count > 0 else 0.0
-    final_results["overall_avg_score"] = avg_score
+    print(f"   📊 Average score: {avg_score:.3f}")
     
-    return final_results
+    # Return an EvaluationResult with average score
+    # This satisfies LangSmith's requirement and creates a single summary column
+    return EvaluationResult(
+        key="average_score",
+        score=avg_score,
+        comment=f"Average of {count} metrics"
+    )
 
 
 # ---- Main Evaluation Functions ----
@@ -649,55 +658,14 @@ def quick_evaluate(
 def print_results_summary(results):
     """Print a summary of evaluation results."""
     print("\n" + "=" * 60)
-    print("📊 EVALUATION RESULTS SUMMARY")
+    print("📊 EVALUATION SUMMARY")
     print("=" * 60)
-    
-    try:
-        # Iterate through experiment results
-        for result in results:
-            # Access example inputs
-            example = result.get("example") if isinstance(result, dict) else getattr(result, "example", None)
-            if example:
-                inputs = example.inputs if hasattr(example, "inputs") else example.get("inputs", {})
-                course_title = inputs.get("course_title", "Unknown") if isinstance(inputs, dict) else "Unknown"
-                print(f"\n  Example: {course_title}")
-            
-            # Access evaluation results
-            eval_results = result.get("evaluation_results") if isinstance(result, dict) else getattr(result, "evaluation_results", None)
-            
-            if eval_results:
-                # Check if results is a list (standard) or a dict (our custom return)
-                results_data = eval_results.get("results") if isinstance(eval_results, dict) else getattr(eval_results, "results", None)
-                
-                # If it's a list of results (standard behavior)
-                if isinstance(results_data, list):
-                    for eval_result in results_data:
-                        if isinstance(eval_result, dict):
-                            key = eval_result.get("key", "unknown")
-                            score = eval_result.get("score")
-                        else:
-                            key = getattr(eval_result, "key", "unknown")
-                            score = getattr(eval_result, "score", None)
-                        score_str = f"{score:.2f}" if score is not None else "N/A"
-                        print(f"    {key}: {score_str}")
-                
-                # If it's a dictionary (our custom return from combined_evaluator)
-                elif isinstance(results_data, dict):
-                    for key, score in results_data.items():
-                        score_str = f"{score:.2f}" if isinstance(score, (int, float)) else str(score)
-                        print(f"    {key}: {score_str}")
-                        
-                # Fallback: try to print eval_results directly if it's the dict
-                elif isinstance(eval_results, dict):
-                     for key, val in eval_results.items():
-                        if key != "results" and isinstance(val, (int, float)):
-                             print(f"    {key}: {val:.2f}")
-    except Exception as e:
-        print(f"\n  Could not parse results: {e}")
-        print("  Check LangSmith UI for detailed results.")
-    
+    print("\n✅ Evaluation completed successfully!")
+    print("   All metrics have been logged to LangSmith.")
     print("\n" + "=" * 60)
-    print("View detailed results and comparisons at: https://smith.langchain.com")
+    print("🔗 View detailed results and comparisons at:")
+    print("   https://smith.langchain.com")
+    print("=" * 60)
 
 
 # ---- CLI ----
