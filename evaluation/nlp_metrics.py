@@ -123,21 +123,3 @@ def _compute_ngram_metrics(tokens: List[str], n: int) -> tuple:
     ) if total > 0 else 0
     
     return round(repetition_rate, 4), round(entropy, 4)
-
-
-@traceable(name="compute_all_nlp_metrics")
-def compute_all_nlp_metrics(text: str) -> Dict[str, Any]:
-    """
-    Compute all NLP metrics for a text.
-    
-    Args:
-        text: The text to analyze
-        
-    Returns:
-        Dictionary with all metrics
-    """
-    return {
-        "readability": compute_readability(text),
-        "repetition": compute_repetition_metrics(text)
-    }
-
