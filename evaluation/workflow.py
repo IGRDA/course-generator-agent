@@ -12,10 +12,13 @@ Usage:
     # Create a dataset with custom name
     python -m evaluation.workflow create-dataset --inputs output/*.json --name my-courses
     
-    # Run evaluation experiment
-    python -m evaluation.workflow evaluate --dataset my-courses --experiment-prefix v1
+    # Run full evaluation (all evaluators)
+    python -m evaluation.workflow evaluate --dataset my-courses
     
-    # Quick evaluation of a single file (creates temp dataset)
+    # Run specific evaluators only
+    python -m evaluation.workflow evaluate --dataset my-courses --steps index_evaluator overall_evaluator
+    
+    # Quick evaluation of a single file (creates temp dataset automatically)
     python -m evaluation.workflow quick --input output/course.json
 """
 
@@ -59,7 +62,7 @@ def create_dataset(
     dataset_name: Optional[str] = None,
     description: str = "Course generation outputs for evaluation",
     use_existing: bool = False,
-) -> tuple[str, str]:
+) -> tuple[str, str, List[str]]:
     """
     Create a LangSmith dataset from course JSON files.
     
@@ -70,7 +73,7 @@ def create_dataset(
         use_existing: If True, add examples to existing dataset; if False, error on conflict
         
     Returns:
-        Tuple of (dataset_id, dataset_name)
+        Tuple of (dataset_id, dataset_name, example_ids)
     """
     client = get_client()
     
@@ -103,17 +106,35 @@ def create_dataset(
             description=description,
         )
         print(f"📦 Created dataset: {dataset_name} (ID: {dataset.id})")
-    # Add examples
+    
+    # Fetch existing examples to check for duplicates
+    existing_examples = list(client.list_examples(dataset_id=dataset.id))
+    existing_file_paths = {ex.inputs.get("file_path"): str(ex.id) for ex in existing_examples}
+    
+    # Add examples and track their IDs
+    example_ids = []
+    added_count = 0
+    skipped_count = 0
+    
     for file_path in input_files:
         if not os.path.exists(file_path):
             print(f"   ⚠ Skipping {file_path} - file not found")
+            continue
+        
+        # Check if example already exists
+        if file_path in existing_file_paths:
+            example_id = existing_file_paths[file_path]
+            example_ids.append(example_id)
+            course_state = load_course_state(file_path)
+            print(f"   ⏭ Skipped: {course_state.title} (already in dataset)")
+            skipped_count += 1
             continue
             
         try:
             course_state = load_course_state(file_path)
             
             # Store course data as the example input
-            client.create_example(
+            example = client.create_example(
                 inputs={
                     "file_path": file_path,
                     "course_title": course_state.title,
@@ -126,12 +147,16 @@ def create_dataset(
                     "language": course_state.language,
                 }
             )
+            example_ids.append(str(example.id))
             print(f"   ✓ Added: {course_state.title}")
+            added_count += 1
         except Exception as e:
             print(f"   ✗ Failed to add {file_path}: {e}")
     
-    print(f"\n✅ Dataset created with {len(input_files)} examples")
-    return str(dataset.id), dataset_name
+    if added_count > 0 or skipped_count > 0:
+        print(f"\n✅ Dataset ready: {added_count} added, {skipped_count} skipped")
+    
+    return str(dataset.id), dataset_name, example_ids
 
 
 def list_datasets():
@@ -164,7 +189,7 @@ class EvalGraphState(BaseModel):
     course_state: CourseState
     provider: str = "mistral"
     max_retries: int = 3
-    quick: bool = False
+    steps: Optional[List[str]] = None  # Optional list of evaluators to run
     
     # Results from each evaluator (populated by nodes)
     index_result: Optional[Dict[str, Any]] = None
@@ -194,10 +219,6 @@ def run_index_evaluation(state: EvalGraphState) -> Dict[str, Any]:
 
 def run_section_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run section evaluator and return result."""
-    if state.quick:
-        print("   Skipping section evaluation (quick mode)")
-        return {"section_result": {"skipped": True}}
-    
     print("   Running section evaluation...")
     try:
         evaluator = SectionEvaluator(provider=state.provider, max_retries=state.max_retries)
@@ -211,31 +232,6 @@ def run_section_evaluation(state: EvalGraphState) -> Dict[str, Any]:
 
 def run_activities_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run activities evaluator and return result."""
-    if state.quick:
-        # Quick mode: just compute basic completeness
-        print("   Running activities completeness check (quick mode)...")
-        try:
-            total_sections = sum(
-                len(sm.sections)
-                for m in state.course_state.modules
-                for sm in m.submodules
-            )
-            with_activities = sum(
-                1 for m in state.course_state.modules
-                for sm in m.submodules
-                for s in sm.sections
-                if s.other_elements and s.other_elements.activities
-            )
-            return {"activities_result": {
-                "quick_check": True,
-                "schema_checks": {
-                    "total_sections": total_sections,
-                    "sections_with_activities": with_activities,
-                }
-            }}
-        except Exception as e:
-            return {"activities_result": {"error": str(e)}}
-    
     print("   Running activities evaluation...")
     try:
         evaluator = ActivitiesEvaluator(provider=state.provider, max_retries=state.max_retries)
@@ -249,31 +245,6 @@ def run_activities_evaluation(state: EvalGraphState) -> Dict[str, Any]:
 
 def run_html_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run HTML evaluator and return result."""
-    if state.quick:
-        # Quick mode: just compute basic completeness
-        print("   Running HTML completeness check (quick mode)...")
-        try:
-            total_sections = sum(
-                len(sm.sections)
-                for m in state.course_state.modules
-                for sm in m.submodules
-            )
-            with_html = sum(
-                1 for m in state.course_state.modules
-                for sm in m.submodules
-                for s in sm.sections
-                if s.html and s.html.theory
-            )
-            return {"html_result": {
-                "quick_check": True,
-                "schema_checks": {
-                    "total_sections": total_sections,
-                    "sections_with_html": with_html,
-                }
-            }}
-        except Exception as e:
-            return {"html_result": {"error": str(e)}}
-    
     print("   Running HTML evaluation...")
     try:
         evaluator = HtmlEvaluator(provider=state.provider, max_retries=state.max_retries)
@@ -300,44 +271,71 @@ def run_overall_evaluation(state: EvalGraphState) -> Dict[str, Any]:
 
 # ---- Build Graph ----
 
-_evaluation_graph = None
-
-
-def get_evaluation_graph():
-    """Build and cache the evaluation StateGraph."""
-    global _evaluation_graph
-    if _evaluation_graph is None:
-        graph = StateGraph(EvalGraphState)
-        
-        # Add nodes for each evaluator
-        graph.add_node("index_eval", run_index_evaluation)
-        graph.add_node("section_eval", run_section_evaluation)
-        graph.add_node("activities_eval", run_activities_evaluation)
-        graph.add_node("html_eval", run_html_evaluation)
-        graph.add_node("overall_eval", run_overall_evaluation)
-        
-        # Define sequential flow
-        graph.add_edge(START, "index_eval")
-        graph.add_edge("index_eval", "section_eval")
-        graph.add_edge("section_eval", "activities_eval")
-        graph.add_edge("activities_eval", "html_eval")
-        graph.add_edge("html_eval", "overall_eval")
-        graph.add_edge("overall_eval", END)
-        
-        _evaluation_graph = graph.compile()
+def get_evaluation_graph(steps: Optional[List[str]] = None):
+    """
+    Build the evaluation StateGraph with optional step selection.
     
-    return _evaluation_graph
+    Args:
+        steps: Optional list of evaluator names to run. 
+               Valid values: index_evaluator, section_evaluator, activities_evaluator, 
+                            html_evaluator, overall_evaluator
+               If None, runs all evaluators.
+    
+    Returns:
+        Compiled StateGraph
+    """
+    # Define all available evaluators
+    all_evaluators = [
+        ("index_evaluator", "index_eval", run_index_evaluation),
+        ("section_evaluator", "section_eval", run_section_evaluation),
+        ("activities_evaluator", "activities_eval", run_activities_evaluation),
+        ("html_evaluator", "html_eval", run_html_evaluation),
+        ("overall_evaluator", "overall_eval", run_overall_evaluation),
+    ]
+    
+    # Filter evaluators based on steps parameter
+    if steps:
+        evaluators_to_run = [
+            (name, node_id, func) for name, node_id, func in all_evaluators
+            if name in steps
+        ]
+    else:
+        evaluators_to_run = all_evaluators
+    
+    # Build graph
+    graph = StateGraph(EvalGraphState)
+    
+    # Add nodes for selected evaluators
+    for _, node_id, func in evaluators_to_run:
+        graph.add_node(node_id, func)
+    
+    # Define sequential flow
+    if evaluators_to_run:
+        # Connect START to first node
+        graph.add_edge(START, evaluators_to_run[0][1])
+        
+        # Connect nodes sequentially
+        for i in range(len(evaluators_to_run) - 1):
+            graph.add_edge(evaluators_to_run[i][1], evaluators_to_run[i + 1][1])
+        
+        # Connect last node to END
+        graph.add_edge(evaluators_to_run[-1][1], END)
+    else:
+        # No evaluators selected, direct path from START to END
+        graph.add_edge(START, END)
+    
+    return graph.compile()
 
 
 # ---- Global Evaluator Settings ----
 
-_eval_settings = {"provider": "mistral", "max_retries": 3, "quick": False}
+_eval_settings = {"provider": "mistral", "max_retries": 3, "steps": None}
 
 
-def set_evaluator_settings(provider: str = "mistral", max_retries: int = 3, quick: bool = False):
+def set_evaluator_settings(provider: str = "mistral", max_retries: int = 3, steps: Optional[List[str]] = None):
     """Set global evaluator settings."""
     global _eval_settings
-    _eval_settings = {"provider": provider, "max_retries": max_retries, "quick": quick}
+    _eval_settings = {"provider": provider, "max_retries": max_retries, "steps": steps}
 
 
 # ---- Metrics Extraction ----
@@ -381,7 +379,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
         ))
     
     # --- Section Metrics ---
-    if state.section_result and "error" not in state.section_result and not state.section_result.get("skipped"):
+    if state.section_result and "error" not in state.section_result:
         summary = state.section_result.get("summary", {})
         nlp = state.section_result.get("nlp_metrics", {})
         
@@ -415,7 +413,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
         checks = state.activities_result.get("schema_checks", {})
         summary = state.activities_result.get("summary", {})
         
-        # Quality (only in full mode)
+        # Quality
         if "average_quality_score" in summary:
             results.append(EvaluationResult(
                 key="activities_quality",
@@ -423,7 +421,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 comment=f"Activity type coverage: {checks.get('activity_type_coverage', 0):.0%}",
             ))
         
-        # Completeness (available in both modes)
+        # Completeness
         if "total_sections" in checks and "sections_with_activities" in checks:
             total = checks["total_sections"]
             with_activities = checks["sections_with_activities"]
@@ -438,7 +436,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
         checks = state.html_result.get("schema_checks", {})
         summary = state.html_result.get("summary", {})
         
-        # Formatting (only in full mode)
+        # Formatting
         if "average_formatting_score" in summary:
             results.append(EvaluationResult(
                 key="html_formatting",
@@ -446,7 +444,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 comment=f"Element types: {summary.get('element_type_usage', {})}",
             ))
         
-        # Completeness (available in both modes)
+        # Completeness
         if "total_sections" in checks and "sections_with_html" in checks:
             total = checks["total_sections"]
             with_html = checks["sections_with_html"]
@@ -532,11 +530,11 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
         course_state=course_state,
         provider=_eval_settings["provider"],
         max_retries=_eval_settings["max_retries"],
-        quick=_eval_settings.get("quick", False),
+        steps=_eval_settings.get("steps"),
     )
     
     # Run the evaluation graph (creates single trace)
-    graph = get_evaluation_graph()
+    graph = get_evaluation_graph(steps=_eval_settings.get("steps"))
     final_state = graph.invoke(eval_state)
     
     # Convert to EvalGraphState if needed (LangGraph returns dict)
@@ -593,7 +591,8 @@ def run_evaluation(
     experiment_prefix: str = "course-eval",
     provider: str = "mistral",
     max_retries: int = 3,
-    quick: bool = False,
+    steps: Optional[List[str]] = None,
+    example_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Run evaluation experiment against a LangSmith dataset.
@@ -605,7 +604,11 @@ def run_evaluation(
         experiment_prefix: Prefix for experiment name (for comparison)
         provider: LLM provider for evaluation
         max_retries: Max retries for LLM calls
-        quick: Run only quick evaluators (skip expensive LLM calls)
+        steps: Optional list of specific evaluators to run
+               (e.g., ['index_evaluator', 'overall_evaluator'])
+               If None, runs all evaluators
+        example_ids: Optional list of specific example IDs to evaluate
+                    If None, evaluates all examples in the dataset
         
     Returns:
         Experiment results
@@ -614,22 +617,51 @@ def run_evaluation(
     print(f"   Dataset: {dataset_name}")
     print(f"   Experiment prefix: {experiment_prefix}")
     print(f"   Provider: {provider}")
-    print(f"   Mode: {'quick' if quick else 'full'}")
+    if steps:
+        print(f"   Evaluators: {', '.join(steps)}")
+    else:
+        print(f"   Evaluators: all (full evaluation)")
+    if example_ids:
+        print(f"   Examples to evaluate: {len(example_ids)}")
+    else:
+        print(f"   Examples to evaluate: all in dataset")
     print("-" * 50)
     
     # Set global evaluator settings
-    set_evaluator_settings(provider=provider, max_retries=max_retries, quick=quick)
+    set_evaluator_settings(provider=provider, max_retries=max_retries, steps=steps)
     
     # Define a simple target function (identity - we're evaluating stored outputs)
     def target(inputs: dict) -> dict:
         """Target function - returns inputs as outputs for evaluation."""
         return {"course_title": inputs.get("course_title", "Unknown")}
     
+    # Prepare data parameter for evaluate()
+    # If specific examples are requested, filter by creating example list
+    if example_ids:
+        # Get client and fetch specific examples
+        client = get_client()
+        dataset = next((ds for ds in client.list_datasets() if ds.name == dataset_name), None)
+        if not dataset:
+            raise ValueError(f"Dataset not found: {dataset_name}")
+        
+        # Create a generator of specific examples
+        def get_examples():
+            for example_id in example_ids:
+                try:
+                    example = client.read_example(example_id)
+                    yield example
+                except Exception as e:
+                    print(f"   ⚠ Warning: Could not read example {example_id}: {e}")
+        
+        data_param = list(get_examples())
+    else:
+        data_param = dataset_name
+    
     # Run evaluation with single combined evaluator
     # This evaluator manually logs all metrics as feedback, creating separate columns
     results = evaluate(
         target,
-        data=dataset_name,
+        data=data_param,
         evaluators=[combined_evaluator],
         experiment_prefix=experiment_prefix,
         max_concurrency=1,  # Sequential to ensure proper feedback logging
@@ -646,37 +678,44 @@ def quick_evaluate(
     provider: str = "mistral",
     max_retries: int = 3,
     experiment_prefix: str = "quick-eval",
-    full: bool = False,
+    steps: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
-    Quick evaluation of a single file (creates temporary dataset).
+    Quick evaluation of a single file (creates temporary dataset automatically).
+    
+    This function:
+    - Creates or reuses a dataset based on the course title
+    - Adds the file to the dataset (or reuses existing if duplicate)
+    - Evaluates ONLY the specified file (not all examples in the dataset)
     
     Args:
         input_file: Path to course JSON file
         provider: LLM provider for evaluation
         max_retries: Max retries for LLM calls
         experiment_prefix: Prefix for experiment name
-        full: Run full evaluation (not just quick evaluators)
+        steps: Optional list of specific evaluators to run
+               If None, runs all evaluators (full evaluation)
         
     Returns:
         Experiment results
     """
     # Create dataset with single file - name will be auto-generated from course title
-    print(f"\n📦 Creating temporary dataset...")
-    dataset_id, dataset_name = create_dataset(
+    print(f"\n📦 Preparing dataset...")
+    dataset_id, dataset_name, example_ids = create_dataset(
         [input_file], 
         dataset_name=None, 
-        description="Temporary dataset for quick evaluation",
+        description="Dataset for course evaluation",
         use_existing=True  # Reuse existing dataset for quick evaluations
     )
     
-    # Run evaluation
+    # Run evaluation on ONLY this specific example
     results = run_evaluation(
         dataset_name=dataset_name,
         experiment_prefix=experiment_prefix,
         provider=provider,
         max_retries=max_retries,
-        quick=not full,
+        steps=steps,
+        example_ids=example_ids,  # Evaluate only the specific file
     )
     
     return results
@@ -720,15 +759,17 @@ def main():
     eval_parser.add_argument("--experiment-prefix", type=str, default="course-eval", help="Experiment prefix")
     eval_parser.add_argument("--provider", type=str, default="mistral", help="LLM provider")
     eval_parser.add_argument("--max-retries", type=int, default=3, help="Max retries for LLM calls")
-    eval_parser.add_argument("--quick", action="store_true", help="Quick mode (skip expensive LLM calls)")
+    eval_parser.add_argument("--steps", nargs="*", type=str, default=None, 
+                           help="Specific evaluators to run (e.g., index_evaluator overall_evaluator). If not specified, runs all evaluators.")
     
     # Quick evaluate command
-    quick_parser = subparsers.add_parser("quick", help="Quick evaluation of a single file")
+    quick_parser = subparsers.add_parser("quick", help="Quick evaluation of a single file (auto-creates dataset)")
     quick_parser.add_argument("--input", type=str, required=True, help="Input JSON file")
     quick_parser.add_argument("--provider", type=str, default="mistral", help="LLM provider")
     quick_parser.add_argument("--max-retries", type=int, default=3, help="Max retries for LLM calls")
     quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval", help="Experiment prefix")
-    quick_parser.add_argument("--full", action="store_true", help="Run full evaluation (not quick)")
+    quick_parser.add_argument("--steps", nargs="*", type=str, default=None,
+                           help="Specific evaluators to run (e.g., index_evaluator overall_evaluator). If not specified, runs all evaluators.")
     
     args = parser.parse_args()
     
@@ -737,13 +778,13 @@ def main():
         if not input_files:
             print(f"No files found matching: {args.inputs}")
             return
-        dataset_id, dataset_name = create_dataset(
+        dataset_id, dataset_name, example_ids = create_dataset(
             input_files, 
             args.name, 
             args.description,
-            use_existing=args.use_existing
         )
         print(f"\n💡 Use this dataset name for evaluation: {dataset_name}")
+        print(f"   Dataset contains {len(example_ids)} example(s)")
         
     elif args.command == "list-datasets":
         list_datasets()
@@ -754,7 +795,7 @@ def main():
             experiment_prefix=args.experiment_prefix,
             provider=args.provider,
             max_retries=args.max_retries,
-            quick=args.quick,
+            steps=args.steps if args.steps else None,
         )
         print_results_summary(results)
         
@@ -764,7 +805,7 @@ def main():
             provider=args.provider,
             max_retries=args.max_retries,
             experiment_prefix=args.experiment_prefix,
-            full=args.full,
+            steps=args.steps if args.steps else None,
         )
         print_results_summary(results)
         
