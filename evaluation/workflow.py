@@ -340,10 +340,18 @@ def set_evaluator_settings(provider: str = "mistral", max_retries: int = 3, step
 
 # ---- Metrics Extraction ----
 
+def _normalize_readability(score: float) -> float:
+    """Normalize readability score (Coleman-Liau/ARI ~5-18) to 0-1 range."""
+    # Grade level 5-18 maps to 1.0-0.0 (lower grade = more readable = higher score)
+    clamped = max(5, min(18, score))
+    return round(1 - (clamped - 5) / 13, 4)
+
+
 def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
     """
     Extract all metrics from evaluation graph state.
     Converts evaluator results to LangSmith EvaluationResult format.
+    All scores normalized to 0-1 range.
     """
     results = []
     
@@ -390,22 +398,48 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 comment=f"Evaluated {summary.get('total_sections', 0)} sections",
             ))
         
+        # Readability metrics
         readability = nlp.get("readability", {})
-        if "flesch_reading_ease" in readability:
-            flesch = readability["flesch_reading_ease"]
+        if "readability_score" in readability:
+            score = readability["readability_score"]
             results.append(EvaluationResult(
-                key="section_readability",
-                score=max(0, min(1, flesch / 100)),
-                comment=f"Flesch: {flesch:.1f}, SMOG: {readability.get('smog_index', 'N/A')}",
+                key="readability_score",
+                score=_normalize_readability(score),
+                comment=f"Coleman-Liau+ARI mean: {score:.1f}",
             ))
         
+        if "avg_sentence_length" in readability:
+            length = readability["avg_sentence_length"]
+            results.append(EvaluationResult(
+                key="avg_sentence_length",
+                score=length,  # Raw value, not normalized
+                comment=f"Avg words/sentence: {length:.1f}",
+            ))
+        
+        if "word_count" in readability:
+            count = readability["word_count"]
+            results.append(EvaluationResult(
+                key="word_count",
+                score=count,  # Raw word count, not normalized
+                comment=f"Total words: {count}",
+            ))
+        
+        # Repetition metrics
         repetition = nlp.get("repetition", {})
         if "type_token_ratio" in repetition:
             ttr = repetition["type_token_ratio"]
             results.append(EvaluationResult(
                 key="vocabulary_diversity",
                 score=ttr,
-                comment=f"TTR: {ttr:.3f}, Unique tokens: {repetition.get('unique_tokens', 'N/A')}",
+                comment=f"Type-token ratio: {ttr:.3f}",
+            ))
+        
+        if "weighted_ngram_repetition" in repetition:
+            rep = repetition["weighted_ngram_repetition"]
+            results.append(EvaluationResult(
+                key="ngram_originality",
+                score=round(1 - rep, 4),  # Invert: low repetition = high originality
+                comment=f"Weighted n-gram repetition: {rep:.3f}",
             ))
     
     # --- Activities Metrics ---
@@ -413,7 +447,6 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
         checks = state.activities_result.get("schema_checks", {})
         summary = state.activities_result.get("summary", {})
         
-        # Quality
         if "average_quality_score" in summary:
             results.append(EvaluationResult(
                 key="activities_quality",
@@ -421,7 +454,6 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 comment=f"Activity type coverage: {checks.get('activity_type_coverage', 0):.0%}",
             ))
         
-        # Completeness
         if "total_sections" in checks and "sections_with_activities" in checks:
             total = checks["total_sections"]
             with_activities = checks["sections_with_activities"]
@@ -436,7 +468,6 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
         checks = state.html_result.get("schema_checks", {})
         summary = state.html_result.get("summary", {})
         
-        # Formatting
         if "average_formatting_score" in summary:
             results.append(EvaluationResult(
                 key="html_formatting",
@@ -444,7 +475,6 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 comment=f"Element types: {summary.get('element_type_usage', {})}",
             ))
         
-        # Completeness
         if "total_sections" in checks and "sections_with_html" in checks:
             total = checks["total_sections"]
             with_html = checks["sections_with_html"]
@@ -481,26 +511,112 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                         f"HTML: {completeness.get('html_completeness', 0):.0%}",
             ))
         
-        # Title Uniqueness (structure metrics)
+        # Structure metrics - Title Uniqueness (exact match)
         structure = state.overall_result.get("structure_metrics", {})
-        if structure and "error" not in structure:
+        if structure:
             uniqueness = structure.get("title_uniqueness", {})
+            
+            if "module_uniqueness" in uniqueness:
+                results.append(EvaluationResult(
+                    key="module_uniqueness",
+                    score=uniqueness["module_uniqueness"],
+                    comment=f"Exact match uniqueness for {uniqueness.get('total_modules', 0)} modules",
+                ))
+            
+            if "submodule_uniqueness" in uniqueness:
+                results.append(EvaluationResult(
+                    key="submodule_uniqueness",
+                    score=uniqueness["submodule_uniqueness"],
+                    comment=f"Exact match uniqueness for {uniqueness.get('total_submodules', 0)} submodules",
+                ))
+            
             if "section_uniqueness" in uniqueness:
                 results.append(EvaluationResult(
-                    key="title_uniqueness",
+                    key="section_uniqueness",
                     score=uniqueness["section_uniqueness"],
-                    comment=f"Unique sections: {uniqueness.get('unique_sections', 'N/A')}/{uniqueness.get('total_sections', 'N/A')}",
+                    comment=f"Exact match uniqueness for {uniqueness.get('total_sections', 0)} sections",
+                ))
+            
+            # N-gram based uniqueness
+            if "module_ngram_uniqueness" in uniqueness:
+                results.append(EvaluationResult(
+                    key="module_ngram_uniqueness",
+                    score=uniqueness["module_ngram_uniqueness"],
+                    comment="Weighted n-gram uniqueness for modules",
+                ))
+            
+            if "submodule_ngram_uniqueness" in uniqueness:
+                results.append(EvaluationResult(
+                    key="submodule_ngram_uniqueness",
+                    score=uniqueness["submodule_ngram_uniqueness"],
+                    comment="Weighted n-gram uniqueness for submodules",
+                ))
+            
+            if "section_ngram_uniqueness" in uniqueness:
+                results.append(EvaluationResult(
+                    key="section_ngram_uniqueness",
+                    score=uniqueness["section_ngram_uniqueness"],
+                    comment="Weighted n-gram uniqueness for sections",
                 ))
         
-        # Content Diversity (embedding metrics)
+        # Embedding metrics
         embedding = state.overall_result.get("embedding_metrics", {})
         if embedding and "error" not in embedding:
-            avg_sim = embedding.get("avg_similarity", 0.5)
-            results.append(EvaluationResult(
-                key="content_diversity",
-                score=1 - avg_sim,  # Lower similarity = higher diversity
-                comment=f"Avg similarity: {avg_sim:.3f}, Flagged pairs: {embedding.get('num_flagged_pairs', 0)}",
-            ))
+            # Title embedding uniqueness
+            title_emb = embedding.get("title_embedding", {})
+            
+            if "module_embedding_uniqueness" in title_emb:
+                results.append(EvaluationResult(
+                    key="module_embedding_uniqueness",
+                    score=title_emb["module_embedding_uniqueness"],
+                    comment="Embedding-based uniqueness for modules",
+                ))
+            
+            if "submodule_embedding_uniqueness" in title_emb:
+                results.append(EvaluationResult(
+                    key="submodule_embedding_uniqueness",
+                    score=title_emb["submodule_embedding_uniqueness"],
+                    comment="Embedding-based uniqueness for submodules",
+                ))
+            
+            if "section_embedding_uniqueness" in title_emb:
+                results.append(EvaluationResult(
+                    key="section_embedding_uniqueness",
+                    score=title_emb["section_embedding_uniqueness"],
+                    comment="Embedding-based uniqueness for sections",
+                ))
+            
+            # Content similarity metrics
+            content_sim = embedding.get("content_similarity", {})
+            if content_sim and "error" not in content_sim:
+                avg_sim = content_sim.get("avg_similarity", 0.5)
+                results.append(EvaluationResult(
+                    key="content_diversity",
+                    score=round(1 - avg_sim, 4),
+                    comment=f"Avg similarity: {avg_sim:.3f}",
+                ))
+                
+                if "max_similarity" in content_sim:
+                    results.append(EvaluationResult(
+                        key="content_max_diversity",
+                        score=round(1 - content_sim["max_similarity"], 4),
+                        comment=f"Max similarity: {content_sim['max_similarity']:.3f}",
+                    ))
+                
+                if "min_similarity" in content_sim:
+                    results.append(EvaluationResult(
+                        key="content_min_diversity",
+                        score=round(1 - content_sim["min_similarity"], 4),
+                        comment=f"Min similarity: {content_sim['min_similarity']:.3f}",
+                    ))
+                
+                if "std_similarity" in content_sim:
+                    # Lower std = more consistent diversity
+                    results.append(EvaluationResult(
+                        key="content_consistency",
+                        score=round(1 - min(1, content_sim["std_similarity"] * 2), 4),
+                        comment=f"Std similarity: {content_sim['std_similarity']:.3f}",
+                    ))
     elif state.overall_result and "error" in state.overall_result:
         results.append(EvaluationResult(
             key="overall_error",
@@ -549,6 +665,9 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
     overall_score = 0.0
     count = 0
     
+    # Metrics to exclude from average (not normalized to 0-1)
+    exclude_from_avg = {"word_count", "avg_sentence_length"}
+    
     for metric in metrics:
         try:
             # Log feedback for UI columns
@@ -559,8 +678,8 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
                 comment=metric.comment,
             )
             
-            # Track for average calculation
-            if metric.score is not None:
+            # Track for average calculation (exclude non-normalized metrics)
+            if metric.score is not None and metric.key not in exclude_from_avg:
                 overall_score += metric.score
                 count += 1
                 

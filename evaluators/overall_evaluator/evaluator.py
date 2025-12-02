@@ -23,16 +23,9 @@ class OverallEvaluator(BaseEvaluator):
         Returns:
             Dictionary with scores and metrics
         """
-        # Run LLM coherence evaluation
         coherence_result = self._evaluate_coherence(course_state)
-        
-        # Run completeness check
         completeness = self._check_completeness(course_state)
-        
-        # Run structure metrics (title similarity, hierarchy)
         structure_metrics = self._compute_structure_metrics(course_state)
-        
-        # Run embedding similarity (if available)
         embedding_metrics = self._compute_embedding_metrics(course_state)
         
         return {
@@ -45,10 +38,7 @@ class OverallEvaluator(BaseEvaluator):
     
     def _evaluate_coherence(self, course_state: CourseState) -> Dict[str, Any]:
         """Evaluate course coherence using LLM."""
-        # Build course overview
         course_overview = self._build_course_overview(course_state)
-        
-        # Build section titles sample
         section_titles = self._get_section_titles_sample(course_state)
         
         llm_score = self.evaluate_with_rubric(
@@ -115,42 +105,48 @@ class OverallEvaluator(BaseEvaluator):
         
         return {
             "total_sections": total_sections,
-            "sections_with_theory": sections_with_theory,
-            "sections_with_activities": sections_with_activities,
-            "sections_with_html": sections_with_html,
             "theory_completeness": sections_with_theory / total_sections if total_sections > 0 else 0,
             "activities_completeness": sections_with_activities / total_sections if total_sections > 0 else 0,
             "html_completeness": sections_with_html / total_sections if total_sections > 0 else 0,
-            "is_complete": (
-                sections_with_theory == total_sections and
-                sections_with_activities == total_sections and
-                sections_with_html == total_sections
-            )
         }
     
     def _compute_structure_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute structure-based metrics using dedicated module."""
-        from evaluation.structure_metrics import (
-            compute_title_uniqueness,
-            compute_hierarchy_balance,
-            find_duplicate_titles
-        )
+        from evaluation.structure_metrics import compute_title_uniqueness
         
         title_uniqueness = compute_title_uniqueness(course_state)
-        hierarchy_balance = compute_hierarchy_balance(course_state)
-        duplicates = find_duplicate_titles(course_state)
         
         return {
             "title_uniqueness": title_uniqueness,
-            "hierarchy_balance": hierarchy_balance,
-            "duplicate_titles": duplicates
         }
     
     def _compute_embedding_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute embedding-based similarity metrics."""
-        from evaluation.embedding_metrics import compute_section_similarity
+        from evaluation.embedding_metrics import (
+            compute_section_similarity,
+            compute_title_embedding_similarity
+        )
         
-        # Extract all section theories
+        # Collect titles at each level
+        module_titles = [m.title for m in course_state.modules]
+        submodule_titles = [
+            sm.title 
+            for m in course_state.modules 
+            for sm in m.submodules
+        ]
+        section_titles = [
+            s.title 
+            for m in course_state.modules 
+            for sm in m.submodules 
+            for s in sm.sections
+        ]
+        
+        # Embedding-based title uniqueness
+        title_embedding = compute_title_embedding_similarity(
+            module_titles, submodule_titles, section_titles
+        )
+        
+        # Content similarity analysis
         sections_data = []
         for m_idx, module in enumerate(course_state.modules):
             for sm_idx, submodule in enumerate(module.submodules):
@@ -163,7 +159,11 @@ class OverallEvaluator(BaseEvaluator):
                         })
         
         if len(sections_data) < 2:
-            return {"error": "Not enough sections with content for similarity analysis"}
+            content_similarity = {"error": "Not enough sections with content for similarity analysis"}
+        else:
+            content_similarity = compute_section_similarity(sections_data)
         
-        return compute_section_similarity(sections_data)
-
+        return {
+            "title_embedding": title_embedding,
+            "content_similarity": content_similarity,
+        }

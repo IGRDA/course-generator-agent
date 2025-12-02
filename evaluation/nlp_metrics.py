@@ -1,13 +1,12 @@
 """Traditional NLP metrics for text quality analysis.
 
-Based on the evaluation notebooks:
-- textstat.ipynb: Readability metrics (Flesch, SMOG, etc.)
-- traditional_nlp.ipynb: N-gram repetition, entropy, TTR
+Provides:
+- Readability metrics (Coleman-Liau, ARI)
+- Repetition metrics (TTR, n-gram repetition)
 """
 
 from typing import Dict, Any, List
 from collections import Counter
-import math
 import re
 from langsmith import traceable
 
@@ -21,7 +20,10 @@ def compute_readability(text: str) -> Dict[str, Any]:
         text: The text to analyze
         
     Returns:
-        Dictionary with readability scores
+        Dictionary with:
+        - avg_sentence_length: Average words per sentence
+        - word_count: Total word count
+        - readability_score: Mean of Coleman-Liau and ARI indices
     """
     import textstat
     from langdetect import detect
@@ -30,16 +32,15 @@ def compute_readability(text: str) -> Dict[str, Any]:
     lang = detect(text)
     textstat.set_lang(lang)
     
+    coleman_liau = textstat.coleman_liau_index(text)
+    ari = textstat.automated_readability_index(text)
+    readability_score = (coleman_liau + ari) / 2
+    
     return {
         "language_detected": lang,
-        "flesch_reading_ease": textstat.flesch_reading_ease(text),
-        "flesch_kincaid_grade": textstat.flesch_kincaid_grade(text),
-        "smog_index": textstat.smog_index(text),
-        "avg_sentence_length": textstat.words_per_sentence(text),
-        "lexicon_count": textstat.lexicon_count(text),
-        "syllable_count": textstat.syllable_count(text),
-        "coleman_liau_index": textstat.coleman_liau_index(text),
-        "automated_readability_index": textstat.automated_readability_index(text),
+        "avg_sentence_length": round(textstat.words_per_sentence(text), 2),
+        "word_count": textstat.lexicon_count(text),
+        "readability_score": round(readability_score, 2),
     }
 
 
@@ -53,73 +54,66 @@ def compute_repetition_metrics(text: str, preprocess: bool = True) -> Dict[str, 
         preprocess: Whether to lowercase and clean text
         
     Returns:
-        Dictionary with repetition metrics
+        Dictionary with:
+        - type_token_ratio: Unique tokens / total tokens
+        - 2gram/3gram/4gram_repetition_rate: Proportion of repeated n-grams
+        - weighted_ngram_repetition: Weighted sum (1×2gram + 2×3gram + 3×4gram) / 6
     """
-    # Preprocess
     if preprocess:
         text = text.lower()
         text = re.sub(r'\s+', ' ', text)
-        # Keep letters and basic punctuation
         text = re.sub(r'[^a-zA-Záéíóúñüäößàèùçâêîôûœæ\s]', '', text)
     
-    # Tokenize (simple split, or use nltk if available)
+    # Tokenize
     try:
         import nltk
         tokens = nltk.word_tokenize(text)
     except:
         tokens = text.split()
     
-    # Filter to alphabetic tokens only
     tokens = [t for t in tokens if t.isalpha()]
     
     if len(tokens) < 10:
         return {"error": "Not enough tokens for analysis"}
     
-    # Type-Token Ratio (TTR)
+    # Type-Token Ratio
     ttr = len(set(tokens)) / len(tokens)
     
-    # N-gram metrics
-    ngram_results = {}
-    for n in [2, 3, 4]:
-        rep_rate, entropy = _compute_ngram_metrics(tokens, n)
-        ngram_results[f"{n}gram_repetition_rate"] = rep_rate
-        ngram_results[f"{n}gram_entropy"] = entropy
+    # N-gram repetition rates
+    rep_2gram = _compute_ngram_repetition(tokens, 2)
+    rep_3gram = _compute_ngram_repetition(tokens, 3)
+    rep_4gram = _compute_ngram_repetition(tokens, 4)
+    
+    # Weighted repetition: penalize higher n-grams more
+    weighted = (1 * rep_2gram + 2 * rep_3gram + 3 * rep_4gram) / 6
     
     return {
-        "total_tokens": len(tokens),
-        "unique_tokens": len(set(tokens)),
         "type_token_ratio": round(ttr, 4),
-        **ngram_results
+        "2gram_repetition_rate": rep_2gram,
+        "3gram_repetition_rate": rep_3gram,
+        "4gram_repetition_rate": rep_4gram,
+        "weighted_ngram_repetition": round(weighted, 4),
     }
 
 
-def _compute_ngram_metrics(tokens: List[str], n: int) -> tuple:
+def _compute_ngram_repetition(tokens: List[str], n: int) -> float:
     """
-    Compute repetition rate and entropy for n-grams.
+    Compute repetition rate for n-grams.
     
     Args:
         tokens: List of tokens
         n: N-gram size
         
     Returns:
-        Tuple of (repetition_rate, entropy)
+        Repetition rate (proportion of tokens in repeated n-grams)
     """
     ngrams = [tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1)]
     
     if not ngrams:
-        return 0.0, 0.0
+        return 0.0
     
     counts = Counter(ngrams)
     total = sum(counts.values())
-    
-    # Repetition rate: proportion of repeated n-grams
     repeated = sum(c for c in counts.values() if c > 1)
-    repetition_rate = repeated / total if total > 0 else 0
     
-    # Shannon entropy
-    entropy = -sum(
-        (c / total) * math.log2(c / total) 
-        for c in counts.values()
-    ) if total > 0 else 0
-    
-    return round(repetition_rate, 4), round(entropy, 4)
+    return round(repeated / total, 4) if total > 0 else 0.0

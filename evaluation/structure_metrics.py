@@ -1,12 +1,10 @@
 """Structure-based metrics for course analysis.
 
-Leverages the hierarchical CourseState structure to compute:
-- Title similarity and uniqueness
-- Duplicate title detection
-- Hierarchy balance analysis
+Provides:
+- Title uniqueness (exact match and n-gram based)
 """
 
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List
 from langsmith import traceable
 from main.state import CourseState
 
@@ -14,13 +12,13 @@ from main.state import CourseState
 @traceable(name="compute_title_uniqueness")
 def compute_title_uniqueness(course_state: CourseState) -> Dict[str, Any]:
     """
-    Compute title uniqueness at each level of the hierarchy.
+    Compute title uniqueness at each level using exact match and n-gram analysis.
     
     Args:
         course_state: The CourseState to analyze
         
     Returns:
-        Dictionary with uniqueness scores
+        Dictionary with exact and n-gram based uniqueness scores
     """
     module_titles = [m.title for m in course_state.modules]
     submodule_titles = [
@@ -35,162 +33,67 @@ def compute_title_uniqueness(course_state: CourseState) -> Dict[str, Any]:
         for s in sm.sections
     ]
     
-    def uniqueness_score(titles: List[str]) -> float:
+    def exact_uniqueness(titles: List[str]) -> float:
         if not titles:
             return 1.0
         return len(set(titles)) / len(titles)
     
-    return {
-        "module_uniqueness": round(uniqueness_score(module_titles), 4),
-        "submodule_uniqueness": round(uniqueness_score(submodule_titles), 4),
-        "section_uniqueness": round(uniqueness_score(section_titles), 4),
-        "total_modules": len(module_titles),
-        "unique_modules": len(set(module_titles)),
-        "total_submodules": len(submodule_titles),
-        "unique_submodules": len(set(submodule_titles)),
-        "total_sections": len(section_titles),
-        "unique_sections": len(set(section_titles)),
-    }
-
-
-@traceable(name="compute_hierarchy_balance")
-def compute_hierarchy_balance(course_state: CourseState) -> Dict[str, Any]:
-    """
-    Analyze the balance of the course hierarchy.
-    
-    Args:
-        course_state: The CourseState to analyze
-        
-    Returns:
-        Dictionary with balance metrics
-    """
-    import statistics
-    
-    # Submodules per module
-    submodules_per_module = [len(m.submodules) for m in course_state.modules]
-    
-    # Sections per submodule
-    sections_per_submodule = [
-        len(sm.sections) 
-        for m in course_state.modules 
-        for sm in m.submodules
-    ]
-    
-    def compute_stats(values: List[int]) -> Dict[str, float]:
-        if not values:
-            return {"min": 0, "max": 0, "mean": 0, "std": 0}
-        if len(values) == 1:
-            return {"min": values[0], "max": values[0], "mean": values[0], "std": 0}
-        return {
-            "min": min(values),
-            "max": max(values),
-            "mean": round(statistics.mean(values), 2),
-            "std": round(statistics.stdev(values), 2)
-        }
-    
-    submodule_stats = compute_stats(submodules_per_module)
-    section_stats = compute_stats(sections_per_submodule)
-    
-    # Balance score: 1.0 is perfectly balanced, lower is less balanced
-    # Based on coefficient of variation (lower CV = more balanced)
-    def balance_score(stats: Dict[str, float]) -> float:
-        if stats["mean"] == 0:
+    def ngram_uniqueness(titles: List[str]) -> float:
+        """Compute uniqueness based on weighted n-gram overlap."""
+        if len(titles) < 2:
             return 1.0
-        cv = stats["std"] / stats["mean"]
-        return round(max(0, 1 - cv), 4)
+        
+        # Compute pairwise n-gram similarities
+        similarities = []
+        for i in range(len(titles)):
+            for j in range(i + 1, len(titles)):
+                sim = _weighted_ngram_similarity(titles[i], titles[j])
+                similarities.append(sim)
+        
+        if not similarities:
+            return 1.0
+        
+        # Uniqueness = 1 - average similarity
+        avg_sim = sum(similarities) / len(similarities)
+        return round(1 - avg_sim, 4)
     
     return {
-        "num_modules": len(course_state.modules),
-        "submodules_per_module": submodule_stats,
-        "submodule_balance_score": balance_score(submodule_stats),
-        "sections_per_submodule": section_stats,
-        "section_balance_score": balance_score(section_stats),
+        "module_uniqueness": round(exact_uniqueness(module_titles), 4),
+        "submodule_uniqueness": round(exact_uniqueness(submodule_titles), 4),
+        "section_uniqueness": round(exact_uniqueness(section_titles), 4),
+        "module_ngram_uniqueness": ngram_uniqueness(module_titles),
+        "submodule_ngram_uniqueness": ngram_uniqueness(submodule_titles),
+        "section_ngram_uniqueness": ngram_uniqueness(section_titles),
+        "total_modules": len(module_titles),
+        "total_submodules": len(submodule_titles),
+        "total_sections": len(section_titles),
     }
 
 
-@traceable(name="find_duplicate_titles")
-def find_duplicate_titles(
-    course_state: CourseState,
-    similarity_threshold: float = 0.9
-) -> Dict[str, Any]:
+def _weighted_ngram_similarity(text1: str, text2: str) -> float:
     """
-    Find duplicate or near-duplicate titles using fuzzy matching.
-    
-    Args:
-        course_state: The CourseState to analyze
-        similarity_threshold: Threshold for considering titles as duplicates (0-1)
-        
-    Returns:
-        Dictionary with duplicate title information
+    Compute weighted n-gram similarity between two texts.
+    Uses linear weights: 2gram=1, 3gram=2, 4gram=3 (normalized by 6).
     """
-    from rapidfuzz import fuzz
+    t1 = text1.lower().split()
+    t2 = text2.lower().split()
     
-    results = {
-        "module_duplicates": [],
-        "submodule_duplicates": [],
-        "section_duplicates": [],
-    }
+    if len(t1) < 2 or len(t2) < 2:
+        return 1.0 if t1 == t2 else 0.0
     
-    # Check module titles
-    module_titles = [(i, m.title) for i, m in enumerate(course_state.modules)]
-    results["module_duplicates"] = _find_fuzzy_duplicates(
-        module_titles, similarity_threshold, fuzz
-    )
+    def get_ngrams(tokens, n):
+        return set(tuple(tokens[i:i+n]) for i in range(len(tokens) - n + 1))
     
-    # Check submodule titles
-    submodule_titles = []
-    for m_idx, module in enumerate(course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            submodule_titles.append((f"{m_idx+1}.{sm_idx+1}", submodule.title))
-    results["submodule_duplicates"] = _find_fuzzy_duplicates(
-        submodule_titles, similarity_threshold, fuzz
-    )
+    def jaccard(set1, set2):
+        if not set1 and not set2:
+            return 0.0
+        intersection = len(set1 & set2)
+        union = len(set1 | set2)
+        return intersection / union if union > 0 else 0.0
     
-    # Check section titles
-    section_titles = []
-    for m_idx, module in enumerate(course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                section_titles.append((f"{m_idx+1}.{sm_idx+1}.{s_idx+1}", section.title))
-    results["section_duplicates"] = _find_fuzzy_duplicates(
-        section_titles, similarity_threshold, fuzz
-    )
+    sim_2 = jaccard(get_ngrams(t1, 2), get_ngrams(t2, 2)) if len(t1) >= 2 and len(t2) >= 2 else 0
+    sim_3 = jaccard(get_ngrams(t1, 3), get_ngrams(t2, 3)) if len(t1) >= 3 and len(t2) >= 3 else 0
+    sim_4 = jaccard(get_ngrams(t1, 4), get_ngrams(t2, 4)) if len(t1) >= 4 and len(t2) >= 4 else 0
     
-    results["total_duplicates"] = (
-        len(results["module_duplicates"]) +
-        len(results["submodule_duplicates"]) +
-        len(results["section_duplicates"])
-    )
-    
-    return results
-
-
-def _find_fuzzy_duplicates(
-    titles: List[Tuple[str, str]],
-    threshold: float,
-    fuzz
-) -> List[Dict[str, Any]]:
-    """Find fuzzy duplicate titles."""
-    duplicates = []
-    n = len(titles)
-    
-    for i in range(n):
-        for j in range(i + 1, n):
-            id_1, title_1 = titles[i]
-            id_2, title_2 = titles[j]
-            
-            # Compute similarity ratio (0-100)
-            similarity = fuzz.ratio(title_1.lower(), title_2.lower()) / 100.0
-            
-            if similarity >= threshold:
-                duplicates.append({
-                    "id_1": id_1,
-                    "id_2": id_2,
-                    "title_1": title_1,
-                    "title_2": title_2,
-                    "similarity": round(similarity, 4)
-                })
-    
-    # Sort by similarity (highest first)
-    duplicates.sort(key=lambda x: x["similarity"], reverse=True)
-    return duplicates[:10]  # Return top 10
+    # Weighted sum: penalize higher n-gram matches more
+    return (1 * sim_2 + 2 * sim_3 + 3 * sim_4) / 6
