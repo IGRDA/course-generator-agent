@@ -54,8 +54,11 @@ def generate_course_state_from_pdf(
     
     # Step 1: Extract markdown from PDF
     
-    syllabus_markdown = convert_pdf_to_markdown(pdf_path, return_string=True)
-    print(f"✓ Extracted {len(syllabus_markdown)} characters from PDF")
+    try:
+        syllabus_markdown = convert_pdf_to_markdown(pdf_path, return_string=True)
+        print(f"✓ Extracted {len(syllabus_markdown)} characters from PDF")
+    except Exception as e:
+        raise RuntimeError(f"Failed to extract content from PDF: {e}")
    
     
     # Step 2: Compute layout based on total pages
