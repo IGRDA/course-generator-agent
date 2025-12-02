@@ -207,66 +207,46 @@ class EvalGraphState(BaseModel):
 def run_index_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run index evaluator and return result."""
     print("   Running index evaluation...")
-    try:
-        evaluator = IndexEvaluator(provider=state.provider, max_retries=state.max_retries)
-        result = evaluator.evaluate(state.course_state)
-        print("   ✓ Index evaluation complete")
-        return {"index_result": result}
-    except Exception as e:
-        print(f"   ✗ Index evaluation failed: {e}")
-        return {"index_result": {"error": str(e)}}
+    evaluator = IndexEvaluator(provider=state.provider, max_retries=state.max_retries)
+    result = evaluator.evaluate(state.course_state)
+    print("   ✓ Index evaluation complete")
+    return {"index_result": result}
 
 
 def run_section_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run section evaluator and return result."""
     print("   Running section evaluation...")
-    try:
-        evaluator = SectionEvaluator(provider=state.provider, max_retries=state.max_retries)
-        result = evaluator.evaluate(state.course_state)
-        print("   ✓ Section evaluation complete")
-        return {"section_result": result}
-    except Exception as e:
-        print(f"   ✗ Section evaluation failed: {e}")
-        return {"section_result": {"error": str(e)}}
+    evaluator = SectionEvaluator(provider=state.provider, max_retries=state.max_retries)
+    result = evaluator.evaluate(state.course_state)
+    print("   ✓ Section evaluation complete")
+    return {"section_result": result}
 
 
 def run_activities_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run activities evaluator and return result."""
     print("   Running activities evaluation...")
-    try:
-        evaluator = ActivitiesEvaluator(provider=state.provider, max_retries=state.max_retries)
-        result = evaluator.evaluate(state.course_state)
-        print("   ✓ Activities evaluation complete")
-        return {"activities_result": result}
-    except Exception as e:
-        print(f"   ✗ Activities evaluation failed: {e}")
-        return {"activities_result": {"error": str(e)}}
+    evaluator = ActivitiesEvaluator(provider=state.provider, max_retries=state.max_retries)
+    result = evaluator.evaluate(state.course_state)
+    print("   ✓ Activities evaluation complete")
+    return {"activities_result": result}
 
 
 def run_html_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run HTML evaluator and return result."""
     print("   Running HTML evaluation...")
-    try:
-        evaluator = HtmlEvaluator(provider=state.provider, max_retries=state.max_retries)
-        result = evaluator.evaluate(state.course_state)
-        print("   ✓ HTML evaluation complete")
-        return {"html_result": result}
-    except Exception as e:
-        print(f"   ✗ HTML evaluation failed: {e}")
-        return {"html_result": {"error": str(e)}}
+    evaluator = HtmlEvaluator(provider=state.provider, max_retries=state.max_retries)
+    result = evaluator.evaluate(state.course_state)
+    print("   ✓ HTML evaluation complete")
+    return {"html_result": result}
 
 
 def run_overall_evaluation(state: EvalGraphState) -> Dict[str, Any]:
     """Run overall evaluator and return result."""
     print("   Running overall evaluation...")
-    try:
-        evaluator = OverallEvaluator(provider=state.provider, max_retries=state.max_retries)
-        result = evaluator.evaluate(state.course_state)
-        print("   ✓ Overall evaluation complete")
-        return {"overall_result": result}
-    except Exception as e:
-        print(f"   ✗ Overall evaluation failed: {e}")
-        return {"overall_result": {"error": str(e)}}
+    evaluator = OverallEvaluator(provider=state.provider, max_retries=state.max_retries)
+    result = evaluator.evaluate(state.course_state)
+    print("   ✓ Overall evaluation complete")
+    return {"overall_result": result}
 
 
 # ---- Build Graph ----
@@ -356,7 +336,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
     results = []
     
     # --- Index Metrics ---
-    if state.index_result and "error" not in state.index_result:
+    if state.index_result:
         llm_scores = state.index_result.get("llm_scores", {})
         
         if "coverage" in llm_scores:
@@ -379,15 +359,9 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                 score=llm_scores["balance"]["score"] / 5.0,
                 comment=llm_scores["balance"]["reasoning"],
             ))
-    elif state.index_result and "error" in state.index_result:
-        results.append(EvaluationResult(
-            key="index_error",
-            score=0,
-            comment=f"Error: {state.index_result['error']}",
-        ))
     
     # --- Section Metrics ---
-    if state.section_result and "error" not in state.section_result:
+    if state.section_result:
         summary = state.section_result.get("summary", {})
         nlp = state.section_result.get("nlp_metrics", {})
         
@@ -443,7 +417,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
             ))
     
     # --- Activities Metrics ---
-    if state.activities_result and "error" not in state.activities_result:
+    if state.activities_result:
         checks = state.activities_result.get("schema_checks", {})
         summary = state.activities_result.get("summary", {})
         
@@ -464,7 +438,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
             ))
     
     # --- HTML Metrics ---
-    if state.html_result and "error" not in state.html_result:
+    if state.html_result:
         checks = state.html_result.get("schema_checks", {})
         summary = state.html_result.get("summary", {})
         
@@ -485,7 +459,7 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
             ))
     
     # --- Overall Metrics ---
-    if state.overall_result and "error" not in state.overall_result:
+    if state.overall_result:
         # Coherence (LLM-based)
         coherence = state.overall_result.get("coherence", {})
         if "score" in coherence:
@@ -617,12 +591,6 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
                         score=round(1 - min(1, content_sim["std_similarity"] * 2), 4),
                         comment=f"Std similarity: {content_sim['std_similarity']:.3f}",
                     ))
-    elif state.overall_result and "error" in state.overall_result:
-        results.append(EvaluationResult(
-            key="overall_error",
-            score=0,
-            comment=f"Error: {state.overall_result['error']}",
-        ))
     
     return results
 
