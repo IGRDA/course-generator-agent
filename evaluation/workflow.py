@@ -500,9 +500,9 @@ def main():
     quick_parser.add_argument("--max-retries", type=int, default=3)
     quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval")
     quick_parser.add_argument("--steps", nargs="*", type=str, default=None)
-    quick_parser.add_argument("--section-eval-concurrency", type=int, default=1, help="Concurrency for section evaluations")
-    quick_parser.add_argument("--activities-eval-concurrency", type=int, default=1, help="Concurrency for activities evaluations")
-    quick_parser.add_argument("--html-eval-concurrency", type=int, default=1, help="Concurrency for HTML evaluations")
+    quick_parser.add_argument("--section-eval-concurrency", type=int, default=4, help="Concurrency for section evaluations")
+    quick_parser.add_argument("--activities-eval-concurrency", type=int, default=4, help="Concurrency for activities evaluations")
+    quick_parser.add_argument("--html-eval-concurrency", type=int, default=4, help="Concurrency for HTML evaluations")
     
     args = parser.parse_args()
     

@@ -6,6 +6,9 @@ Usage:
     # Create a dataset from course outputs (auto-generates name from course title)
     python -m evaluation.dataset create-dataset --inputs output/*.json
     
+    # Create a dataset from specific files
+    python -m evaluation.dataset create-dataset --inputs output/course1.json output/course2.json
+    
     # Create a dataset with custom name
     python -m evaluation.dataset create-dataset --inputs output/*.json --name my-courses
     
@@ -167,7 +170,7 @@ def main():
     
     # Create dataset command
     create_parser = subparsers.add_parser("create-dataset", help="Create a LangSmith dataset")
-    create_parser.add_argument("--inputs", type=str, required=True, help="Glob pattern for input JSON files")
+    create_parser.add_argument("--inputs", type=str, nargs='+', required=True, help="Input JSON files or glob pattern (e.g., output/*.json)")
     create_parser.add_argument("--name", type=str, default=None, help="Dataset name (optional - auto-generated from course title if not provided)")
     create_parser.add_argument("--description", type=str, default="Course generation outputs", help="Dataset description")
     
@@ -177,7 +180,16 @@ def main():
     args = parser.parse_args()
     
     if args.command == "create-dataset":
-        input_files = glob.glob(args.inputs)
+        # Handle both shell-expanded files and glob patterns
+        input_files = []
+        for pattern in args.inputs:
+            # If pattern contains glob characters and matches nothing as literal path, expand it
+            expanded = glob.glob(pattern)
+            if expanded:
+                input_files.extend(expanded)
+            else:
+                # Keep as-is (will be reported as not found later)
+                input_files.append(pattern)
         if not input_files:
             print(f"No files found matching: {args.inputs}")
             return
