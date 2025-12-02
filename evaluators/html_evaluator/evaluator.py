@@ -92,23 +92,19 @@ class HtmlEvaluator(BaseEvaluator):
         element_types = ", ".join(element_counts.keys()) if element_counts else "None"
         
         # Run LLM-as-judge evaluation
-        try:
-            llm_score = self.evaluate_with_rubric(
-                prompt=HTML_EVALUATION_PROMPT,
-                output_model=HtmlScore,
-                prompt_variables={
-                    "section_title": section.title,
-                    "html_structure": html_structure[:2000],  # Limit length
-                    "total_elements": result["total_elements"],
-                    "element_types": element_types,
-                },
-                correction_prompt=CORRECTION_PROMPT
-            )
-            result["formatting_score"] = llm_score.formatting.score
-            result["formatting_reasoning"] = llm_score.formatting.reasoning
-        except Exception as e:
-            result["formatting_score"] = None
-            result["formatting_reasoning"] = f"Evaluation failed: {str(e)}"
+        llm_score = self.evaluate_with_rubric(
+            prompt=HTML_EVALUATION_PROMPT,
+            output_model=HtmlScore,
+            prompt_variables={
+                "section_title": section.title,
+                "html_structure": html_structure[:2000],  # Limit length
+                "total_elements": result["total_elements"],
+                "element_types": element_types,
+            },
+            correction_prompt=CORRECTION_PROMPT
+        )
+        result["formatting_score"] = llm_score.formatting.score
+        result["formatting_reasoning"] = llm_score.formatting.reasoning
         
         return result
     

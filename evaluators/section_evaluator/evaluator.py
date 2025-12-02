@@ -87,24 +87,20 @@ class SectionEvaluator(BaseEvaluator):
         result["has_content"] = True
         
         # Run LLM-as-judge evaluation
-        try:
-            llm_score = self.evaluate_with_rubric(
-                prompt=SECTION_EVALUATION_PROMPT,
-                output_model=SectionScore,
-                prompt_variables={
-                    "course_title": course_state.title,
-                    "module_title": module.title,
-                    "submodule_title": submodule.title,
-                    "section_title": section.title,
-                    "theory": section.theory[:3000],  # Limit content length
-                },
-                correction_prompt=CORRECTION_PROMPT
-            )
-            result["accuracy_score"] = llm_score.accuracy.score
-            result["accuracy_reasoning"] = llm_score.accuracy.reasoning
-        except Exception as e:
-            result["accuracy_score"] = None
-            result["accuracy_reasoning"] = f"Evaluation failed: {str(e)}"
+        llm_score = self.evaluate_with_rubric(
+            prompt=SECTION_EVALUATION_PROMPT,
+            output_model=SectionScore,
+            prompt_variables={
+                "course_title": course_state.title,
+                "module_title": module.title,
+                "submodule_title": submodule.title,
+                "section_title": section.title,
+                "theory": section.theory[:3000],  # Limit content length
+            },
+            correction_prompt=CORRECTION_PROMPT
+        )
+        result["accuracy_score"] = llm_score.accuracy.score
+        result["accuracy_reasoning"] = llm_score.accuracy.reasoning
         
         return result
     
@@ -113,23 +109,18 @@ class SectionEvaluator(BaseEvaluator):
         if not theories:
             return {"error": "No content to analyze"}
         
-        try:
-            # Lazy import to handle optional dependency
-            from evaluation.nlp_metrics import compute_readability, compute_repetition_metrics
-            
-            combined_text = "\n\n".join(theories)
-            
-            readability = compute_readability(combined_text)
-            repetition = compute_repetition_metrics(combined_text)
-            
-            return {
-                "readability": readability,
-                "repetition": repetition
-            }
-        except ImportError:
-            return {"error": "NLP metrics not available - install with pip install -e '.[evaluation]'"}
-        except Exception as e:
-            return {"error": f"NLP analysis failed: {str(e)}"}
+        # Lazy import to handle optional dependency
+        from evaluation.nlp_metrics import compute_readability, compute_repetition_metrics
+        
+        combined_text = "\n\n".join(theories)
+        
+        readability = compute_readability(combined_text)
+        repetition = compute_repetition_metrics(combined_text)
+        
+        return {
+            "readability": readability,
+            "repetition": repetition
+        }
     
     def _run_schema_checks(self, course_state: CourseState) -> Dict[str, Any]:
         """Run schema validation checks on section content."""

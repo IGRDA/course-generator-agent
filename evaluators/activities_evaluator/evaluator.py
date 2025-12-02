@@ -118,26 +118,22 @@ class ActivitiesEvaluator(BaseEvaluator):
         result["num_final_activities"] = len(other_elements.final_activities)
         
         # Run LLM-as-judge evaluation
-        try:
-            theory_summary = section.theory[:500] if section.theory else "No theory content"
-            
-            llm_score = self.evaluate_with_rubric(
-                prompt=ACTIVITIES_EVALUATION_PROMPT,
-                output_model=ActivityScore,
-                prompt_variables={
-                    "section_title": section.title,
-                    "theory_summary": theory_summary,
-                    "activities_text": activities_text,
-                    "glossary_terms": glossary_terms,
-                    "key_concept": key_concept,
-                },
-                correction_prompt=CORRECTION_PROMPT
-            )
-            result["quality_score"] = llm_score.quality.score
-            result["quality_reasoning"] = llm_score.quality.reasoning
-        except Exception as e:
-            result["quality_score"] = None
-            result["quality_reasoning"] = f"Evaluation failed: {str(e)}"
+        theory_summary = section.theory[:500] if section.theory else "No theory content"
+        
+        llm_score = self.evaluate_with_rubric(
+            prompt=ACTIVITIES_EVALUATION_PROMPT,
+            output_model=ActivityScore,
+            prompt_variables={
+                "section_title": section.title,
+                "theory_summary": theory_summary,
+                "activities_text": activities_text,
+                "glossary_terms": glossary_terms,
+                "key_concept": key_concept,
+            },
+            correction_prompt=CORRECTION_PROMPT
+        )
+        result["quality_score"] = llm_score.quality.score
+        result["quality_reasoning"] = llm_score.quality.reasoning
         
         return result
     

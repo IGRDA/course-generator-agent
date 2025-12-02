@@ -51,27 +51,21 @@ class OverallEvaluator(BaseEvaluator):
         # Build section titles sample
         section_titles = self._get_section_titles_sample(course_state)
         
-        try:
-            llm_score = self.evaluate_with_rubric(
-                prompt=OVERALL_EVALUATION_PROMPT,
-                output_model=OverallScore,
-                prompt_variables={
-                    "course_title": course_state.title,
-                    "language": course_state.language,
-                    "course_overview": course_overview,
-                    "section_titles_sample": section_titles,
-                },
-                correction_prompt=CORRECTION_PROMPT
-            )
-            return {
-                "score": llm_score.coherence.score,
-                "reasoning": llm_score.coherence.reasoning
-            }
-        except Exception as e:
-            return {
-                "score": None,
-                "reasoning": f"Evaluation failed: {str(e)}"
-            }
+        llm_score = self.evaluate_with_rubric(
+            prompt=OVERALL_EVALUATION_PROMPT,
+            output_model=OverallScore,
+            prompt_variables={
+                "course_title": course_state.title,
+                "language": course_state.language,
+                "course_overview": course_overview,
+                "section_titles_sample": section_titles,
+            },
+            correction_prompt=CORRECTION_PROMPT
+        )
+        return {
+            "score": llm_score.coherence.score,
+            "reasoning": llm_score.coherence.reasoning
+        }
     
     def _build_course_overview(self, course_state: CourseState) -> str:
         """Build a text overview of the course structure."""
@@ -136,50 +130,40 @@ class OverallEvaluator(BaseEvaluator):
     
     def _compute_structure_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute structure-based metrics using dedicated module."""
-        try:
-            from evaluation.structure_metrics import (
-                compute_title_uniqueness,
-                compute_hierarchy_balance,
-                find_duplicate_titles
-            )
-            
-            title_uniqueness = compute_title_uniqueness(course_state)
-            hierarchy_balance = compute_hierarchy_balance(course_state)
-            duplicates = find_duplicate_titles(course_state)
-            
-            return {
-                "title_uniqueness": title_uniqueness,
-                "hierarchy_balance": hierarchy_balance,
-                "duplicate_titles": duplicates
-            }
-        except ImportError:
-            return {"error": "Structure metrics not available - install with pip install -e '.[evaluation]'"}
-        except Exception as e:
-            return {"error": f"Structure analysis failed: {str(e)}"}
+        from evaluation.structure_metrics import (
+            compute_title_uniqueness,
+            compute_hierarchy_balance,
+            find_duplicate_titles
+        )
+        
+        title_uniqueness = compute_title_uniqueness(course_state)
+        hierarchy_balance = compute_hierarchy_balance(course_state)
+        duplicates = find_duplicate_titles(course_state)
+        
+        return {
+            "title_uniqueness": title_uniqueness,
+            "hierarchy_balance": hierarchy_balance,
+            "duplicate_titles": duplicates
+        }
     
     def _compute_embedding_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute embedding-based similarity metrics."""
-        try:
-            from evaluation.embedding_metrics import compute_section_similarity
-            
-            # Extract all section theories
-            sections_data = []
-            for m_idx, module in enumerate(course_state.modules):
-                for sm_idx, submodule in enumerate(module.submodules):
-                    for s_idx, section in enumerate(submodule.sections):
-                        if section.theory and len(section.theory.strip()) > 50:
-                            sections_data.append({
-                                "id": f"{m_idx+1}.{sm_idx+1}.{s_idx+1}",
-                                "title": section.title,
-                                "text": section.theory
-                            })
-            
-            if len(sections_data) < 2:
-                return {"error": "Not enough sections with content for similarity analysis"}
-            
-            return compute_section_similarity(sections_data)
-        except ImportError:
-            return {"error": "Embedding metrics not available - install with pip install -e '.[evaluation]'"}
-        except Exception as e:
-            return {"error": f"Embedding analysis failed: {str(e)}"}
+        from evaluation.embedding_metrics import compute_section_similarity
+        
+        # Extract all section theories
+        sections_data = []
+        for m_idx, module in enumerate(course_state.modules):
+            for sm_idx, submodule in enumerate(module.submodules):
+                for s_idx, section in enumerate(submodule.sections):
+                    if section.theory and len(section.theory.strip()) > 50:
+                        sections_data.append({
+                            "id": f"{m_idx+1}.{sm_idx+1}.{s_idx+1}",
+                            "title": section.title,
+                            "text": section.theory
+                        })
+        
+        if len(sections_data) < 2:
+            return {"error": "Not enough sections with content for similarity analysis"}
+        
+        return compute_section_similarity(sections_data)
 
