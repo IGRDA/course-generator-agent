@@ -120,38 +120,6 @@ def get_evaluation_graph(steps: Optional[List[str]] = None):
     return graph.compile()
 
 
-# ---- Global Evaluator Settings ----
-
-_eval_settings = {
-    "provider": "mistral",
-    "max_retries": 8,
-    "steps": None,
-    "section_eval_concurrency": 4,
-    "activities_eval_concurrency": 4,
-    "html_eval_concurrency": 4
-}
-
-
-def set_evaluator_settings(
-    provider: str = "mistral",
-    max_retries: int = 3,
-    steps: Optional[List[str]] = None,
-    section_eval_concurrency: int = 4,
-    activities_eval_concurrency: int = 4,
-    html_eval_concurrency: int = 4
-):
-    """Set global evaluator settings."""
-    global _eval_settings
-    _eval_settings = {
-        "provider": provider,
-        "max_retries": max_retries,
-        "steps": steps,
-        "section_eval_concurrency": section_eval_concurrency,
-        "activities_eval_concurrency": activities_eval_concurrency,
-        "html_eval_concurrency": html_eval_concurrency
-    }
-
-
 # ---- Declarative Metrics Extraction ----
 
 @dataclass
@@ -368,53 +336,65 @@ def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
     return results
 
 
-# ---- Combined Evaluator ----
+# ---- Combined Evaluator Factory ----
 
-def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
-    """Single evaluator that runs the LangGraph evaluation workflow."""
-    client = Client()
-    course_state = CourseState.model_validate(example.inputs["course_data"])
-    course_title = example.inputs.get("course_title", "Unknown")
+def make_combined_evaluator(
+    provider: str = "mistral",
+    max_retries: int = 3,
+    steps: Optional[List[str]] = None,
+    section_eval_concurrency: int = 4,
+    activities_eval_concurrency: int = 4,
+    html_eval_concurrency: int = 4
+):
+    """Factory that returns a configured evaluator (closure captures config)."""
     
-    print(f"\n📊 Evaluating: {course_title}")
+    def evaluator(run: Run, example: Example) -> Dict[str, Any]:
+        """Single evaluator that runs the LangGraph evaluation workflow."""
+        client = Client()
+        course_state = CourseState.model_validate(example.inputs["course_data"])
+        course_title = example.inputs.get("course_title", "Unknown")
+        
+        print(f"\n📊 Evaluating: {course_title}")
+        
+        eval_state = EvalGraphState(
+            course_state=course_state,
+            provider=provider,
+            max_retries=max_retries,
+            steps=steps,
+            section_eval_concurrency=section_eval_concurrency,
+            activities_eval_concurrency=activities_eval_concurrency,
+            html_eval_concurrency=html_eval_concurrency,
+        )
+        
+        graph = get_evaluation_graph(steps=steps)
+        final_state = graph.invoke(eval_state)
+        
+        if isinstance(final_state, dict):
+            final_state = EvalGraphState(**final_state)
+        
+        metrics = extract_metrics(final_state)
+        print(f"   📈 Total metrics extracted: {len(metrics)}")
+        
+        # Log metrics and compute average
+        exclude_from_avg = {"word_count", "avg_sentence_length"}
+        overall_score, count = 0.0, 0
+        
+        for metric in metrics:
+            try:
+                client.create_feedback(run_id=run.id, key=metric.key, score=metric.score, comment=metric.comment)
+                if metric.score is not None and metric.key not in exclude_from_avg:
+                    overall_score += metric.score
+                    count += 1
+                print(f"      ✓ {metric.key}: {metric.score:.3f}" if metric.score else f"      ✓ {metric.key}: N/A")
+            except Exception as e:
+                print(f"      ⚠ Failed to log {metric.key}: {e}")
+        
+        avg_score = overall_score / count if count > 0 else 0.0
+        print(f"   📊 Average score: {avg_score:.3f}")
+        
+        return EvaluationResult(key="average_score", score=avg_score, comment=f"Average of {count} metrics")
     
-    eval_state = EvalGraphState(
-        course_state=course_state,
-        provider=_eval_settings["provider"],
-        max_retries=_eval_settings["max_retries"],
-        steps=_eval_settings.get("steps"),
-        section_eval_concurrency=_eval_settings.get("section_eval_concurrency", 4),
-        activities_eval_concurrency=_eval_settings.get("activities_eval_concurrency", 4),
-        html_eval_concurrency=_eval_settings.get("html_eval_concurrency", 4),
-    )
-    
-    graph = get_evaluation_graph(steps=_eval_settings.get("steps"))
-    final_state = graph.invoke(eval_state)
-    
-    if isinstance(final_state, dict):
-        final_state = EvalGraphState(**final_state)
-    
-    metrics = extract_metrics(final_state)
-    print(f"   📈 Total metrics extracted: {len(metrics)}")
-    
-    # Log metrics and compute average
-    exclude_from_avg = {"word_count", "avg_sentence_length"}
-    overall_score, count = 0.0, 0
-    
-    for metric in metrics:
-        try:
-            client.create_feedback(run_id=run.id, key=metric.key, score=metric.score, comment=metric.comment)
-            if metric.score is not None and metric.key not in exclude_from_avg:
-                overall_score += metric.score
-                count += 1
-            print(f"      ✓ {metric.key}: {metric.score:.3f}" if metric.score else f"      ✓ {metric.key}: N/A")
-        except Exception as e:
-            print(f"      ⚠ Failed to log {metric.key}: {e}")
-    
-    avg_score = overall_score / count if count > 0 else 0.0
-    print(f"   📊 Average score: {avg_score:.3f}")
-    
-    return EvaluationResult(key="average_score", score=avg_score, comment=f"Average of {count} metrics")
+    return evaluator
 
 
 # ---- Main Evaluation Functions ----
@@ -440,15 +420,6 @@ def run_evaluation(
     print(f"   Concurrency: section={section_eval_concurrency}, activities={activities_eval_concurrency}, html={html_eval_concurrency}")
     print("-" * 50)
     
-    set_evaluator_settings(
-        provider=provider,
-        max_retries=max_retries,
-        steps=steps,
-        section_eval_concurrency=section_eval_concurrency,
-        activities_eval_concurrency=activities_eval_concurrency,
-        html_eval_concurrency=html_eval_concurrency
-    )
-    
     def target(inputs: dict) -> dict:
         return {"course_title": inputs.get("course_title", "Unknown")}
     
@@ -461,7 +432,14 @@ def run_evaluation(
     return evaluate(
         target,
         data=data_param,
-        evaluators=[combined_evaluator],
+        evaluators=[make_combined_evaluator(
+            provider=provider,
+            max_retries=max_retries,
+            steps=steps,
+            section_eval_concurrency=section_eval_concurrency,
+            activities_eval_concurrency=activities_eval_concurrency,
+            html_eval_concurrency=html_eval_concurrency
+        )],
         experiment_prefix=experiment_prefix,
         max_concurrency=1,
     )
@@ -522,9 +500,9 @@ def main():
     quick_parser.add_argument("--max-retries", type=int, default=3)
     quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval")
     quick_parser.add_argument("--steps", nargs="*", type=str, default=None)
-    quick_parser.add_argument("--section-eval-concurrency", type=int, default=4, help="Concurrency for section evaluations")
-    quick_parser.add_argument("--activities-eval-concurrency", type=int, default=4, help="Concurrency for activities evaluations")
-    quick_parser.add_argument("--html-eval-concurrency", type=int, default=4, help="Concurrency for HTML evaluations")
+    quick_parser.add_argument("--section-eval-concurrency", type=int, default=1, help="Concurrency for section evaluations")
+    quick_parser.add_argument("--activities-eval-concurrency", type=int, default=1, help="Concurrency for activities evaluations")
+    quick_parser.add_argument("--html-eval-concurrency", type=int, default=1, help="Concurrency for HTML evaluations")
     
     args = parser.parse_args()
     
