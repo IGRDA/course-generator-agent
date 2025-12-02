@@ -1,7 +1,11 @@
-"""HTML evaluator for section HTML structure evaluation."""
+"""HTML evaluator for section HTML structure evaluation with parallel processing."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Annotated
+from operator import add
+from pydantic import BaseModel, Field, ConfigDict
 from langsmith import traceable
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send, RetryPolicy
 from main.state import CourseState
 from evaluators.base import BaseEvaluator, SingleCriteriaScore
 from .prompts import HTML_EVALUATION_PROMPT, INFO_PRESERVATION_EVALUATION_PROMPT, CORRECTION_PROMPT
@@ -11,27 +15,56 @@ from .prompts import HTML_EVALUATION_PROMPT, INFO_PRESERVATION_EVALUATION_PROMPT
 VALID_ELEMENT_TYPES = {"p", "ul", "quote", "table", "paragraphs"}
 
 
+# ---- State Models for Parallel Evaluation ----
+
+class HtmlEvalTask(BaseModel):
+    """State for evaluating HTML in a single section."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    course_state: CourseState
+    module_idx: int
+    submodule_idx: int
+    section_idx: int
+    section_id: str
+
+
+class HtmlEvalState(BaseModel):
+    """State for the HTML evaluation graph."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    course_state: CourseState
+    evaluator: "HtmlEvaluator"
+    completed_evaluations: Annotated[List[dict], add] = Field(default_factory=list)
+
+
 class HtmlEvaluator(BaseEvaluator):
     """Evaluates HTML structure formatting quality and validity."""
     
+    def __init__(self, provider: str = "mistral", max_retries: int = 3):
+        super().__init__(provider, max_retries)
+        self.concurrency = 4  # default
+    
+    def set_concurrency(self, concurrency: int):
+        """Set concurrency for parallel evaluation."""
+        self.concurrency = concurrency
+    
     @traceable(name="html_evaluator")
     def evaluate(self, course_state: CourseState) -> Dict[str, Any]:
-        """Evaluate all HTML structures in the course."""
-        section_results = []
-        element_type_usage: Dict[str, int] = {}
+        """Evaluate all HTML structures in the course using parallel processing."""
+        # Build and run the evaluation graph
+        graph = self._build_evaluation_graph()
+        initial_state = HtmlEvalState(
+            course_state=course_state,
+            evaluator=self
+        )
         
-        for section_id, _, _, section in self.iter_sections(course_state):
-            # Evaluate HTML formatting
-            result = self._evaluate_section_html(section, section_id)
-            
-            # Evaluate information preservation (theory vs HTML)
-            preservation_result = self._evaluate_section_info_preservation(section, section_id)
-            result["info_preservation_score"] = preservation_result.get("info_preservation_score")
-            result["info_preservation_reasoning"] = preservation_result.get("info_preservation_reasoning")
-            
-            section_results.append(result)
-            
-            for elem_type, count in result.get("element_counts", {}).items():
+        result = graph.invoke(initial_state)
+        section_results = result["completed_evaluations"]
+        
+        # Aggregate element type usage
+        element_type_usage: Dict[str, int] = {}
+        for r in section_results:
+            for elem_type, count in r.get("element_counts", {}).items():
                 element_type_usage[elem_type] = element_type_usage.get(elem_type, 0) + count
         
         formatting_scores = [r["formatting_score"] for r in section_results if r.get("formatting_score")]
@@ -48,6 +81,31 @@ class HtmlEvaluator(BaseEvaluator):
             },
             "schema_checks": self._run_schema_checks(course_state, element_type_usage)
         }
+    
+    def _build_evaluation_graph(self):
+        """Build the evaluation graph with Send pattern for parallelization."""
+        graph = StateGraph(HtmlEvalState)
+        
+        # Configure retry policy
+        retry_policy = RetryPolicy(
+            max_attempts=self.max_retries,
+            initial_interval=1.0,
+            backoff_factor=2.0,
+            max_interval=60.0
+        )
+        
+        # Add nodes
+        graph.add_node("plan", _plan_evaluations)
+        graph.add_node("evaluate_html", _evaluate_single_html, retry=retry_policy)
+        graph.add_node("reduce", _reduce_evaluations)
+        
+        # Add edges
+        graph.add_edge(START, "plan")
+        graph.add_conditional_edges("plan", _continue_to_evaluations, ["evaluate_html"])
+        graph.add_edge("evaluate_html", "reduce")
+        graph.add_edge("reduce", END)
+        
+        return graph.compile()
     
     def _evaluate_section_html(self, section, section_id: str) -> Dict[str, Any]:
         """Evaluate HTML for a single section."""
@@ -141,3 +199,54 @@ class HtmlEvaluator(BaseEvaluator):
             "invalid_element_types": list(invalid_types),
             "all_sections_have_html": sections_with_html == total
         }
+
+
+# ---- Graph Functions (module-level for LangGraph) ----
+
+def _plan_evaluations(state: HtmlEvalState) -> dict:
+    """Plan phase - just returns empty dict, Send handles fan-out."""
+    return {}
+
+
+def _continue_to_evaluations(state: HtmlEvalState) -> List[Send]:
+    """Fan-out: Create a Send for each section to evaluate in parallel."""
+    sends = []
+    
+    for m_idx, module in enumerate(state.course_state.modules):
+        for sm_idx, submodule in enumerate(module.submodules):
+            for s_idx, section in enumerate(submodule.sections):
+                task = HtmlEvalTask(
+                    course_state=state.course_state,
+                    module_idx=m_idx,
+                    submodule_idx=sm_idx,
+                    section_idx=s_idx,
+                    section_id=f"{m_idx+1}.{sm_idx+1}.{s_idx+1}"
+                )
+                sends.append(Send("evaluate_html", {"task": task, "evaluator": state.evaluator}))
+    
+    return sends
+
+
+def _evaluate_single_html(state: dict) -> dict:
+    """Evaluate HTML for a single section and return result for aggregation."""
+    task: HtmlEvalTask = state["task"]
+    evaluator: HtmlEvaluator = state["evaluator"]
+    
+    module = task.course_state.modules[task.module_idx]
+    submodule = module.submodules[task.submodule_idx]
+    section = submodule.sections[task.section_idx]
+    
+    # Evaluate HTML formatting
+    result = evaluator._evaluate_section_html(section, task.section_id)
+    
+    # Evaluate information preservation (theory vs HTML)
+    preservation_result = evaluator._evaluate_section_info_preservation(section, task.section_id)
+    result["info_preservation_score"] = preservation_result.get("info_preservation_score")
+    result["info_preservation_reasoning"] = preservation_result.get("info_preservation_reasoning")
+    
+    return {"completed_evaluations": [result]}
+
+
+def _reduce_evaluations(state: HtmlEvalState) -> dict:
+    """Fan-in: Results are already aggregated via Annotated[list, add]."""
+    return {}

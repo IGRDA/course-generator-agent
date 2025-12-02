@@ -43,6 +43,11 @@ class EvalGraphState(BaseModel):
     max_retries: int = 3
     steps: Optional[List[str]] = None
     
+    # Concurrency settings for parallel evaluators
+    section_eval_concurrency: int = 4
+    activities_eval_concurrency: int = 4
+    html_eval_concurrency: int = 4
+    
     index_result: Optional[Dict[str, Any]] = None
     section_result: Optional[Dict[str, Any]] = None
     activities_result: Optional[Dict[str, Any]] = None
@@ -68,7 +73,22 @@ def _make_eval_node(evaluator_cls, result_key: str, name: str):
     """Factory function to create evaluation graph nodes."""
     def node(state: EvalGraphState) -> Dict[str, Any]:
         print(f"   Running {name}...")
+        
+        # Get concurrency setting based on evaluator type
+        concurrency = None
+        if "section" in name:
+            concurrency = state.section_eval_concurrency
+        elif "activities" in name:
+            concurrency = state.activities_eval_concurrency
+        elif "html" in name:
+            concurrency = state.html_eval_concurrency
+        
         evaluator = evaluator_cls(provider=state.provider, max_retries=state.max_retries)
+        
+        # Pass concurrency if evaluator supports it
+        if concurrency and hasattr(evaluator, 'set_concurrency'):
+            evaluator.set_concurrency(concurrency)
+        
         result = evaluator.evaluate(state.course_state)
         print(f"   ✓ {name} complete")
         return {result_key: result}
@@ -102,13 +122,34 @@ def get_evaluation_graph(steps: Optional[List[str]] = None):
 
 # ---- Global Evaluator Settings ----
 
-_eval_settings = {"provider": "mistral", "max_retries": 3, "steps": None}
+_eval_settings = {
+    "provider": "mistral",
+    "max_retries": 8,
+    "steps": None,
+    "section_eval_concurrency": 4,
+    "activities_eval_concurrency": 4,
+    "html_eval_concurrency": 4
+}
 
 
-def set_evaluator_settings(provider: str = "mistral", max_retries: int = 3, steps: Optional[List[str]] = None):
+def set_evaluator_settings(
+    provider: str = "mistral",
+    max_retries: int = 3,
+    steps: Optional[List[str]] = None,
+    section_eval_concurrency: int = 4,
+    activities_eval_concurrency: int = 4,
+    html_eval_concurrency: int = 4
+):
     """Set global evaluator settings."""
     global _eval_settings
-    _eval_settings = {"provider": provider, "max_retries": max_retries, "steps": steps}
+    _eval_settings = {
+        "provider": provider,
+        "max_retries": max_retries,
+        "steps": steps,
+        "section_eval_concurrency": section_eval_concurrency,
+        "activities_eval_concurrency": activities_eval_concurrency,
+        "html_eval_concurrency": html_eval_concurrency
+    }
 
 
 # ---- Declarative Metrics Extraction ----
@@ -342,6 +383,9 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
         provider=_eval_settings["provider"],
         max_retries=_eval_settings["max_retries"],
         steps=_eval_settings.get("steps"),
+        section_eval_concurrency=_eval_settings.get("section_eval_concurrency", 4),
+        activities_eval_concurrency=_eval_settings.get("activities_eval_concurrency", 4),
+        html_eval_concurrency=_eval_settings.get("html_eval_concurrency", 4),
     )
     
     graph = get_evaluation_graph(steps=_eval_settings.get("steps"))
@@ -382,6 +426,9 @@ def run_evaluation(
     max_retries: int = 3,
     steps: Optional[List[str]] = None,
     example_ids: Optional[List[str]] = None,
+    section_eval_concurrency: int = 4,
+    activities_eval_concurrency: int = 4,
+    html_eval_concurrency: int = 4,
 ) -> Dict[str, Any]:
     """Run evaluation experiment against a LangSmith dataset."""
     print(f"\n🔬 Running evaluation experiment")
@@ -390,9 +437,17 @@ def run_evaluation(
     print(f"   Provider: {provider}")
     print(f"   Evaluators: {', '.join(steps) if steps else 'all (full evaluation)'}")
     print(f"   Examples: {len(example_ids) if example_ids else 'all in dataset'}")
+    print(f"   Concurrency: section={section_eval_concurrency}, activities={activities_eval_concurrency}, html={html_eval_concurrency}")
     print("-" * 50)
     
-    set_evaluator_settings(provider=provider, max_retries=max_retries, steps=steps)
+    set_evaluator_settings(
+        provider=provider,
+        max_retries=max_retries,
+        steps=steps,
+        section_eval_concurrency=section_eval_concurrency,
+        activities_eval_concurrency=activities_eval_concurrency,
+        html_eval_concurrency=html_eval_concurrency
+    )
     
     def target(inputs: dict) -> dict:
         return {"course_title": inputs.get("course_title", "Unknown")}
@@ -418,6 +473,9 @@ def quick_evaluate(
     max_retries: int = 3,
     experiment_prefix: str = "quick-eval",
     steps: Optional[List[str]] = None,
+    section_eval_concurrency: int = 4,
+    activities_eval_concurrency: int = 4,
+    html_eval_concurrency: int = 4,
 ) -> Dict[str, Any]:
     """Quick evaluation of a single file (creates temporary dataset automatically)."""
     print(f"\n📦 Preparing dataset...")
@@ -433,6 +491,9 @@ def quick_evaluate(
         max_retries=max_retries,
         steps=steps,
         example_ids=example_ids,
+        section_eval_concurrency=section_eval_concurrency,
+        activities_eval_concurrency=activities_eval_concurrency,
+        html_eval_concurrency=html_eval_concurrency,
     )
 
 
@@ -451,6 +512,9 @@ def main():
     eval_parser.add_argument("--provider", type=str, default="mistral")
     eval_parser.add_argument("--max-retries", type=int, default=3)
     eval_parser.add_argument("--steps", nargs="*", type=str, default=None)
+    eval_parser.add_argument("--section-eval-concurrency", type=int, default=4, help="Concurrency for section evaluations")
+    eval_parser.add_argument("--activities-eval-concurrency", type=int, default=4, help="Concurrency for activities evaluations")
+    eval_parser.add_argument("--html-eval-concurrency", type=int, default=4, help="Concurrency for HTML evaluations")
     
     quick_parser = subparsers.add_parser("quick", help="Quick evaluation of a single file")
     quick_parser.add_argument("--input", type=str, required=True, help="Input JSON file")
@@ -458,6 +522,9 @@ def main():
     quick_parser.add_argument("--max-retries", type=int, default=3)
     quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval")
     quick_parser.add_argument("--steps", nargs="*", type=str, default=None)
+    quick_parser.add_argument("--section-eval-concurrency", type=int, default=4, help="Concurrency for section evaluations")
+    quick_parser.add_argument("--activities-eval-concurrency", type=int, default=4, help="Concurrency for activities evaluations")
+    quick_parser.add_argument("--html-eval-concurrency", type=int, default=4, help="Concurrency for HTML evaluations")
     
     args = parser.parse_args()
     
@@ -468,6 +535,9 @@ def main():
             provider=args.provider,
             max_retries=args.max_retries,
             steps=args.steps,
+            section_eval_concurrency=args.section_eval_concurrency,
+            activities_eval_concurrency=args.activities_eval_concurrency,
+            html_eval_concurrency=args.html_eval_concurrency,
         )
     elif args.command == "quick":
         quick_evaluate(
@@ -476,6 +546,9 @@ def main():
             max_retries=args.max_retries,
             experiment_prefix=args.experiment_prefix,
             steps=args.steps,
+            section_eval_concurrency=args.section_eval_concurrency,
+            activities_eval_concurrency=args.activities_eval_concurrency,
+            html_eval_concurrency=args.html_eval_concurrency,
         )
     else:
         parser.print_help()

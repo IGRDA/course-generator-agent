@@ -1,7 +1,11 @@
-"""Activities evaluator for section activities evaluation."""
+"""Activities evaluator for section activities evaluation with parallel processing."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List, Annotated
+from operator import add
+from pydantic import BaseModel, Field, ConfigDict
 from langsmith import traceable
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send, RetryPolicy
 from main.state import CourseState
 from evaluators.base import BaseEvaluator, SingleCriteriaScore
 from .prompts import ACTIVITIES_EVALUATION_PROMPT, CORRECTION_PROMPT
@@ -12,26 +16,62 @@ ALL_ACTIVITY_TYPES = {"order_list", "fill_gaps", "swipper", "linking_terms", "mu
 ALL_FINAL_ACTIVITY_TYPES = {"group_activity", "discussion_forum", "individual_project", "open_ended_quiz"}
 
 
+# ---- State Models for Parallel Evaluation ----
+
+class ActivitiesEvalTask(BaseModel):
+    """State for evaluating activities in a single section."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    course_state: CourseState
+    module_idx: int
+    submodule_idx: int
+    section_idx: int
+    section_id: str
+
+
+class ActivitiesEvalState(BaseModel):
+    """State for the activities evaluation graph."""
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    course_state: CourseState
+    evaluator: "ActivitiesEvaluator"
+    completed_evaluations: Annotated[List[dict], add] = Field(default_factory=list)
+
+
 class ActivitiesEvaluator(BaseEvaluator):
     """Evaluates section activities for quality, relevance, and completeness."""
     
+    def __init__(self, provider: str = "mistral", max_retries: int = 3):
+        super().__init__(provider, max_retries)
+        self.concurrency = 4  # default
+    
+    def set_concurrency(self, concurrency: int):
+        """Set concurrency for parallel evaluation."""
+        self.concurrency = concurrency
+    
     @traceable(name="activities_evaluator")
     def evaluate(self, course_state: CourseState) -> Dict[str, Any]:
-        """Evaluate all activities in the course."""
-        section_results = []
+        """Evaluate all activities in the course using parallel processing."""
+        # Track activity types across all sections
         activity_type_usage: Dict[str, int] = {}
         final_activity_type_usage: Dict[str, int] = {}
         
         for section_id, _, _, section in self.iter_sections(course_state):
-            # Track activity types
             if section.other_elements:
                 for act in section.other_elements.activities:
                     activity_type_usage[act.type] = activity_type_usage.get(act.type, 0) + 1
                 for final_act in section.other_elements.final_activities:
                     final_activity_type_usage[final_act.type] = final_activity_type_usage.get(final_act.type, 0) + 1
-            
-            result = self._evaluate_section_activities(course_state, section, section_id)
-            section_results.append(result)
+        
+        # Build and run the evaluation graph
+        graph = self._build_evaluation_graph()
+        initial_state = ActivitiesEvalState(
+            course_state=course_state,
+            evaluator=self
+        )
+        
+        result = graph.invoke(initial_state)
+        section_results = result["completed_evaluations"]
         
         quality_scores = [r["quality_score"] for r in section_results if r.get("quality_score")]
         
@@ -46,6 +86,31 @@ class ActivitiesEvaluator(BaseEvaluator):
             },
             "schema_checks": self._run_schema_checks(course_state, activity_type_usage, final_activity_type_usage)
         }
+    
+    def _build_evaluation_graph(self):
+        """Build the evaluation graph with Send pattern for parallelization."""
+        graph = StateGraph(ActivitiesEvalState)
+        
+        # Configure retry policy
+        retry_policy = RetryPolicy(
+            max_attempts=self.max_retries,
+            initial_interval=1.0,
+            backoff_factor=2.0,
+            max_interval=60.0
+        )
+        
+        # Add nodes
+        graph.add_node("plan", _plan_evaluations)
+        graph.add_node("evaluate_activities", _evaluate_single_activities, retry=retry_policy)
+        graph.add_node("reduce", _reduce_evaluations)
+        
+        # Add edges
+        graph.add_edge(START, "plan")
+        graph.add_conditional_edges("plan", _continue_to_evaluations, ["evaluate_activities"])
+        graph.add_edge("evaluate_activities", "reduce")
+        graph.add_edge("reduce", END)
+        
+        return graph.compile()
     
     def _evaluate_section_activities(self, course_state, section, section_id: str) -> Dict[str, Any]:
         """Evaluate activities for a single section."""
@@ -121,3 +186,50 @@ class ActivitiesEvaluator(BaseEvaluator):
             "missing_final_activity_types": list(ALL_FINAL_ACTIVITY_TYPES - used_final),
             "all_sections_have_activities": sections_with_activities == total
         }
+
+
+# ---- Graph Functions (module-level for LangGraph) ----
+
+def _plan_evaluations(state: ActivitiesEvalState) -> dict:
+    """Plan phase - just returns empty dict, Send handles fan-out."""
+    return {}
+
+
+def _continue_to_evaluations(state: ActivitiesEvalState) -> List[Send]:
+    """Fan-out: Create a Send for each section to evaluate in parallel."""
+    sends = []
+    
+    for m_idx, module in enumerate(state.course_state.modules):
+        for sm_idx, submodule in enumerate(module.submodules):
+            for s_idx, section in enumerate(submodule.sections):
+                task = ActivitiesEvalTask(
+                    course_state=state.course_state,
+                    module_idx=m_idx,
+                    submodule_idx=sm_idx,
+                    section_idx=s_idx,
+                    section_id=f"{m_idx+1}.{sm_idx+1}.{s_idx+1}"
+                )
+                sends.append(Send("evaluate_activities", {"task": task, "evaluator": state.evaluator}))
+    
+    return sends
+
+
+def _evaluate_single_activities(state: dict) -> dict:
+    """Evaluate activities for a single section and return result for aggregation."""
+    task: ActivitiesEvalTask = state["task"]
+    evaluator: ActivitiesEvaluator = state["evaluator"]
+    
+    module = task.course_state.modules[task.module_idx]
+    submodule = module.submodules[task.submodule_idx]
+    section = submodule.sections[task.section_idx]
+    
+    result = evaluator._evaluate_section_activities(
+        task.course_state, section, task.section_id
+    )
+    
+    return {"completed_evaluations": [result]}
+
+
+def _reduce_evaluations(state: ActivitiesEvalState) -> dict:
+    """Fan-in: Results are already aggregated via Annotated[list, add]."""
+    return {}
