@@ -37,10 +37,10 @@ rendering = [
 ]
 # Optional dependencies for evaluation
 evaluation = [
-    "textstat",
-    "langdetect",
-    "nltk",
-    "sentence-transformers",
+    "textstat==0.7.11",
+    "langdetect==1.0.9",
+    "nltk==3.9.2",
+    "sentence-transformers==5.1.2",
 ]
 
 # Removed script entry until main() function is restored
