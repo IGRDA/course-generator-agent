@@ -211,7 +211,6 @@ env.secrets
 
 oldjs/
 oldjsfeedback/
-old_eval_notebooks/
 
 # Generated course output
 output/

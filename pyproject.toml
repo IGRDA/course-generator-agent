@@ -37,11 +37,10 @@ rendering = [
 ]
 # Optional dependencies for evaluation
 evaluation = [
-    "textstat",               # Readability metrics (Flesch, SMOG, etc.)
-    "langdetect",             # Language detection for textstat
-    "nltk",                   # Tokenization, n-grams
-    "sentence-transformers",  # Embeddings for semantic similarity
-    "rapidfuzz",              # Fast fuzzy string matching for title comparison
+    "textstat",
+    "langdetect",
+    "nltk",
+    "sentence-transformers",
 ]
 
 # Removed script entry until main() function is restored
