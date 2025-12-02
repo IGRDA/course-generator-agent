@@ -4,7 +4,7 @@ from typing import Dict, Any
 from langsmith import traceable
 from main.state import CourseState
 from evaluators.base import BaseEvaluator, SingleCriteriaScore
-from .prompts import HTML_EVALUATION_PROMPT, CORRECTION_PROMPT
+from .prompts import HTML_EVALUATION_PROMPT, INFO_PRESERVATION_EVALUATION_PROMPT, CORRECTION_PROMPT
 
 
 # Valid HTML element types from state.py
@@ -21,13 +21,21 @@ class HtmlEvaluator(BaseEvaluator):
         element_type_usage: Dict[str, int] = {}
         
         for section_id, _, _, section in self.iter_sections(course_state):
+            # Evaluate HTML formatting
             result = self._evaluate_section_html(section, section_id)
+            
+            # Evaluate information preservation (theory vs HTML)
+            preservation_result = self._evaluate_section_info_preservation(section, section_id)
+            result["info_preservation_score"] = preservation_result.get("info_preservation_score")
+            result["info_preservation_reasoning"] = preservation_result.get("info_preservation_reasoning")
+            
             section_results.append(result)
             
             for elem_type, count in result.get("element_counts", {}).items():
                 element_type_usage[elem_type] = element_type_usage.get(elem_type, 0) + count
         
         formatting_scores = [r["formatting_score"] for r in section_results if r.get("formatting_score")]
+        info_preservation_scores = [r["info_preservation_score"] for r in section_results if r.get("info_preservation_score")]
         
         return {
             "evaluator": "html",
@@ -35,6 +43,7 @@ class HtmlEvaluator(BaseEvaluator):
             "summary": {
                 "total_sections_evaluated": len(section_results),
                 "average_formatting_score": sum(formatting_scores) / len(formatting_scores) if formatting_scores else 0.0,
+                "average_info_preservation_score": sum(info_preservation_scores) / len(info_preservation_scores) if info_preservation_scores else 0.0,
                 "element_type_usage": element_type_usage,
             },
             "schema_checks": self._run_schema_checks(course_state, element_type_usage)
@@ -75,6 +84,40 @@ class HtmlEvaluator(BaseEvaluator):
         )
         result["formatting_score"] = llm_score.score.score
         result["formatting_reasoning"] = llm_score.score.reasoning
+        return result
+    
+    def _evaluate_section_info_preservation(self, section, section_id: str) -> Dict[str, Any]:
+        """Evaluate information preservation between original theory and HTML output."""
+        result = {"section_id": section_id, "section_title": section.title}
+        
+        # Check if we have both theory and HTML to compare
+        if not section.theory or len(section.theory.strip()) < 50:
+            result.update(info_preservation_score=None, info_preservation_reasoning="No original theory content to compare")
+            return result
+        
+        if not section.html or not section.html.theory:
+            result.update(info_preservation_score=None, info_preservation_reasoning="No HTML content to compare")
+            return result
+        
+        # Extract text from HTML elements for comparison
+        html_content = "\n".join(
+            f"<{e.type}>: {str(e.content)}" 
+            for e in section.html.theory
+        )
+        
+        llm_score = self.evaluate_with_rubric(
+            prompt=INFO_PRESERVATION_EVALUATION_PROMPT,
+            output_model=SingleCriteriaScore,
+            prompt_variables={
+                "section_title": section.title,
+                "section_description": section.description or "No description",
+                "theory_content": section.theory[:3000],
+                "html_content": html_content[:3000],
+            },
+            correction_prompt=CORRECTION_PROMPT
+        )
+        result["info_preservation_score"] = llm_score.score.score
+        result["info_preservation_reasoning"] = llm_score.score.reasoning
         return result
     
     def _run_schema_checks(self, course_state, element_usage: dict) -> Dict[str, Any]:

@@ -44,3 +44,40 @@ Required format:
 Provide corrected JSON with formatting score (score 1-5 and reasoning).""")
 ])
 
+
+INFO_PRESERVATION_EVALUATION_PROMPT = ChatPromptTemplate.from_messages([
+    ("system", """You are an expert quality auditor specializing in content transformation.
+Your task is to evaluate information preservation when theory is converted to HTML.
+
+Use a 1-5 scale:
+1 = Poor: Major concepts lost, HTML misses critical information
+2 = Fair: Several important concepts missing or significantly altered
+3 = Good: Most content preserved, minor omissions
+4 = Very Good: Nearly complete preservation with trivial differences
+5 = Excellent: Perfect fidelity, all key concepts fully represented
+
+Evaluation Process:
+1. Identify 5-8 key concepts from the original theory
+2. Check if each concept is visible in the HTML
+3. Weight the importance of any missing concepts
+4. Score based on weighted concept preservation"""),
+    ("human", """Evaluate content fidelity for this transformation:
+
+Section: {section_title}
+Description: {section_description}
+
+ORIGINAL CONTENT (Theory/Source):
+---
+{theory_content}
+---
+
+FINAL CONTENT (HTML/Target):
+---
+{html_content}
+---
+
+Score based on how well the key concepts are preserved. In your reasoning, list any important concepts that were lost or significantly altered.
+
+{format_instructions}""")
+])
+

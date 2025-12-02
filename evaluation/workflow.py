@@ -173,6 +173,8 @@ METRIC_DEFS: List[MetricDef] = [
     # HTML metrics
     MetricDef("html_formatting", "html_result.summary.average_formatting_score", _div5_direct,
               lambda v: "Average HTML formatting score"),
+    MetricDef("html_info_preservation", "html_result.summary.average_info_preservation_score", _div5_direct,
+              lambda v: "Average information preservation score (theory vs HTML)"),
     
     # Overall metrics
     MetricDef("overall_coherence", "overall_result.coherence.score", _div5_direct,
