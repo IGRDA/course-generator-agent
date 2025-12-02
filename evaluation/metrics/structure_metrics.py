@@ -34,14 +34,10 @@ def compute_title_uniqueness(course_state: CourseState) -> Dict[str, Any]:
     ]
     
     def exact_uniqueness(titles: List[str]) -> float:
-        if not titles:
-            return 1.0
         return len(set(titles)) / len(titles)
     
     def ngram_uniqueness(titles: List[str]) -> float:
         """Compute uniqueness based on weighted n-gram overlap."""
-        if len(titles) < 2:
-            return 1.0
         
         # Compute pairwise n-gram similarities
         similarities = []
@@ -49,9 +45,6 @@ def compute_title_uniqueness(course_state: CourseState) -> Dict[str, Any]:
             for j in range(i + 1, len(titles)):
                 sim = _weighted_ngram_similarity(titles[i], titles[j])
                 similarities.append(sim)
-        
-        if not similarities:
-            return 1.0
         
         # Uniqueness = 1 - average similarity
         avg_sim = sum(similarities) / len(similarities)
