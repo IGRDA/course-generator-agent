@@ -34,19 +34,16 @@ def compute_section_similarity(
     embeddings = model.encode(texts, show_progress_bar=False)
     similarities = _compute_cosine_similarity_matrix(embeddings)
     
-    # Collect pairwise similarities
-    all_similarities = []
+    # Collect pairwise similarities using vectorized upper triangle extraction
     n = len(sections)
-    
-    for i in range(n):
-        for j in range(i + 1, n):
-            all_similarities.append(similarities[i][j])
+    i_upper, j_upper = np.triu_indices(n, k=1)
+    all_similarities = similarities[i_upper, j_upper]
     
     return {
-        "max_similarity": round(float(max(all_similarities)), 4) if all_similarities else 0,
-        "avg_similarity": round(float(np.mean(all_similarities)), 4) if all_similarities else 0,
-        "min_similarity": round(float(min(all_similarities)), 4) if all_similarities else 0,
-        "std_similarity": round(float(np.std(all_similarities)), 4) if all_similarities else 0,
+        "max_similarity": round(float(np.max(all_similarities)), 4) if len(all_similarities) > 0 else 0,
+        "avg_similarity": round(float(np.mean(all_similarities)), 4) if len(all_similarities) > 0 else 0,
+        "min_similarity": round(float(np.min(all_similarities)), 4) if len(all_similarities) > 0 else 0,
+        "std_similarity": round(float(np.std(all_similarities)), 4) if len(all_similarities) > 0 else 0,
     }
 
 
@@ -80,11 +77,12 @@ def compute_title_embedding_similarity(
         embeddings = model.encode(titles, show_progress_bar=False)
         similarities = _compute_cosine_similarity_matrix(embeddings)
         
-        # Get upper triangle (excluding diagonal)
+        # Get upper triangle (excluding diagonal) using vectorized extraction
         n = len(titles)
-        pair_sims = [similarities[i][j] for i in range(n) for j in range(i + 1, n)]
+        i_upper, j_upper = np.triu_indices(n, k=1)
+        pair_sims = similarities[i_upper, j_upper]
         
-        if not pair_sims:
+        if len(pair_sims) == 0:
             return 1.0
         
         avg_sim = float(np.mean(pair_sims))
