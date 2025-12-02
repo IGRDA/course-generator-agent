@@ -97,3 +97,4 @@ def _weighted_ngram_similarity(text1: str, text2: str) -> float:
     
     # Weighted sum: penalize higher n-gram matches more
     return (1 * sim_2 + 2 * sim_3 + 3 * sim_4) / 6
+

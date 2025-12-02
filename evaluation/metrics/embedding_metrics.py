@@ -102,3 +102,4 @@ def _compute_cosine_similarity_matrix(embeddings: np.ndarray) -> np.ndarray:
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     normalized = embeddings / norms
     return np.dot(normalized, normalized.T)
+

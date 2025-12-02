@@ -112,7 +112,7 @@ class OverallEvaluator(BaseEvaluator):
     
     def _compute_structure_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute structure-based metrics using dedicated module."""
-        from evaluation.structure_metrics import compute_title_uniqueness
+        from evaluation.metrics.structure_metrics import compute_title_uniqueness
         
         title_uniqueness = compute_title_uniqueness(course_state)
         
@@ -122,7 +122,7 @@ class OverallEvaluator(BaseEvaluator):
     
     def _compute_embedding_metrics(self, course_state: CourseState) -> Dict[str, Any]:
         """Compute embedding-based similarity metrics."""
-        from evaluation.embedding_metrics import (
+        from evaluation.metrics.embedding_metrics import (
             compute_section_similarity,
             compute_title_embedding_similarity
         )

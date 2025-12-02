@@ -110,7 +110,7 @@ class SectionEvaluator(BaseEvaluator):
             return {"error": "No content to analyze"}
         
         # Lazy import to handle optional dependency
-        from evaluation.nlp_metrics import compute_readability, compute_repetition_metrics
+        from evaluation.metrics.nlp_metrics import compute_readability, compute_repetition_metrics
         
         combined_text = "\n\n".join(theories)
         

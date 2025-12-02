@@ -117,3 +117,4 @@ def _compute_ngram_repetition(tokens: List[str], n: int) -> float:
     repeated = sum(c for c in counts.values() if c > 1)
     
     return round(repeated / total, 4) if total > 0 else 0.0
+
