@@ -8,34 +8,15 @@ from .prompts import INDEX_EVALUATION_PROMPT, CORRECTION_PROMPT
 
 
 class IndexEvaluator(BaseEvaluator):
-    """
-    Evaluates the course index/structure for coverage, logical organization, and balance.
-    """
+    """Evaluates the course index/structure for coverage, logical organization, and balance."""
     
     @traceable(name="index_evaluator")
     def evaluate(self, course_state: CourseState) -> Dict[str, Any]:
-        """
-        Evaluate the course index.
-        
-        Args:
-            course_state: The CourseState to evaluate
-            
-        Returns:
-            Dictionary with scores and metrics
-        """
-        # Extract structure info
+        """Evaluate the course index."""
         num_modules = len(course_state.modules)
         num_submodules = sum(len(m.submodules) for m in course_state.modules)
-        num_sections = sum(
-            len(sm.sections) 
-            for m in course_state.modules 
-            for sm in m.submodules
-        )
+        num_sections = self.count_sections(course_state)
         
-        # Build structure text for LLM
-        course_structure = self._build_structure_text(course_state)
-        
-        # Run LLM-as-judge evaluation
         llm_scores = self.evaluate_with_rubric(
             prompt=INDEX_EVALUATION_PROMPT,
             output_model=MultiCriteriaScore,
@@ -44,39 +25,24 @@ class IndexEvaluator(BaseEvaluator):
                 "num_modules": num_modules,
                 "num_submodules": num_submodules,
                 "num_sections": num_sections,
-                "course_structure": course_structure,
+                "course_structure": self._build_structure_text(course_state),
             },
             correction_prompt=CORRECTION_PROMPT
         )
         
-        # Schema validation checks
-        schema_checks = self._run_schema_checks(course_state)
-        
-        # Compute average LLM score
         avg_llm_score = self.compute_average_score([
-            llm_scores.coverage,
-            llm_scores.structure,
-            llm_scores.balance
+            llm_scores.coverage, llm_scores.structure, llm_scores.balance
         ])
         
         return {
             "evaluator": "index",
             "llm_scores": {
-                "coverage": {
-                    "score": llm_scores.coverage.score,
-                    "reasoning": llm_scores.coverage.reasoning
-                },
-                "structure": {
-                    "score": llm_scores.structure.score,
-                    "reasoning": llm_scores.structure.reasoning
-                },
-                "balance": {
-                    "score": llm_scores.balance.score,
-                    "reasoning": llm_scores.balance.reasoning
-                },
+                "coverage": {"score": llm_scores.coverage.score, "reasoning": llm_scores.coverage.reasoning},
+                "structure": {"score": llm_scores.structure.score, "reasoning": llm_scores.structure.reasoning},
+                "balance": {"score": llm_scores.balance.score, "reasoning": llm_scores.balance.reasoning},
                 "average": avg_llm_score
             },
-            "schema_checks": schema_checks,
+            "schema_checks": self._run_schema_checks(course_state),
             "metadata": {
                 "num_modules": num_modules,
                 "num_submodules": num_submodules,
@@ -100,9 +66,7 @@ class IndexEvaluator(BaseEvaluator):
         checks = {
             "has_modules": len(course_state.modules) > 0,
             "has_title": bool(course_state.title),
-            "all_modules_have_submodules": all(
-                len(m.submodules) > 0 for m in course_state.modules
-            ),
+            "all_modules_have_submodules": all(len(m.submodules) > 0 for m in course_state.modules),
             "all_submodules_have_sections": all(
                 len(sm.sections) > 0
                 for m in course_state.modules
@@ -110,11 +74,8 @@ class IndexEvaluator(BaseEvaluator):
             ),
             "all_sections_have_titles": all(
                 bool(s.title)
-                for m in course_state.modules
-                for sm in m.submodules
-                for s in sm.sections
+                for _, _, _, s in self.iter_sections(course_state)
             ),
         }
         checks["all_passed"] = all(checks.values())
         return checks
-

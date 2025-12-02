@@ -16,7 +16,8 @@ Usage:
     python -m evaluation.workflow quick --input output/course.json
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Callable, NamedTuple
+from dataclasses import dataclass
 
 from langsmith import Client
 from langsmith.evaluation import evaluate, EvaluationResult
@@ -33,24 +34,15 @@ from evaluators.html_evaluator import HtmlEvaluator
 from evaluators.overall_evaluator import OverallEvaluator
 
 
-# ---- Helper Functions ----
-
-def _get_course_state(inputs: dict) -> CourseState:
-    """Extract CourseState from example inputs."""
-    return CourseState.model_validate(inputs["course_data"])
-
-
 # ---- Evaluation Graph State ----
 
 class EvalGraphState(BaseModel):
     """State for the evaluation graph."""
-    # Input
     course_state: CourseState
     provider: str = "mistral"
     max_retries: int = 3
-    steps: Optional[List[str]] = None  # Optional list of evaluators to run
+    steps: Optional[List[str]] = None
     
-    # Results from each evaluator (populated by nodes)
     index_result: Optional[Dict[str, Any]] = None
     section_result: Optional[Dict[str, Any]] = None
     activities_result: Optional[Dict[str, Any]] = None
@@ -61,107 +53,49 @@ class EvalGraphState(BaseModel):
         arbitrary_types_allowed = True
 
 
-# ---- Graph Nodes ----
+# ---- Evaluator Registry & Node Factory ----
 
-def run_index_evaluation(state: EvalGraphState) -> Dict[str, Any]:
-    """Run index evaluator and return result."""
-    print("   Running index evaluation...")
-    evaluator = IndexEvaluator(provider=state.provider, max_retries=state.max_retries)
-    result = evaluator.evaluate(state.course_state)
-    print("   ✓ Index evaluation complete")
-    return {"index_result": result}
-
-
-def run_section_evaluation(state: EvalGraphState) -> Dict[str, Any]:
-    """Run section evaluator and return result."""
-    print("   Running section evaluation...")
-    evaluator = SectionEvaluator(provider=state.provider, max_retries=state.max_retries)
-    result = evaluator.evaluate(state.course_state)
-    print("   ✓ Section evaluation complete")
-    return {"section_result": result}
+EVALUATOR_REGISTRY = [
+    ("index_evaluator", "index_eval", "index_result", IndexEvaluator),
+    ("section_evaluator", "section_eval", "section_result", SectionEvaluator),
+    ("activities_evaluator", "activities_eval", "activities_result", ActivitiesEvaluator),
+    ("html_evaluator", "html_eval", "html_result", HtmlEvaluator),
+    ("overall_evaluator", "overall_eval", "overall_result", OverallEvaluator),
+]
 
 
-def run_activities_evaluation(state: EvalGraphState) -> Dict[str, Any]:
-    """Run activities evaluator and return result."""
-    print("   Running activities evaluation...")
-    evaluator = ActivitiesEvaluator(provider=state.provider, max_retries=state.max_retries)
-    result = evaluator.evaluate(state.course_state)
-    print("   ✓ Activities evaluation complete")
-    return {"activities_result": result}
+def _make_eval_node(evaluator_cls, result_key: str, name: str):
+    """Factory function to create evaluation graph nodes."""
+    def node(state: EvalGraphState) -> Dict[str, Any]:
+        print(f"   Running {name}...")
+        evaluator = evaluator_cls(provider=state.provider, max_retries=state.max_retries)
+        result = evaluator.evaluate(state.course_state)
+        print(f"   ✓ {name} complete")
+        return {result_key: result}
+    return node
 
-
-def run_html_evaluation(state: EvalGraphState) -> Dict[str, Any]:
-    """Run HTML evaluator and return result."""
-    print("   Running HTML evaluation...")
-    evaluator = HtmlEvaluator(provider=state.provider, max_retries=state.max_retries)
-    result = evaluator.evaluate(state.course_state)
-    print("   ✓ HTML evaluation complete")
-    return {"html_result": result}
-
-
-def run_overall_evaluation(state: EvalGraphState) -> Dict[str, Any]:
-    """Run overall evaluator and return result."""
-    print("   Running overall evaluation...")
-    evaluator = OverallEvaluator(provider=state.provider, max_retries=state.max_retries)
-    result = evaluator.evaluate(state.course_state)
-    print("   ✓ Overall evaluation complete")
-    return {"overall_result": result}
-
-
-# ---- Build Graph ----
 
 def get_evaluation_graph(steps: Optional[List[str]] = None):
-    """
-    Build the evaluation StateGraph with optional step selection.
-    
-    Args:
-        steps: Optional list of evaluator names to run. 
-               Valid values: index_evaluator, section_evaluator, activities_evaluator, 
-                            html_evaluator, overall_evaluator
-               If None, runs all evaluators.
-    
-    Returns:
-        Compiled StateGraph
-    """
-    # Define all available evaluators
-    all_evaluators = [
-        ("index_evaluator", "index_eval", run_index_evaluation),
-        ("section_evaluator", "section_eval", run_section_evaluation),
-        ("activities_evaluator", "activities_eval", run_activities_evaluation),
-        ("html_evaluator", "html_eval", run_html_evaluation),
-        ("overall_evaluator", "overall_eval", run_overall_evaluation),
+    """Build the evaluation StateGraph with optional step selection."""
+    evaluators = [
+        (name, node_id, _make_eval_node(cls, result_key, name))
+        for name, node_id, result_key, cls in EVALUATOR_REGISTRY
+        if steps is None or name in steps
     ]
     
-    # Filter evaluators based on steps parameter
-    if steps:
-        evaluators_to_run = [
-            (name, node_id, func) for name, node_id, func in all_evaluators
-            if name in steps
-        ]
-    else:
-        evaluators_to_run = all_evaluators
-    
-    # Build graph
     graph = StateGraph(EvalGraphState)
     
-    # Add nodes for selected evaluators
-    for _, node_id, func in evaluators_to_run:
+    if not evaluators:
+        graph.add_edge(START, END)
+        return graph.compile()
+    
+    for _, node_id, func in evaluators:
         graph.add_node(node_id, func)
     
-    # Define sequential flow
-    if evaluators_to_run:
-        # Connect START to first node
-        graph.add_edge(START, evaluators_to_run[0][1])
-        
-        # Connect nodes sequentially
-        for i in range(len(evaluators_to_run) - 1):
-            graph.add_edge(evaluators_to_run[i][1], evaluators_to_run[i + 1][1])
-        
-        # Connect last node to END
-        graph.add_edge(evaluators_to_run[-1][1], END)
-    else:
-        # No evaluators selected, direct path from START to END
-        graph.add_edge(START, END)
+    graph.add_edge(START, evaluators[0][1])
+    for i in range(len(evaluators) - 1):
+        graph.add_edge(evaluators[i][1], evaluators[i + 1][1])
+    graph.add_edge(evaluators[-1][1], END)
     
     return graph.compile()
 
@@ -177,298 +111,230 @@ def set_evaluator_settings(provider: str = "mistral", max_retries: int = 3, step
     _eval_settings = {"provider": provider, "max_retries": max_retries, "steps": steps}
 
 
-# ---- Metrics Extraction ----
+# ---- Declarative Metrics Extraction ----
 
+@dataclass
+class MetricDef:
+    """Definition for a metric to extract from evaluation state."""
+    key: str
+    path: str  # dot-separated path like "index_result.llm_scores.coverage"
+    normalizer: Callable[[Any], float]
+    comment_fn: Callable[[Any], str]
+    exclude_from_avg: bool = False
+
+
+def _get_nested(obj, path: str):
+    """Get nested value from object/dict using dot notation."""
+    for part in path.split("."):
+        if obj is None:
+            return None
+        if isinstance(obj, dict):
+            obj = obj.get(part)
+        else:
+            obj = getattr(obj, part, None)
+    return obj
+
+
+def _div5(v): return v["score"] / 5.0
+def _div5_direct(v): return v / 5.0
+def _identity(v): return v
+def _invert(v): return round(1 - v, 4)
 def _normalize_readability(score: float) -> float:
     """Normalize readability score (Coleman-Liau/ARI ~5-18) to 0-1 range."""
-    # Grade level 5-18 maps to 1.0-0.0 (lower grade = more readable = higher score)
     clamped = max(5, min(18, score))
     return round(1 - (clamped - 5) / 13, 4)
 
 
-def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
-    """
-    Extract all metrics from evaluation graph state.
-    Converts evaluator results to LangSmith EvaluationResult format.
-    All scores normalized to 0-1 range.
-    """
+# Metric definitions registry
+METRIC_DEFS: List[MetricDef] = [
+    # Index metrics
+    MetricDef("index_coverage", "index_result.llm_scores.coverage", _div5, lambda v: v["reasoning"]),
+    MetricDef("index_structure", "index_result.llm_scores.structure", _div5, lambda v: v["reasoning"]),
+    MetricDef("index_balance", "index_result.llm_scores.balance", _div5, lambda v: v["reasoning"]),
+    
+    # Section metrics
+    MetricDef("section_accuracy", "section_result.summary.average_accuracy_score", _div5_direct,
+              lambda v: f"Average accuracy score"),
+    MetricDef("readability_score", "section_result.nlp_metrics.readability.readability_score",
+              _normalize_readability, lambda v: f"Coleman-Liau+ARI mean: {v:.1f}"),
+    MetricDef("avg_sentence_length", "section_result.nlp_metrics.readability.avg_sentence_length",
+              _identity, lambda v: f"Avg words/sentence: {v:.1f}", exclude_from_avg=True),
+    MetricDef("word_count", "section_result.nlp_metrics.readability.word_count",
+              _identity, lambda v: f"Total words: {v}", exclude_from_avg=True),
+    MetricDef("vocabulary_diversity", "section_result.nlp_metrics.repetition.type_token_ratio",
+              _identity, lambda v: f"Type-token ratio: {v:.3f}"),
+    MetricDef("ngram_originality", "section_result.nlp_metrics.repetition.weighted_ngram_repetition",
+              _invert, lambda v: f"Weighted n-gram repetition: {v:.3f}"),
+    
+    # Activities metrics
+    MetricDef("activities_quality", "activities_result.summary.average_quality_score", _div5_direct,
+              lambda v: "Average activity quality"),
+    
+    # HTML metrics
+    MetricDef("html_formatting", "html_result.summary.average_formatting_score", _div5_direct,
+              lambda v: "Average HTML formatting score"),
+    
+    # Overall metrics
+    MetricDef("overall_coherence", "overall_result.coherence.score", _div5_direct,
+              lambda v: "Course coherence score"),
+]
+
+
+def _extract_completeness_metrics(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract completeness metrics from overall result."""
     results = []
+    completeness = _get_nested(state, "overall_result.completeness")
+    if not completeness:
+        return results
     
-    # --- Index Metrics ---
-    if state.index_result:
-        llm_scores = state.index_result.get("llm_scores", {})
-        
-        if "coverage" in llm_scores:
-            results.append(EvaluationResult(
-                key="index_coverage",
-                score=llm_scores["coverage"]["score"] / 5.0,
-                comment=llm_scores["coverage"]["reasoning"],
-            ))
-        
-        if "structure" in llm_scores:
-            results.append(EvaluationResult(
-                key="index_structure",
-                score=llm_scores["structure"]["score"] / 5.0,
-                comment=llm_scores["structure"]["reasoning"],
-            ))
-        
-        if "balance" in llm_scores:
-            results.append(EvaluationResult(
-                key="index_balance",
-                score=llm_scores["balance"]["score"] / 5.0,
-                comment=llm_scores["balance"]["reasoning"],
-            ))
+    keys = ["theory_completeness", "activities_completeness", "html_completeness"]
+    comp_score = sum(completeness.get(k, 0) for k in keys) / 3
+    results.append(EvaluationResult(
+        key="overall_completeness", score=comp_score,
+        comment=f"Theory: {completeness.get('theory_completeness', 0):.0%}, "
+                f"Activities: {completeness.get('activities_completeness', 0):.0%}, "
+                f"HTML: {completeness.get('html_completeness', 0):.0%}"
+    ))
+    return results
+
+
+def _extract_activities_completeness(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract activities completeness metric."""
+    checks = _get_nested(state, "activities_result.schema_checks")
+    if not checks:
+        return []
+    total = checks.get("total_sections", 0)
+    with_act = checks.get("sections_with_activities", 0)
+    if total == 0:
+        return []
+    return [EvaluationResult(
+        key="activities_completeness",
+        score=with_act / total,
+        comment=f"{with_act}/{total} sections have activities"
+    )]
+
+
+def _extract_html_completeness(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract HTML completeness metric."""
+    checks = _get_nested(state, "html_result.schema_checks")
+    if not checks:
+        return []
+    total = checks.get("total_sections", 0)
+    with_html = checks.get("sections_with_html", 0)
+    if total == 0:
+        return []
+    return [EvaluationResult(
+        key="html_completeness",
+        score=with_html / total,
+        comment=f"{with_html}/{total} sections have HTML"
+    )]
+
+
+def _extract_structure_metrics(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract title uniqueness metrics from structure analysis."""
+    results = []
+    uniqueness = _get_nested(state, "overall_result.structure_metrics.title_uniqueness")
+    if not uniqueness:
+        return results
     
-    # --- Section Metrics ---
-    if state.section_result:
-        summary = state.section_result.get("summary", {})
-        nlp = state.section_result.get("nlp_metrics", {})
-        
-        if "average_accuracy_score" in summary:
-            results.append(EvaluationResult(
-                key="section_accuracy",
-                score=summary["average_accuracy_score"] / 5.0,
-                comment=f"Evaluated {summary.get('total_sections', 0)} sections",
-            ))
-        
-        # Readability metrics
-        readability = nlp.get("readability", {})
-        if "readability_score" in readability:
-            score = readability["readability_score"]
-            results.append(EvaluationResult(
-                key="readability_score",
-                score=_normalize_readability(score),
-                comment=f"Coleman-Liau+ARI mean: {score:.1f}",
-            ))
-        
-        if "avg_sentence_length" in readability:
-            length = readability["avg_sentence_length"]
-            results.append(EvaluationResult(
-                key="avg_sentence_length",
-                score=length,  # Raw value, not normalized
-                comment=f"Avg words/sentence: {length:.1f}",
-            ))
-        
-        if "word_count" in readability:
-            count = readability["word_count"]
-            results.append(EvaluationResult(
-                key="word_count",
-                score=count,  # Raw word count, not normalized
-                comment=f"Total words: {count}",
-            ))
-        
-        # Repetition metrics
-        repetition = nlp.get("repetition", {})
-        if "type_token_ratio" in repetition:
-            ttr = repetition["type_token_ratio"]
-            results.append(EvaluationResult(
-                key="vocabulary_diversity",
-                score=ttr,
-                comment=f"Type-token ratio: {ttr:.3f}",
-            ))
-        
-        if "weighted_ngram_repetition" in repetition:
-            rep = repetition["weighted_ngram_repetition"]
-            results.append(EvaluationResult(
-                key="ngram_originality",
-                score=round(1 - rep, 4),  # Invert: low repetition = high originality
-                comment=f"Weighted n-gram repetition: {rep:.3f}",
-            ))
+    metric_map = [
+        ("module_uniqueness", "total_modules", "Exact match uniqueness for {n} modules"),
+        ("submodule_uniqueness", "total_submodules", "Exact match uniqueness for {n} submodules"),
+        ("section_uniqueness", "total_sections", "Exact match uniqueness for {n} sections"),
+        ("module_ngram_uniqueness", None, "Weighted n-gram uniqueness for modules"),
+        ("submodule_ngram_uniqueness", None, "Weighted n-gram uniqueness for submodules"),
+        ("section_ngram_uniqueness", None, "Weighted n-gram uniqueness for sections"),
+    ]
     
-    # --- Activities Metrics ---
-    if state.activities_result:
-        checks = state.activities_result.get("schema_checks", {})
-        summary = state.activities_result.get("summary", {})
-        
-        if "average_quality_score" in summary:
-            results.append(EvaluationResult(
-                key="activities_quality",
-                score=summary["average_quality_score"] / 5.0,
-                comment=f"Activity type coverage: {checks.get('activity_type_coverage', 0):.0%}",
-            ))
-        
-        if "total_sections" in checks and "sections_with_activities" in checks:
-            total = checks["total_sections"]
-            with_activities = checks["sections_with_activities"]
-            results.append(EvaluationResult(
-                key="activities_completeness",
-                score=with_activities / total if total > 0 else 0,
-                comment=f"{with_activities}/{total} sections have activities",
-            ))
-    
-    # --- HTML Metrics ---
-    if state.html_result:
-        checks = state.html_result.get("schema_checks", {})
-        summary = state.html_result.get("summary", {})
-        
-        if "average_formatting_score" in summary:
-            results.append(EvaluationResult(
-                key="html_formatting",
-                score=summary["average_formatting_score"] / 5.0,
-                comment=f"Element types: {summary.get('element_type_usage', {})}",
-            ))
-        
-        if "total_sections" in checks and "sections_with_html" in checks:
-            total = checks["total_sections"]
-            with_html = checks["sections_with_html"]
-            results.append(EvaluationResult(
-                key="html_completeness",
-                score=with_html / total if total > 0 else 0,
-                comment=f"{with_html}/{total} sections have HTML",
-            ))
-    
-    # --- Overall Metrics ---
-    if state.overall_result:
-        # Coherence (LLM-based)
-        coherence = state.overall_result.get("coherence", {})
-        if "score" in coherence:
-            results.append(EvaluationResult(
-                key="overall_coherence",
-                score=coherence["score"] / 5.0 if coherence["score"] else 0,
-                comment=coherence.get("reasoning", "No reasoning"),
-            ))
-        
-        # Completeness
-        completeness = state.overall_result.get("completeness", {})
-        if completeness:
-            comp_score = (
-                completeness.get("theory_completeness", 0) +
-                completeness.get("activities_completeness", 0) +
-                completeness.get("html_completeness", 0)
-            ) / 3
-            results.append(EvaluationResult(
-                key="overall_completeness",
-                score=comp_score,
-                comment=f"Theory: {completeness.get('theory_completeness', 0):.0%}, "
-                        f"Activities: {completeness.get('activities_completeness', 0):.0%}, "
-                        f"HTML: {completeness.get('html_completeness', 0):.0%}",
-            ))
-        
-        # Structure metrics - Title Uniqueness (exact match)
-        structure = state.overall_result.get("structure_metrics", {})
-        if structure:
-            uniqueness = structure.get("title_uniqueness", {})
-            
-            if "module_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="module_uniqueness",
-                    score=uniqueness["module_uniqueness"],
-                    comment=f"Exact match uniqueness for {uniqueness.get('total_modules', 0)} modules",
-                ))
-            
-            if "submodule_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="submodule_uniqueness",
-                    score=uniqueness["submodule_uniqueness"],
-                    comment=f"Exact match uniqueness for {uniqueness.get('total_submodules', 0)} submodules",
-                ))
-            
-            if "section_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="section_uniqueness",
-                    score=uniqueness["section_uniqueness"],
-                    comment=f"Exact match uniqueness for {uniqueness.get('total_sections', 0)} sections",
-                ))
-            
-            # N-gram based uniqueness
-            if "module_ngram_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="module_ngram_uniqueness",
-                    score=uniqueness["module_ngram_uniqueness"],
-                    comment="Weighted n-gram uniqueness for modules",
-                ))
-            
-            if "submodule_ngram_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="submodule_ngram_uniqueness",
-                    score=uniqueness["submodule_ngram_uniqueness"],
-                    comment="Weighted n-gram uniqueness for submodules",
-                ))
-            
-            if "section_ngram_uniqueness" in uniqueness:
-                results.append(EvaluationResult(
-                    key="section_ngram_uniqueness",
-                    score=uniqueness["section_ngram_uniqueness"],
-                    comment="Weighted n-gram uniqueness for sections",
-                ))
-        
-        # Embedding metrics
-        embedding = state.overall_result.get("embedding_metrics", {})
-        if embedding and "error" not in embedding:
-            # Title embedding uniqueness
-            title_emb = embedding.get("title_embedding", {})
-            
-            if "module_embedding_uniqueness" in title_emb:
-                results.append(EvaluationResult(
-                    key="module_embedding_uniqueness",
-                    score=title_emb["module_embedding_uniqueness"],
-                    comment="Embedding-based uniqueness for modules",
-                ))
-            
-            if "submodule_embedding_uniqueness" in title_emb:
-                results.append(EvaluationResult(
-                    key="submodule_embedding_uniqueness",
-                    score=title_emb["submodule_embedding_uniqueness"],
-                    comment="Embedding-based uniqueness for submodules",
-                ))
-            
-            if "section_embedding_uniqueness" in title_emb:
-                results.append(EvaluationResult(
-                    key="section_embedding_uniqueness",
-                    score=title_emb["section_embedding_uniqueness"],
-                    comment="Embedding-based uniqueness for sections",
-                ))
-            
-            # Content similarity metrics
-            content_sim = embedding.get("content_similarity", {})
-            if content_sim and "error" not in content_sim:
-                avg_sim = content_sim.get("avg_similarity", 0.5)
-                results.append(EvaluationResult(
-                    key="content_diversity",
-                    score=round(1 - avg_sim, 4),
-                    comment=f"Avg similarity: {avg_sim:.3f}",
-                ))
-                
-                if "max_similarity" in content_sim:
-                    results.append(EvaluationResult(
-                        key="content_max_diversity",
-                        score=round(1 - content_sim["max_similarity"], 4),
-                        comment=f"Max similarity: {content_sim['max_similarity']:.3f}",
-                    ))
-                
-                if "min_similarity" in content_sim:
-                    results.append(EvaluationResult(
-                        key="content_min_diversity",
-                        score=round(1 - content_sim["min_similarity"], 4),
-                        comment=f"Min similarity: {content_sim['min_similarity']:.3f}",
-                    ))
-                
-                if "std_similarity" in content_sim:
-                    # Lower std = more consistent diversity
-                    results.append(EvaluationResult(
-                        key="content_consistency",
-                        score=round(1 - min(1, content_sim["std_similarity"] * 2), 4),
-                        comment=f"Std similarity: {content_sim['std_similarity']:.3f}",
-                    ))
+    for key, count_key, comment_tmpl in metric_map:
+        if key in uniqueness:
+            comment = comment_tmpl.format(n=uniqueness.get(count_key, "")) if count_key else comment_tmpl
+            results.append(EvaluationResult(key=key, score=uniqueness[key], comment=comment))
     
     return results
 
 
-# ---- Combined Evaluator (Single Trace via LangGraph) ----
+def _extract_embedding_metrics(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract embedding-based metrics."""
+    results = []
+    embedding = _get_nested(state, "overall_result.embedding_metrics")
+    if not embedding or "error" in embedding:
+        return results
+    
+    # Title embedding uniqueness
+    title_emb = embedding.get("title_embedding", {})
+    for level in ["module", "submodule", "section"]:
+        key = f"{level}_embedding_uniqueness"
+        if key in title_emb:
+            results.append(EvaluationResult(
+                key=key, score=title_emb[key],
+                comment=f"Embedding-based uniqueness for {level}s"
+            ))
+    
+    # Content similarity
+    content_sim = embedding.get("content_similarity", {})
+    if content_sim and "error" not in content_sim:
+        avg_sim = content_sim.get("avg_similarity", 0.5)
+        results.append(EvaluationResult(
+            key="content_diversity", score=round(1 - avg_sim, 4),
+            comment=f"Avg similarity: {avg_sim:.3f}"
+        ))
+        if "max_similarity" in content_sim:
+            results.append(EvaluationResult(
+                key="content_max_diversity", score=round(1 - content_sim["max_similarity"], 4),
+                comment=f"Max similarity: {content_sim['max_similarity']:.3f}"
+            ))
+        if "min_similarity" in content_sim:
+            results.append(EvaluationResult(
+                key="content_min_diversity", score=round(1 - content_sim["min_similarity"], 4),
+                comment=f"Min similarity: {content_sim['min_similarity']:.3f}"
+            ))
+        if "std_similarity" in content_sim:
+            results.append(EvaluationResult(
+                key="content_consistency", score=round(1 - min(1, content_sim["std_similarity"] * 2), 4),
+                comment=f"Std similarity: {content_sim['std_similarity']:.3f}"
+            ))
+    
+    return results
+
+
+def extract_metrics(state: EvalGraphState) -> List[EvaluationResult]:
+    """Extract all metrics from evaluation graph state."""
+    results = []
+    
+    # Extract declarative metrics
+    for metric in METRIC_DEFS:
+        value = _get_nested(state, metric.path)
+        if value is not None:
+            try:
+                results.append(EvaluationResult(
+                    key=metric.key,
+                    score=metric.normalizer(value),
+                    comment=metric.comment_fn(value)
+                ))
+            except (TypeError, KeyError):
+                pass  # Skip metrics that can't be computed
+    
+    # Extract complex metrics via helper functions
+    results.extend(_extract_completeness_metrics(state))
+    results.extend(_extract_activities_completeness(state))
+    results.extend(_extract_html_completeness(state))
+    results.extend(_extract_structure_metrics(state))
+    results.extend(_extract_embedding_metrics(state))
+    
+    return results
+
+
+# ---- Combined Evaluator ----
 
 def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
-    """
-    Single evaluator that runs the LangGraph evaluation workflow.
-    Creates a single trace containing all evaluation steps.
-    Manually logs all metrics as feedback to create separate columns.
-    """
+    """Single evaluator that runs the LangGraph evaluation workflow."""
     client = Client()
-    course_state = _get_course_state(example.inputs)
+    course_state = CourseState.model_validate(example.inputs["course_data"])
     course_title = example.inputs.get("course_title", "Unknown")
     
     print(f"\n📊 Evaluating: {course_title}")
     
-    # Create evaluation graph state
     eval_state = EvalGraphState(
         course_state=course_state,
         provider=_eval_settings["provider"],
@@ -476,58 +342,33 @@ def combined_evaluator(run: Run, example: Example) -> Dict[str, Any]:
         steps=_eval_settings.get("steps"),
     )
     
-    # Run the evaluation graph (creates single trace)
     graph = get_evaluation_graph(steps=_eval_settings.get("steps"))
     final_state = graph.invoke(eval_state)
     
-    # Convert to EvalGraphState if needed (LangGraph returns dict)
     if isinstance(final_state, dict):
         final_state = EvalGraphState(**final_state)
     
-    # Extract metrics from final state
     metrics = extract_metrics(final_state)
     print(f"   📈 Total metrics extracted: {len(metrics)}")
     
-    # Log all metrics as feedback for UI columns
-    overall_score = 0.0
-    count = 0
-    
-    # Metrics to exclude from average (not normalized to 0-1)
+    # Log metrics and compute average
     exclude_from_avg = {"word_count", "avg_sentence_length"}
+    overall_score, count = 0.0, 0
     
     for metric in metrics:
         try:
-            # Log feedback for UI columns
-            client.create_feedback(
-                run_id=run.id,
-                key=metric.key,
-                score=metric.score,
-                comment=metric.comment,
-            )
-            
-            # Track for average calculation (exclude non-normalized metrics)
+            client.create_feedback(run_id=run.id, key=metric.key, score=metric.score, comment=metric.comment)
             if metric.score is not None and metric.key not in exclude_from_avg:
                 overall_score += metric.score
                 count += 1
-                
-            # Print metric to console
-            score_str = f"{metric.score:.3f}" if metric.score is not None else "N/A"
-            print(f"      ✓ {metric.key}: {score_str}")
-            
+            print(f"      ✓ {metric.key}: {metric.score:.3f}" if metric.score else f"      ✓ {metric.key}: N/A")
         except Exception as e:
-            print(f"      ⚠ Failed to log feedback for {metric.key}: {e}")
+            print(f"      ⚠ Failed to log {metric.key}: {e}")
     
-    # Calculate and print average
     avg_score = overall_score / count if count > 0 else 0.0
     print(f"   📊 Average score: {avg_score:.3f}")
     
-    # Return an EvaluationResult with average score
-    # This satisfies LangSmith's requirement and creates a single summary column
-    return EvaluationResult(
-        key="average_score",
-        score=avg_score,
-        comment=f"Average of {count} metrics"
-    )
+    return EvaluationResult(key="average_score", score=avg_score, comment=f"Average of {count} metrics")
 
 
 # ---- Main Evaluation Functions ----
@@ -540,80 +381,33 @@ def run_evaluation(
     steps: Optional[List[str]] = None,
     example_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """
-    Run evaluation experiment against a LangSmith dataset.
-    
-    Uses a single combined evaluator that runs the graph and logs metrics manually.
-    
-    Args:
-        dataset_name: Name of the LangSmith dataset
-        experiment_prefix: Prefix for experiment name (for comparison)
-        provider: LLM provider for evaluation
-        max_retries: Max retries for LLM calls
-        steps: Optional list of specific evaluators to run
-               (e.g., ['index_evaluator', 'overall_evaluator'])
-               If None, runs all evaluators
-        example_ids: Optional list of specific example IDs to evaluate
-                    If None, evaluates all examples in the dataset
-        
-    Returns:
-        Experiment results
-    """
+    """Run evaluation experiment against a LangSmith dataset."""
     print(f"\n🔬 Running evaluation experiment")
     print(f"   Dataset: {dataset_name}")
     print(f"   Experiment prefix: {experiment_prefix}")
     print(f"   Provider: {provider}")
-    if steps:
-        print(f"   Evaluators: {', '.join(steps)}")
-    else:
-        print(f"   Evaluators: all (full evaluation)")
-    if example_ids:
-        print(f"   Examples to evaluate: {len(example_ids)}")
-    else:
-        print(f"   Examples to evaluate: all in dataset")
+    print(f"   Evaluators: {', '.join(steps) if steps else 'all (full evaluation)'}")
+    print(f"   Examples: {len(example_ids) if example_ids else 'all in dataset'}")
     print("-" * 50)
     
-    # Set global evaluator settings
     set_evaluator_settings(provider=provider, max_retries=max_retries, steps=steps)
     
-    # Define a simple target function (identity - we're evaluating stored outputs)
     def target(inputs: dict) -> dict:
-        """Target function - returns inputs as outputs for evaluation."""
         return {"course_title": inputs.get("course_title", "Unknown")}
     
-    # Prepare data parameter for evaluate()
-    # If specific examples are requested, filter by creating example list
     if example_ids:
-        # Get client and fetch specific examples
         client = get_client()
-        dataset = next((ds for ds in client.list_datasets() if ds.name == dataset_name), None)
-        if not dataset:
-            raise ValueError(f"Dataset not found: {dataset_name}")
-        
-        # Create a generator of specific examples
-        def get_examples():
-            for example_id in example_ids:
-                try:
-                    example = client.read_example(example_id)
-                    yield example
-                except Exception as e:
-                    print(f"   ⚠ Warning: Could not read example {example_id}: {e}")
-        
-        data_param = list(get_examples())
+        data_param = [client.read_example(eid) for eid in example_ids]
     else:
         data_param = dataset_name
     
-    # Run evaluation with single combined evaluator
-    # This evaluator manually logs all metrics as feedback, creating separate columns
-    results = evaluate(
+    return evaluate(
         target,
         data=data_param,
         evaluators=[combined_evaluator],
         experiment_prefix=experiment_prefix,
-        max_concurrency=1,  # Sequential to ensure proper feedback logging
+        max_concurrency=1,
     )
-    
-    return results
 
 
 def quick_evaluate(
@@ -623,45 +417,21 @@ def quick_evaluate(
     experiment_prefix: str = "quick-eval",
     steps: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """
-    Quick evaluation of a single file (creates temporary dataset automatically).
-    
-    This function:
-    - Creates or reuses a dataset based on the course title
-    - Adds the file to the dataset (or reuses existing if duplicate)
-    - Evaluates ONLY the specified file (not all examples in the dataset)
-    
-    Args:
-        input_file: Path to course JSON file
-        provider: LLM provider for evaluation
-        max_retries: Max retries for LLM calls
-        experiment_prefix: Prefix for experiment name
-        steps: Optional list of specific evaluators to run
-               If None, runs all evaluators (full evaluation)
-        
-    Returns:
-        Experiment results
-    """
-    # Create dataset with single file - name will be auto-generated from course title
+    """Quick evaluation of a single file (creates temporary dataset automatically)."""
     print(f"\n📦 Preparing dataset...")
     dataset_id, dataset_name, example_ids = create_dataset(
-        [input_file], 
-        dataset_name=None, 
-        description="Dataset for course evaluation",
-        use_existing=True  # Reuse existing dataset for quick evaluations
+        [input_file], dataset_name=None, 
+        description="Dataset for course evaluation", use_existing=True
     )
     
-    # Run evaluation on ONLY this specific example
-    results = run_evaluation(
+    return run_evaluation(
         dataset_name=dataset_name,
         experiment_prefix=experiment_prefix,
         provider=provider,
         max_retries=max_retries,
         steps=steps,
-        example_ids=example_ids,  # Evaluate only the specific file
+        example_ids=example_ids,
     )
-    
-    return results
 
 
 # ---- CLI ----
@@ -673,44 +443,38 @@ def main():
     parser = argparse.ArgumentParser(description="Course Evaluation Workflow")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
     
-    # Evaluate command
     eval_parser = subparsers.add_parser("evaluate", help="Run evaluation on a dataset")
     eval_parser.add_argument("--dataset", type=str, required=True, help="Dataset name")
-    eval_parser.add_argument("--experiment-prefix", type=str, default="course-eval", help="Experiment prefix")
-    eval_parser.add_argument("--provider", type=str, default="mistral", help="LLM provider")
-    eval_parser.add_argument("--max-retries", type=int, default=3, help="Max retries for LLM calls")
-    eval_parser.add_argument("--steps", nargs="*", type=str, default=None, 
-                           help="Specific evaluators to run (e.g., index_evaluator overall_evaluator). If not specified, runs all evaluators.")
+    eval_parser.add_argument("--experiment-prefix", type=str, default="course-eval")
+    eval_parser.add_argument("--provider", type=str, default="mistral")
+    eval_parser.add_argument("--max-retries", type=int, default=3)
+    eval_parser.add_argument("--steps", nargs="*", type=str, default=None)
     
-    # Quick evaluate command
-    quick_parser = subparsers.add_parser("quick", help="Quick evaluation of a single file (auto-creates dataset)")
+    quick_parser = subparsers.add_parser("quick", help="Quick evaluation of a single file")
     quick_parser.add_argument("--input", type=str, required=True, help="Input JSON file")
-    quick_parser.add_argument("--provider", type=str, default="mistral", help="LLM provider")
-    quick_parser.add_argument("--max-retries", type=int, default=3, help="Max retries for LLM calls")
-    quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval", help="Experiment prefix")
-    quick_parser.add_argument("--steps", nargs="*", type=str, default=None,
-                           help="Specific evaluators to run (e.g., index_evaluator overall_evaluator). If not specified, runs all evaluators.")
+    quick_parser.add_argument("--provider", type=str, default="mistral")
+    quick_parser.add_argument("--max-retries", type=int, default=3)
+    quick_parser.add_argument("--experiment-prefix", type=str, default="quick-eval")
+    quick_parser.add_argument("--steps", nargs="*", type=str, default=None)
     
     args = parser.parse_args()
     
     if args.command == "evaluate":
-        results = run_evaluation(
+        run_evaluation(
             dataset_name=args.dataset,
             experiment_prefix=args.experiment_prefix,
             provider=args.provider,
             max_retries=args.max_retries,
-            steps=args.steps if args.steps else None,
+            steps=args.steps,
         )
-        
     elif args.command == "quick":
-        results = quick_evaluate(
+        quick_evaluate(
             input_file=args.input,
             provider=args.provider,
             max_retries=args.max_retries,
             experiment_prefix=args.experiment_prefix,
-            steps=args.steps if args.steps else None,
+            steps=args.steps,
         )
-        
     else:
         parser.print_help()
 

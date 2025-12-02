@@ -1,14 +1,16 @@
 """Base evaluator with shared LLM-as-judge logic and retry pattern."""
 
-from typing import Type, TypeVar
+from typing import Type, TypeVar, Iterator, Tuple
 from pydantic import BaseModel, Field
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from LLMs.text2text import create_text_llm, resolve_text_model_name
+from main.state import CourseState
 
 
 # ---- Rubric Score Models ----
+
 class RubricScore(BaseModel):
     """Standard rubric score with 1-5 scale."""
     score: int = Field(..., ge=1, le=5, description="Score from 1 (Poor) to 5 (Excellent)")
@@ -22,24 +24,9 @@ class MultiCriteriaScore(BaseModel):
     balance: RubricScore = Field(..., description="Balance across sections score")
 
 
-class SectionScore(BaseModel):
-    """Score for section content evaluation."""
-    accuracy: RubricScore = Field(..., description="Factual accuracy score")
-
-
-class ActivityScore(BaseModel):
-    """Score for activities evaluation."""
-    quality: RubricScore = Field(..., description="Activity quality and relevance score")
-
-
-class HtmlScore(BaseModel):
-    """Score for HTML structure evaluation."""
-    formatting: RubricScore = Field(..., description="HTML formatting quality score")
-
-
-class OverallScore(BaseModel):
-    """Score for overall course evaluation."""
-    coherence: RubricScore = Field(..., description="Course-wide coherence score")
+class SingleCriteriaScore(BaseModel):
+    """Generic single-criteria score for evaluations with one metric."""
+    score: RubricScore = Field(..., description="Evaluation score")
 
 
 T = TypeVar('T', bound=BaseModel)
@@ -47,8 +34,8 @@ T = TypeVar('T', bound=BaseModel)
 
 class BaseEvaluator:
     """
-    Base class for all evaluators with shared LLM creation and retry logic.
-    Uses the same patterns as the agents for consistency.
+    Base class for all evaluators with shared LLM creation, retry logic,
+    and course iteration helpers.
     """
     
     def __init__(self, provider: str = "mistral", max_retries: int = 3):
@@ -68,11 +55,35 @@ class BaseEvaluator:
         """Lazy-load the LLM."""
         if self._llm is None:
             model_name = resolve_text_model_name(self.provider)
-            llm_kwargs = {"temperature": 0.0}  # Low temperature for consistent evaluation
+            llm_kwargs = {"temperature": 0.0}
             if model_name:
                 llm_kwargs["model_name"] = model_name
             self._llm = create_text_llm(provider=self.provider, **llm_kwargs)
         return self._llm
+    
+    # ---- Course Iteration Helpers ----
+    
+    def iter_sections(self, course_state: CourseState) -> Iterator[Tuple[str, any, any, any]]:
+        """
+        Iterate over all sections in a course.
+        
+        Yields:
+            Tuple of (section_id, module, submodule, section)
+        """
+        for m_idx, module in enumerate(course_state.modules):
+            for sm_idx, submodule in enumerate(module.submodules):
+                for s_idx, section in enumerate(submodule.sections):
+                    yield f"{m_idx+1}.{sm_idx+1}.{s_idx+1}", module, submodule, section
+    
+    def count_sections(self, course_state: CourseState) -> int:
+        """Count total sections in a course."""
+        return sum(
+            len(sm.sections)
+            for m in course_state.modules
+            for sm in m.submodules
+        )
+    
+    # ---- LLM Evaluation ----
     
     def evaluate_with_rubric(
         self,
@@ -94,29 +105,21 @@ class BaseEvaluator:
             Parsed evaluation result as Pydantic model
         """
         parser = PydanticOutputParser(pydantic_object=output_model)
-        
-        # Add format instructions to variables
         prompt_variables["format_instructions"] = parser.get_format_instructions()
         
-        # Create chain
         chain = prompt | self.llm | StrOutputParser()
-        
-        # Create fix parser for retry
         fix_parser = RetryWithErrorOutputParser.from_llm(
             llm=self.llm,
             parser=parser,
             max_retries=self.max_retries,
         )
         
-        # Invoke the chain
         raw = chain.invoke(prompt_variables)
         
-        # Try to parse, with fallback to retry parser
         try:
-            result = parser.parse(raw)
+            return parser.parse(raw)
         except Exception as e:
             if correction_prompt is None:
-                # Use default correction prompt
                 correction_prompt = ChatPromptTemplate.from_messages([
                     ("system", "Fix the JSON output to match the required schema."),
                     ("human", """The previous output had an error: {error}
@@ -130,7 +133,7 @@ Required format:
 Please provide a corrected JSON output.""")
                 ])
             
-            result = fix_parser.parse_with_prompt(
+            return fix_parser.parse_with_prompt(
                 completion=raw,
                 prompt_value=correction_prompt.format_prompt(
                     error=str(e),
@@ -138,12 +141,9 @@ Please provide a corrected JSON output.""")
                     format_instructions=parser.get_format_instructions(),
                 ),
             )
-        
-        return result
     
     def compute_average_score(self, scores: list[RubricScore]) -> float:
         """Compute average score from a list of RubricScores."""
         if not scores:
             return 0.0
         return sum(s.score for s in scores) / len(scores)
-
