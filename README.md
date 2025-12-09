@@ -50,15 +50,24 @@ python3 -m main.workflow_pdf
 
 ### Evaluate Course Output
 
+Install eval dependencies
+
+```bash
+pip3 install -e ".[evaluation]"
+```
+
 Evaluate generated courses using LangSmith:
 
 ```bash
+
+# Dataset mode
 # Create evaluation dataset from course outputs
 python3 -m evaluation.dataset create-dataset --inputs output/*.json
 
 # Run full evaluation on a dataset
 python3 -m evaluation.workflow evaluate --dataset my-courses
 
+# Single file mode
 # Quick evaluation of a single file
 python3 -m evaluation.workflow quick --input output/course.json
 ```
