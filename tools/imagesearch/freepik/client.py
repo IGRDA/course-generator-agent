@@ -19,7 +19,6 @@ def search_images(query: str, max_results: int = 5) -> List[dict]:
     if not api_key:
         return [{"error": "FREEPIK_API_KEY not found in environment variables"}]
 
-    
     url = "https://api.freepik.com/v1/resources"
     
     headers = {
@@ -27,10 +26,10 @@ def search_images(query: str, max_results: int = 5) -> List[dict]:
         "Accept-Language": "en-US"
     }
     
-    # 'term' is the standard search parameter for Freepik resources endpoint
+    # 'limit' is the standard search parameter for Freepik resources endpoint
     params = {
         "term": query,
-        "per_page": max_results,
+        "limit": max_results,
         "page": 1
     }
     
