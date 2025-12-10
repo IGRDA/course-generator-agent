@@ -81,6 +81,114 @@ def render_element(element: HtmlElement) -> str:
         html += '</div>'
         return html
     
+    elif element.type == "accordion":
+        # Render accordion with collapsible sections
+        html = '<div class="accordion-container">'
+        if isinstance(element.content, list):
+            for idx, block in enumerate(element.content):
+                html += f'<div class="accordion-item">'
+                html += f'<div class="accordion-header" onclick="toggleAccordion(this)">'
+                html += f'<i class="{block.icon}"></i> {escape_html(block.title)}'
+                html += '<span class="accordion-toggle">▼</span>'
+                html += '</div>'
+                html += f'<div class="accordion-body" style="display: {"block" if idx == 0 else "none"};">'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div></div>'
+        html += '</div>'
+        return html
+    
+    elif element.type == "tabs":
+        # Render tabs interface
+        html = '<div class="tabs-container">'
+        if isinstance(element.content, list):
+            # Render tab headers
+            html += '<div class="tabs-header">'
+            for idx, block in enumerate(element.content):
+                active_class = " active" if idx == 0 else ""
+                html += f'<button class="tab-button{active_class}" onclick="switchTab(this, \'tab-{idx}\')">'
+                html += f'<i class="{block.icon}"></i> {escape_html(block.title)}'
+                html += '</button>'
+            html += '</div>'
+            # Render tab content
+            for idx, block in enumerate(element.content):
+                display_style = "block" if idx == 0 else "none"
+                html += f'<div class="tab-content" id="tab-{idx}" style="display: {display_style};">'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div>'
+        html += '</div>'
+        return html
+    
+    elif element.type == "carousel":
+        # Render carousel/slideshow
+        html = '<div class="carousel-container">'
+        if isinstance(element.content, list):
+            for idx, block in enumerate(element.content):
+                display_style = "block" if idx == 0 else "none"
+                html += f'<div class="carousel-slide" style="display: {display_style};">'
+                html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div>'
+            html += '<div class="carousel-controls">'
+            html += '<button onclick="prevSlide(this)">❮ Previous</button>'
+            html += '<button onclick="nextSlide(this)">Next ❯</button>'
+            html += '</div>'
+        html += '</div>'
+        return html
+    
+    elif element.type == "flip":
+        # Render flip cards
+        html = '<div class="flip-container">'
+        if isinstance(element.content, list):
+            for block in element.content:
+                html += '<div class="flip-card" onclick="this.classList.toggle(\'flipped\')">'
+                html += '<div class="flip-card-inner">'
+                html += '<div class="flip-card-front">'
+                html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                html += '<p class="flip-hint">Click to flip</p>'
+                html += '</div>'
+                html += '<div class="flip-card-back">'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div>'
+                html += '</div></div>'
+        html += '</div>'
+        return html
+    
+    elif element.type == "timeline":
+        # Render timeline view
+        html = '<div class="timeline-container">'
+        if isinstance(element.content, list):
+            for idx, block in enumerate(element.content):
+                side_class = "left" if idx % 2 == 0 else "right"
+                html += f'<div class="timeline-item {side_class}">'
+                html += '<div class="timeline-marker"></div>'
+                html += '<div class="timeline-content">'
+                html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div></div>'
+        html += '</div>'
+        return html
+    
+    elif element.type == "conversation":
+        # Render conversation/dialog style
+        html = '<div class="conversation-container">'
+        if isinstance(element.content, list):
+            for idx, block in enumerate(element.content):
+                side_class = "left" if idx % 2 == 0 else "right"
+                html += f'<div class="conversation-message {side_class}">'
+                html += '<div class="message-bubble">'
+                html += f'<div class="message-header"><i class="{block.icon}"></i> {escape_html(block.title)}</div>'
+                html += '<div class="message-body">'
+                for sub_element in block.elements:
+                    html += render_element(sub_element)
+                html += '</div></div></div>'
+        html += '</div>'
+        return html
+    
     return ""
 
 
@@ -89,17 +197,17 @@ def render_section(section: Section, section_num: int) -> str:
     html = f'<section class="course-section" id="section-{section_num}">'
     html += f'<h3 class="section-title">{escape_html(section.title)}</h3>'
     
-    # HTML Structure
+    # HTML Structure - now a direct array
     if section.html:
-        # Iterate through theory elements
-        for element in section.html.theory:
+        # Iterate through html elements
+        for element in section.html:
             # Wrap intro in specific class if it's the first p
-            if element == section.html.theory[0] and element.type == "p":
+            if element == section.html[0] and element.type == "p":
                 html += '<div class="section-intro">'
                 html += render_element(element)
                 html += '</div>'
             # Wrap conclusion in specific class if it's the last p
-            elif element == section.html.theory[-1] and element.type == "p":
+            elif element == section.html[-1] and element.type == "p":
                 html += '<div class="section-conclusion">'
                 html += render_element(element)
                 html += '</div>'
@@ -369,6 +477,243 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
             font-size: 0.95em;
         }}
         
+        /* Accordion Styles */
+        .accordion-container {{
+            margin: 25px 0;
+        }}
+        .accordion-item {{
+            border: 1px solid #e0e7ff;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            overflow: hidden;
+        }}
+        .accordion-header {{
+            background: linear-gradient(to right, #f0f4ff, #fefefe);
+            padding: 15px 20px;
+            cursor: pointer;
+            font-weight: 500;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: #667eea;
+        }}
+        .accordion-header:hover {{
+            background: linear-gradient(to right, #e0e7ff, #f0f4ff);
+        }}
+        .accordion-header i {{
+            margin-right: 10px;
+        }}
+        .accordion-body {{
+            padding: 20px;
+            background: white;
+        }}
+        .accordion-toggle {{
+            transition: transform 0.3s;
+        }}
+        
+        /* Tabs Styles */
+        .tabs-container {{
+            margin: 25px 0;
+        }}
+        .tabs-header {{
+            display: flex;
+            gap: 5px;
+            border-bottom: 2px solid #667eea;
+            margin-bottom: 20px;
+        }}
+        .tab-button {{
+            background: #f8f9fa;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            border-radius: 8px 8px 0 0;
+            font-size: 1em;
+            color: #2c3e50;
+            transition: all 0.3s;
+        }}
+        .tab-button:hover {{
+            background: #e0e7ff;
+        }}
+        .tab-button.active {{
+            background: #667eea;
+            color: white;
+        }}
+        .tab-button i {{
+            margin-right: 8px;
+        }}
+        .tab-content {{
+            padding: 20px;
+            background: #fefefe;
+            border-radius: 0 8px 8px 8px;
+        }}
+        
+        /* Carousel Styles */
+        .carousel-container {{
+            margin: 25px 0;
+            position: relative;
+            padding: 20px;
+            background: #fefefe;
+            border-radius: 8px;
+            border: 2px solid #e0e7ff;
+        }}
+        .carousel-slide {{
+            min-height: 200px;
+        }}
+        .carousel-controls {{
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }}
+        .carousel-controls button {{
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+        }}
+        .carousel-controls button:hover {{
+            background: #764ba2;
+        }}
+        
+        /* Flip Card Styles */
+        .flip-container {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin: 25px 0;
+        }}
+        .flip-card {{
+            perspective: 1000px;
+            height: 250px;
+            cursor: pointer;
+        }}
+        .flip-card-inner {{
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }}
+        .flip-card.flipped .flip-card-inner {{
+            transform: rotateY(180deg);
+        }}
+        .flip-card-front, .flip-card-back {{
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }}
+        .flip-card-front {{
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }}
+        .flip-card-back {{
+            background: #fefefe;
+            border: 2px solid #667eea;
+            transform: rotateY(180deg);
+            overflow-y: auto;
+        }}
+        .flip-hint {{
+            margin-top: 10px;
+            opacity: 0.8;
+            font-size: 0.9em;
+        }}
+        
+        /* Timeline Styles */
+        .timeline-container {{
+            position: relative;
+            margin: 40px 0;
+            padding: 20px 0;
+        }}
+        .timeline-container::before {{
+            content: '';
+            position: absolute;
+            left: 50%;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+            background: #667eea;
+            transform: translateX(-50%);
+        }}
+        .timeline-item {{
+            position: relative;
+            width: 45%;
+            margin-bottom: 30px;
+        }}
+        .timeline-item.left {{
+            left: 0;
+            text-align: right;
+        }}
+        .timeline-item.right {{
+            left: 55%;
+        }}
+        .timeline-marker {{
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #667eea;
+            border: 4px solid white;
+            border-radius: 50%;
+            top: 0;
+        }}
+        .timeline-item.left .timeline-marker {{
+            right: -62px;
+        }}
+        .timeline-item.right .timeline-marker {{
+            left: -62px;
+        }}
+        .timeline-content {{
+            padding: 20px;
+            background: #fefefe;
+            border-radius: 8px;
+            border: 2px solid #e0e7ff;
+        }}
+        
+        /* Conversation Styles */
+        .conversation-container {{
+            margin: 25px 0;
+        }}
+        .conversation-message {{
+            margin-bottom: 20px;
+            display: flex;
+        }}
+        .conversation-message.left {{
+            justify-content: flex-start;
+        }}
+        .conversation-message.right {{
+            justify-content: flex-end;
+        }}
+        .message-bubble {{
+            max-width: 70%;
+            border-radius: 12px;
+            overflow: hidden;
+        }}
+        .conversation-message.left .message-bubble {{
+            background: #f0f4ff;
+            border: 2px solid #667eea;
+        }}
+        .conversation-message.right .message-bubble {{
+            background: #fff9e6;
+            border: 2px solid #f59e0b;
+        }}
+        .message-header {{
+            padding: 10px 15px;
+            font-weight: 600;
+            color: #667eea;
+            border-bottom: 1px solid #e0e7ff;
+        }}
+        .message-body {{
+            padding: 15px;
+        }}
+        
         /* Print Styles */
         @media print {{
             body {{ background: white; }}
@@ -376,6 +721,51 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
             .course-section {{ page-break-inside: avoid; }}
         }}
     </style>
+    <script>
+        function toggleAccordion(header) {{
+            const body = header.nextElementSibling;
+            const toggle = header.querySelector('.accordion-toggle');
+            if (body.style.display === 'none') {{
+                body.style.display = 'block';
+                toggle.style.transform = 'rotate(180deg)';
+            }} else {{
+                body.style.display = 'none';
+                toggle.style.transform = 'rotate(0deg)';
+            }}
+        }}
+        
+        function switchTab(button, tabId) {{
+            const container = button.closest('.tabs-container');
+            container.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+            container.querySelectorAll('.tab-content').forEach(c => c.style.display = 'none');
+            button.classList.add('active');
+            document.getElementById(tabId).style.display = 'block';
+        }}
+        
+        function prevSlide(button) {{
+            const container = button.closest('.carousel-container');
+            const slides = container.querySelectorAll('.carousel-slide');
+            let current = -1;
+            slides.forEach((slide, idx) => {{
+                if (slide.style.display === 'block') current = idx;
+                slide.style.display = 'none';
+            }});
+            const prev = current === 0 ? slides.length - 1 : current - 1;
+            slides[prev].style.display = 'block';
+        }}
+        
+        function nextSlide(button) {{
+            const container = button.closest('.carousel-container');
+            const slides = container.querySelectorAll('.carousel-slide');
+            let current = -1;
+            slides.forEach((slide, idx) => {{
+                if (slide.style.display === 'block') current = idx;
+                slide.style.display = 'none';
+            }});
+            const next = (current + 1) % slides.length;
+            slides[next].style.display = 'block';
+        }}
+    </script>
 </head>
 <body>
     <div class="container">

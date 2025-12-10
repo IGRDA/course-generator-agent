@@ -1,4 +1,4 @@
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 import random
 from operator import add
 from pydantic import BaseModel, Field
@@ -51,7 +51,9 @@ def select_activity_types(mode: str, num: int, section_idx: int) -> tuple[List[s
 class ActivitiesOutput(BaseModel):
     """Complete activities output for a section"""
     glossary: List[GlossaryTerm] = Field(..., min_length=1, max_length=4, description="1-4 glossary terms")
-    key_concept: str = Field(..., alias="keyConcept", description="One sentence key concept summary")
+    key_concept: str = Field(..., description="One sentence key concept summary")
+    interesting_fact: str = Field(default="", description="Interesting fact related to the section")
+    quote: Optional[dict] = Field(default=None, description="Quote with author and text")
     activities: List[Activity] = Field(..., min_length=1, description="List of activities")
     final_activities: List[FinalActivity] = Field(..., min_length=1, description="List of final activities")
 
@@ -192,6 +194,8 @@ def generate_section_activities(state: SectionActivitiesTask) -> dict:
             "section_idx": state.section_idx,
             "glossary": result.glossary,
             "key_concept": result.key_concept,
+            "interesting_fact": result.interesting_fact,
+            "quote": result.quote,
             "activities": result.activities,
             "final_activities": result.final_activities
         }]
@@ -213,7 +217,9 @@ def reduce_activities(state: ActivitiesGenerationState) -> dict:
         # Instantiate OtherElements and assign to section
         section.other_elements = OtherElements(
             glossary=activity_info["glossary"],
-            keyConcept=activity_info["key_concept"],
+            key_concept=activity_info["key_concept"],
+            interesting_fact=activity_info.get("interesting_fact", ""),
+            quote=activity_info.get("quote"),
             activities=activity_info["activities"],
             final_activities=activity_info["final_activities"]
         )

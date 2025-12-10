@@ -1,7 +1,7 @@
 from typing import Annotated, List
 from operator import add
 from pydantic import BaseModel, Field
-from main.state import CourseState, HtmlStructure
+from main.state import CourseState, HtmlElement
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
@@ -126,7 +126,7 @@ def continue_to_html(state: HtmlFormattingState) -> list[Send]:
 
 def generate_section_html(state: SectionHtmlTask) -> dict:
     """
-    Generate HTML structure for a single section.
+    Generate HTML structure for a single section as a direct array.
     Uses structured output with RetryWithErrorOutputParser for validation.
     """
     # Extract context
@@ -140,8 +140,10 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
-    # Create parser
-    parser = PydanticOutputParser(pydantic_object=HtmlStructure)
+    # Create parser for List[HtmlElement]
+    from pydantic import create_model
+    HtmlElementList = create_model('HtmlElementList', elements=(List[HtmlElement], ...))
+    parser = PydanticOutputParser(pydantic_object=HtmlElementList)
     
     # Create fix parser for retry
     fix_parser = RetryWithErrorOutputParser.from_llm(
@@ -180,6 +182,7 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     # Try to parse, with fallback to retry parser
     try:
         result = parser.parse(raw)
+        html_array = result.elements
     except Exception as e:
         print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting correction...")
         result = fix_parser.parse_with_prompt(
@@ -190,17 +193,18 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
                 format_instructions=parser.get_format_instructions(),
             ),
         )
+        html_array = result.elements
     
     print(f"✓ Generated HTML for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
     
-    # Return the completed section info
+    # Return the completed section info with direct array
     return {
         "completed_html": [{
             "module_idx": state.module_idx,
             "submodule_idx": state.submodule_idx,
             "section_idx": state.section_idx,
-            "html_structure": result
+            "html_structure": html_array
         }]
     }
 

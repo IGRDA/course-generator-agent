@@ -14,7 +14,7 @@ You must create content that:
 
 Language: {language}"""),
     
-    ("human", """Convert this theory text into a structured HTML JSON format:
+    ("human", """Convert this theory text into a structured HTML JSON format as a direct array:
 
 THEORY TEXT:
 {theory}
@@ -24,16 +24,17 @@ SECTION TITLE: {section_title}
 REQUIREMENTS:
 
 1. INTRO (required):
-   - First element in the theory list
+   - First element in the array
    - Type: "p" (paragraph)
    - Content: A compelling introduction paragraph (2-3 sentences)
 
 2. MAIN CONTENT (required):
-   - Use "paragraphs" type for the main body content
+   - Use one of the interactive format types for the main body content
+   - Available formats: "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"
    - Content is a list of blocks, each representing a key aspect
    - Minimum 3 blocks
    
-   For each block in "paragraphs":
+   For each block in the interactive format:
    - Title: Short, descriptive title (3-6 words)
    - Icon: Material Design Icon name (e.g., "mdi-book", "mdi-lightbulb", "mdi-chart-line")
      Suggested icon based on section: {suggested_icon}
@@ -46,19 +47,28 @@ REQUIREMENTS:
    {table_instruction}
 
 3. CONCLUSION (required):
-   - Last element in the theory list
+   - Last element in the array
    - Type: "p" (paragraph)
    - Content: A summary or closing thought (2-3 sentences)
 
+INTERACTIVE FORMAT TYPES:
+- "paragraphs": Standard sections with title, icon, and elements
+- "accordion": Collapsible expandable sections
+- "tabs": Tab-based navigation between sections
+- "carousel": Slideshow/carousel format
+- "flip": Flip card animation effects
+- "timeline": Chronological timeline display
+- "conversation": Dialog/chat-style presentation
+
 EXAMPLE STRUCTURE:
 {{
-  "theory": [
+  "elements": [
     {{
       "type": "p",
       "content": "Introduction paragraph explaining the main topic..."
     }},
     {{
-      "type": "paragraphs",
+      "type": "accordion",
       "content": [
         {{
           "title": "First Key Concept",
@@ -73,7 +83,6 @@ EXAMPLE STRUCTURE:
           "icon": "mdi-chart-line",
           "elements": [
             {{"type": "p", "content": "Explanation of the second concept..."}},
-            {{"type": "p", "content": "Additional detail..."}}
           ]
         }}
       ]
@@ -88,9 +97,10 @@ EXAMPLE STRUCTURE:
 {format_instructions}
 
 IMPORTANT:
-- The root object must contain a "theory" list
-- Intro and conclusion MUST be simple "p" elements at the start and end of the list
-- The main content MUST be wrapped in a "paragraphs" element
+- Return a direct array wrapped in an "elements" field
+- Intro and conclusion MUST be simple "p" elements at the start and end
+- The main content MUST use one of the interactive format types
+- Choose the format type that best fits the content (accordion for expandable, tabs for categorized, timeline for chronological, etc.)
 - Choose icons that match the content theme
 """)
 ])
@@ -109,9 +119,9 @@ Please fix the errors and return valid JSON following these requirements:
 {format_instructions}
 
 Common issues to check:
-1. Root object must have "theory" list
-2. "paragraphs" content must be a list of blocks with title, icon, and elements
-3. Element types must be "p", "ul", "quote", "table", or "paragraphs"
+1. Root object must have "elements" array (not "theory")
+2. Interactive formats (paragraphs, accordion, tabs, carousel, flip, timeline, conversation) content must be a list of blocks with title, icon, and elements
+3. Element types must be "p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", or "conversation"
 4. Quotes need both "author" and "quote" fields
 5. Tables need "title", "headers" (array), and "rows" (array of arrays)
 """)

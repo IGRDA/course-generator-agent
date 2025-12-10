@@ -47,7 +47,9 @@ class FinalActivity(BaseModel):
 class OtherElements(BaseModel):
     glossary: List[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
     activities: List[Activity] = Field(default_factory=list, description="Interactive activities for the section")
-    key_concept: str = Field(default="", alias="keyConcept", description="Key concept summary for the section")
+    key_concept: str = Field(default="", description="Key concept summary for the section")
+    interesting_fact: str = Field(default="", description="Interesting fact related to the section")
+    quote: Optional[dict] = Field(default=None, description="Quote with author and text fields")
     final_activities: List[FinalActivity] = Field(default_factory=list, description="Final assessment activities for the section")
 
     class Config:
@@ -55,16 +57,12 @@ class OtherElements(BaseModel):
 
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
-    type: Literal["p", "ul", "quote", "table", "paragraphs"] = Field(..., description="Type of HTML element")
+    type: Literal["p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"] = Field(..., description="Type of HTML element")
     content: Union[str, List[str], Dict[str, Any], List['ParagraphBlock']] = Field(..., description="Content of the element")
-
 class ParagraphBlock(BaseModel):
     title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")
     elements: List[HtmlElement] = Field(..., description="List of HTML elements within this block")
-
-class HtmlStructure(BaseModel):
-    theory: List[HtmlElement] = Field(..., description="List of HTML elements forming the section theory")
 
 # Update forward references for recursive definition
 HtmlElement.model_rebuild()
@@ -73,12 +71,12 @@ HtmlElement.model_rebuild()
 class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
     id: str = Field(default="", description="Hierarchical ID (e.g., '1.1.1')")
-    index: int = Field(default=0, description="Sequential index of the section")
     description: str = Field(default="", description="Description of the section")
     
     theory: str = Field(
         default="", 
-        description="Text of the section, expected to be ~n_words words. Can be empty initially for skeleton generation."
+        exclude=True,
+        description="Temporary theory text used during generation, not serialized in output"
     )
     
     other_elements: Optional[OtherElements] = Field(
@@ -86,16 +84,15 @@ class Section(BaseModel):
         description="Interactive elements and metadata nested structure"
     )
     
-    html: Optional[HtmlStructure] = Field(
+    html: Optional[List[HtmlElement]] = Field(
         default=None,
-        description="Structured HTML format for the section content"
+        description="Structured HTML format as direct array of elements"
     )
 
 # ---- Submodule level ----
 class Submodule(BaseModel):
     title: str = Field(..., description="Title of the submodule")
     id: str = Field(default="", description="Hierarchical ID (e.g., '1.1')")
-    index: int = Field(default=0, description="Sequential index of the submodule")
     description: str = Field(default="", description="Description of the submodule")
     duration: float = Field(default=0.0, description="Duration in hours")
     
@@ -107,7 +104,6 @@ class Submodule(BaseModel):
 class Module(BaseModel):
     title: str = Field(..., description="Title of the module")
     id: str = Field(default="", description="Hierarchical ID (e.g., '1')")
-    index: int = Field(default=0, description="Sequential index of the module")
     description: str = Field(default="", description="Description of the module")
     duration: float = Field(default=0.0, description="Duration in hours")
     type: Literal["module"] = Field(default="module", description="Type identifier")
