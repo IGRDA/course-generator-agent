@@ -24,8 +24,6 @@ def generate_index_node(state: CourseState) -> CourseState:
         provider=config.text_llm_provider
     )
     
-    # Preserve original config, update only content fields
-    state.title = content_skeleton.title
     state.modules = content_skeleton.modules
     
     print("Course skeleton generated successfully!")
@@ -162,22 +160,24 @@ if __name__ == "__main__":
     config = CourseConfig(
         title="Chess masterclass",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
-        web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
+        web_search_provider="tavily",  # Web search provider: ddg | tavily | wikipedia
         total_pages=args.total_pages,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
         description="",
         max_retries=8,
-        concurrency=5,  # Number of concurrent section theory generations
+        concurrency=10,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Activities configuration
-        activities_concurrency=4,  # Number of concurrent activity generations
+        activities_concurrency=10,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
         num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
-        html_concurrency=4,  # Number of concurrent HTML generations
-        html_format="tabs",  # "tabs" | "accordion" | "timeline" | "cards" | "formulas"
+        html_concurrency=10,  # Number of concurrent HTML generations
+        select_html="random",  # "LLM" | "random"
+        html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list of available formats
+        html_random_seed=42,  # Seed for deterministic random selection
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True  # Include table elements
     )
@@ -229,4 +229,5 @@ if __name__ == "__main__":
     print(f"   Modules: {len(final_state.modules)}")
     print(f"   Total Sections: {total_sections}")
     print(f"   Language: {final_state.language}")
-    print(f"   Format: {final_state.config.html_format}")
+    print(f"   HTML Selection: {final_state.config.select_html}")
+    print(f"   Available Formats: {final_state.config.html_formats}")

@@ -181,7 +181,9 @@ class CourseConfig(BaseModel):
     
     # HTML configuration
     html_concurrency: int = Field(default=8, description="Number of concurrent HTML structure generations")
-    html_format: Literal["tabs", "accordion", "timeline", "cards"] = Field(default="tabs", description="Format for HTML content display")
+    select_html: Literal["LLM", "random"] = Field(default="LLM", description="HTML format selection mode: LLM chooses or random selection")
+    html_formats: str = Field(default="paragraphs|accordion|tabs|carousel|flip|timeline|conversation", description="Available HTML formats (pipe-separated)")
+    html_random_seed: int = Field(default=42, description="Seed for deterministic random format selection")
     include_quotes_in_html: bool = Field(default=False, description="Whether to include quote elements in HTML structure")
     include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
 

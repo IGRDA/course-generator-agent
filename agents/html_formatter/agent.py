@@ -133,6 +133,10 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     provider = state.course_state.config.text_llm_provider
     max_retries = state.course_state.config.max_retries
     
+    # Parse allowed formats from config
+    allowed_formats = state.course_state.config.html_formats.split('|')
+    allowed_formats_str = ", ".join(f'"{fmt}"' for fmt in allowed_formats)
+    
     # Create LLM
     model_name = resolve_text_model_name(provider)
     llm_kwargs = {"temperature": 0.0}
@@ -176,6 +180,7 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
         "quote_instruction": quote_instruction,
         "table_instruction": table_instruction,
         "suggested_icon": suggested_icon,
+        "allowed_formats": allowed_formats_str,
         "format_instructions": parser.get_format_instructions(),
     })
     
@@ -194,6 +199,28 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
             ),
         )
         html_array = result.elements
+    
+    # Apply random format override if configured
+    if state.course_state.config.select_html == "random":
+        import random
+        
+        # Deterministic seed based on global seed + section position
+        seed = (state.course_state.config.html_random_seed + 
+                state.module_idx * 1000 + 
+                state.submodule_idx * 100 + 
+                state.section_idx)
+        random.seed(seed)
+        
+        # Randomly select format from allowed formats
+        selected_format = random.choice(allowed_formats)
+        
+        # Override the format type in the HTML structure
+        for element in html_array:
+            # Find the interactive format element (not p, ul, quote, table)
+            if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+                element.type = selected_format
+                print(f"  🎲 Random override: {element.type} → {selected_format}")
+                break
     
     print(f"✓ Generated HTML for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")

@@ -30,7 +30,7 @@ REQUIREMENTS:
 
 2. MAIN CONTENT (required):
    - Use one of the interactive format types for the main body content
-   - Available formats: "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"
+   - Available formats: {allowed_formats}
    
    UNIVERSAL BLOCK STRUCTURE (ALL interactive formats use this EXACT structure):
    - Content: List of blocks (minimum 3 blocks)
@@ -62,14 +62,16 @@ REQUIREMENTS:
    - Type: "p" (paragraph)
    - Content: A summary or closing thought (2-3 sentences)
 
-INTERACTIVE FORMAT TYPES (Choose the most appropriate based on content):
+INTERACTIVE FORMAT TYPES (Choose the most appropriate from the available formats):
 
 IMPORTANT: ALL interactive formats use the SAME structure - a list of blocks where each block has:
 - title: Short descriptive title (3-6 words)
 - icon: Material Design Icon name (mdi-*)
 - elements: List of content elements (p, ul, quote, table)
 
-Choose the format that best fits how users will interact with the content:
+Available formats for this section: {allowed_formats}
+
+Format characteristics:
 - "paragraphs": General educational content, standard explanations, default choice for most topics
 - "accordion": Large amounts of information that benefit from collapsible sections, FAQs, detailed breakdowns
 - "tabs": Content with distinct categories or topics that can be clearly separated (e.g., theory vs practice, different methods)
@@ -77,6 +79,8 @@ Choose the format that best fits how users will interact with the content:
 - "flip": Interactive flip cards with blocks that reveal content on interaction (terms/definitions, questions/answers). Same block structure as other formats
 - "timeline": Chronological events, historical progressions, evolution of ideas or technologies
 - "conversation": Dialogues, Q&A format, contrasting viewpoints, debates between perspectives
+
+Choose the format from the available list that best fits how users will interact with the content.
 
 EXAMPLE STRUCTURE (works for ANY interactive format - accordion, tabs, flip, carousel, etc.):
 {{
@@ -121,7 +125,7 @@ EXAMPLE STRUCTURE (works for ANY interactive format - accordion, tabs, flip, car
 }}
 
 CRITICAL NOTES:
-- Replace "INTERACTIVE FORMAT" with one of: paragraphs, accordion, tabs, carousel, flip, timeline, conversation
+- Replace "INTERACTIVE FORMAT" with one of the available formats: {allowed_formats}
 - This EXACT structure applies to ALL formats (including "flip" - no special "front"/"back" fields!)
 - The only difference between formats is the UI presentation, NOT the data structure
 - Choose the best mdi icon for each block's content
@@ -131,9 +135,9 @@ CRITICAL NOTES:
 IMPORTANT:
 - Return a direct array wrapped in an "elements" field
 - Intro and conclusion MUST be simple "p" elements at the start and end
-- The main content MUST use one of the interactive format types
-- YOU MUST CHOOSE the format type that best fits the content characteristics (analyze the theory text and select the most appropriate format)
-- Consider: Is the content chronological? Use timeline. Is it Q&A? Use conversation. Are there distinct categories? Use tabs.
+- The main content MUST use one of the available interactive format types: {allowed_formats}
+- YOU MUST CHOOSE the format type from the available list that best fits the content characteristics
+- Analyze the theory text and select the most appropriate format from the available options
 - Choose icons that match the content theme
 - Each format should have minimum 4 blocks to provide substantial content
 - ALL INTERACTIVE FORMATS USE THE SAME STRUCTURE: {{title, icon, elements}} blocks - no exceptions!
@@ -157,11 +161,11 @@ Please fix the errors and return valid JSON following these requirements:
 
 Common issues to check:
 1. Root object must have "elements" array (not "theory")
-2. ALL interactive formats (paragraphs, accordion, tabs, carousel, flip, timeline, conversation) MUST use the SAME structure:
+2. ALL interactive formats MUST use the SAME structure:
    - content: List of blocks
    - Each block: {{"title": "...", "icon": "mdi-...", "elements": [...]}}
    - NO special fields like "front"/"back" for flip cards
-3. Element types must be "p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", or "conversation"
+3. Element types must be "p", "ul", "quote", "table", or one of the interactive formats
 4. Quotes need both "author" and "text" fields
 5. Tables need "title", "headers" (array), and "rows" (array of arrays)
 6. The "flip" format uses blocks with title/icon/elements, NOT front/back structure
