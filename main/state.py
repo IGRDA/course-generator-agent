@@ -43,17 +43,17 @@ class FinalActivity(BaseModel):
     type: Literal["group_activity", "discussion_forum", "individual_project", "open_ended_quiz"] = Field(..., description="Type of final activity")
     content: FinalActivityContent = Field(..., description="Final activity content")
 
-# ---- Other Elements ----
-class OtherElements(BaseModel):
+# ---- Meta Elements ----
+class MetaElements(BaseModel):
     glossary: List[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
-    activities: List[Activity] = Field(default_factory=list, description="Interactive activities for the section")
     key_concept: str = Field(default="", description="Key concept summary for the section")
     interesting_fact: str = Field(default="", description="Interesting fact related to the section")
     quote: Optional[dict] = Field(default=None, description="Quote with author and text fields")
-    final_activities: List[FinalActivity] = Field(default_factory=list, description="Final assessment activities for the section")
 
-    class Config:
-        populate_by_name = True
+# ---- Activities Section ----
+class ActivitiesSection(BaseModel):
+    quiz: List[Activity] = Field(default_factory=list, description="Quiz activities for the section")
+    application: List[FinalActivity] = Field(default_factory=list, description="Application activities for the section")
 
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
@@ -70,29 +70,33 @@ HtmlElement.model_rebuild()
 # ---- Section level ----
 class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1.1')")
+    index: int = Field(default=0, description="Section index within submodule")
     description: str = Field(default="", description="Description of the section")
     
     theory: str = Field(
         default="", 
-        exclude=True,
-        description="Temporary theory text used during generation, not serialized in output"
-    )
-    
-    other_elements: Optional[OtherElements] = Field(
-        default=None,
-        description="Interactive elements and metadata nested structure"
+        description="Theory text content for the section"
     )
     
     html: Optional[List[HtmlElement]] = Field(
         default=None,
         description="Structured HTML format as direct array of elements"
     )
+    
+    meta_elements: Optional[MetaElements] = Field(
+        default=None,
+        description="Metadata elements: glossary, key concepts, facts, quotes"
+    )
+    
+    activities: Optional[ActivitiesSection] = Field(
+        default=None,
+        description="Activities section with quiz and application activities"
+    )
 
 # ---- Submodule level ----
 class Submodule(BaseModel):
     title: str = Field(..., description="Title of the submodule")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1')")
+    index: int = Field(default=0, description="Submodule index within module")
     description: str = Field(default="", description="Description of the submodule")
     duration: float = Field(default=0.0, description="Duration in hours")
     
@@ -103,7 +107,8 @@ class Submodule(BaseModel):
 # ---- Module level ----
 class Module(BaseModel):
     title: str = Field(..., description="Title of the module")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1')")
+    id: str = Field(default="", description="Simple string identifier matching index")
+    index: int = Field(default=0, description="Module index in course")
     description: str = Field(default="", description="Description of the module")
     duration: float = Field(default=0.0, description="Duration in hours")
     type: Literal["module"] = Field(default="module", description="Type identifier")

@@ -70,21 +70,28 @@ def generate_activities_node(state: CourseState) -> CourseState:
 
 
 def calculate_metadata_node(state: CourseState) -> CourseState:
-    """Calculate IDs and durations for all course elements"""
-    print("Calculating course metadata (IDs, Durations)...")
+    """Calculate IDs, indexes and durations for all course elements"""
+    print("Calculating course metadata (IDs, Indexes, Durations)...")
     
     for m_idx, module in enumerate(state.modules):
+        # Simple string ID matching index
         module.id = str(m_idx + 1)
+        module.index = m_idx + 1
+        
         if not module.description:
             module.description = module.title
             
         for sm_idx, submodule in enumerate(module.submodules):
-            submodule.id = f"{module.id}.{sm_idx + 1}"
+            # Submodules only have index, no id
+            submodule.index = sm_idx + 1
+            
             if not submodule.description:
                 submodule.description = submodule.title
             
             for s_idx, section in enumerate(submodule.sections):
-                section.id = f"{submodule.id}.{s_idx + 1}"
+                # Sections only have index, no id
+                section.index = s_idx + 1
+                
                 if not section.description:
                     section.description = section.title
             

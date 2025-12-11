@@ -14,7 +14,7 @@ You must create content that:
 
 Language: {language}"""),
     
-    ("human", """Convert this theory text into a structured HTML JSON format as a direct array:
+    ("human", f"""Convert this theory text into a structured HTML JSON format as a direct array:
 
 THEORY TEXT:
 {theory}
@@ -51,16 +51,16 @@ REQUIREMENTS:
    - Type: "p" (paragraph)
    - Content: A summary or closing thought (2-3 sentences)
 
-INTERACTIVE FORMAT TYPES:
-- "paragraphs": Standard sections with title, icon, and elements
-- "accordion": Collapsible expandable sections
-- "tabs": Tab-based navigation between sections
-- "carousel": Slideshow/carousel format
-- "flip": Flip card animation effects
-- "timeline": Chronological timeline display
-- "conversation": Dialog/chat-style presentation
+INTERACTIVE FORMAT TYPES (Choose the most appropriate based on content):
+- "paragraphs": General educational content, standard explanations, default choice for most topics
+- "accordion": Large amounts of information that benefit from collapsible sections, FAQs, detailed breakdowns
+- "tabs": Content with distinct categories or topics that can be clearly separated (e.g., theory vs practice, different methods)
+- "carousel": Sequential information, step-by-step processes, progressive learning concepts
+- "flip": Key concepts with front/back information (terms and definitions, questions and answers, concept pairs)
+- "timeline": Chronological events, historical progressions, evolution of ideas or technologies
+- "conversation": Dialogues, Q&A format, contrasting viewpoints, debates between perspectives
 
-EXAMPLE STRUCTURE:
+EXAMPLE STRUCTURE (using accordion format):
 {{
   "elements": [
     {{
@@ -68,7 +68,7 @@ EXAMPLE STRUCTURE:
       "content": "Introduction paragraph explaining the main topic..."
     }},
     {{
-      "type": "accordion",
+      "type": "INTERACTIVE FORMAT",
       "content": [
         {{
           "title": "First Key Concept",
@@ -83,6 +83,14 @@ EXAMPLE STRUCTURE:
           "icon": "mdi-chart-line",
           "elements": [
             {{"type": "p", "content": "Explanation of the second concept..."}},
+            {{"type": "ul", "content": ["Detail A", "Detail B"]}}
+          ]
+        }},
+        {{
+          "title": "Third Key Concept",
+          "icon": "mdi-brain",
+          "elements": [
+            {{"type": "p", "content": "Explanation of the third concept..."}}
           ]
         }}
       ]
@@ -94,14 +102,19 @@ EXAMPLE STRUCTURE:
   ]
 }}
 
+Note: Replace "INTERACTIVE FORMAT" with the format type you determine is most appropriate for the content (paragraphs, accordion, tabs, carousel, flip, timeline, conversation).
+Choose the best mdi icon for the content.
+
 {format_instructions}
 
 IMPORTANT:
 - Return a direct array wrapped in an "elements" field
 - Intro and conclusion MUST be simple "p" elements at the start and end
 - The main content MUST use one of the interactive format types
-- Choose the format type that best fits the content (accordion for expandable, tabs for categorized, timeline for chronological, etc.)
+- YOU MUST CHOOSE the format type that best fits the content characteristics (analyze the theory text and select the most appropriate format)
+- Consider: Is the content chronological? Use timeline. Is it Q&A? Use conversation. Are there distinct categories? Use tabs.
 - Choose icons that match the content theme
+- Each format should have minimum 4 blocks to provide substantial content
 """)
 ])
 

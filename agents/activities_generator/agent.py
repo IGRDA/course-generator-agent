@@ -2,7 +2,7 @@ from typing import Annotated, List, Optional
 import random
 from operator import add
 from pydantic import BaseModel, Field
-from main.state import CourseState, GlossaryTerm, Activity, FinalActivity, OtherElements
+from main.state import CourseState, GlossaryTerm, Activity, FinalActivity, MetaElements, ActivitiesSection
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
@@ -214,14 +214,18 @@ def reduce_activities(state: ActivitiesGenerationState) -> dict:
         
         section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
         
-        # Instantiate OtherElements and assign to section
-        section.other_elements = OtherElements(
+        # Create MetaElements with glossary and metadata
+        section.meta_elements = MetaElements(
             glossary=activity_info["glossary"],
             key_concept=activity_info["key_concept"],
             interesting_fact=activity_info.get("interesting_fact", ""),
-            quote=activity_info.get("quote"),
-            activities=activity_info["activities"],
-            final_activities=activity_info["final_activities"]
+            quote=activity_info.get("quote")
+        )
+        
+        # Create ActivitiesSection with quiz and application activities
+        section.activities = ActivitiesSection(
+            quiz=activity_info["activities"],
+            application=activity_info["final_activities"]
         )
     
     print(f"✅ All {state.total_sections} section activities generated successfully!")

@@ -192,6 +192,107 @@ def render_element(element: HtmlElement) -> str:
     return ""
 
 
+def render_meta_elements(meta: 'MetaElements') -> str:
+    """Render metadata elements: glossary, key concept, interesting fact, quote."""
+    html = '<div class="meta-elements-section">'
+    
+    # Key Concept
+    if meta.key_concept:
+        html += '<div class="key-concept-box">'
+        html += '<h4 class="key-concept-title"><i class="mdi mdi-lightbulb-on"></i> Concepto Clave</h4>'
+        html += f'<p>{escape_html(meta.key_concept)}</p>'
+        html += '</div>'
+    
+    # Interesting Fact
+    if meta.interesting_fact:
+        html += '<div class="interesting-fact-box">'
+        html += '<h4 class="fact-title"><i class="mdi mdi-brain"></i> Dato Interesante</h4>'
+        html += f'<p>{escape_html(meta.interesting_fact)}</p>'
+        html += '</div>'
+    
+    # Glossary
+    if meta.glossary:
+        html += '<div class="glossary-section">'
+        html += '<h4 class="glossary-title"><i class="mdi mdi-book-alphabet"></i> Glosario</h4>'
+        html += '<dl class="glossary-list">'
+        for term in meta.glossary:
+            html += f'<dt class="glossary-term">{escape_html(term.term)}</dt>'
+            html += f'<dd class="glossary-explanation">{escape_html(term.explanation)}</dd>'
+        html += '</dl>'
+        html += '</div>'
+    
+    # Quote
+    if meta.quote:
+        quote_text = escape_html(str(meta.quote.get("quote", "")))
+        author = escape_html(str(meta.quote.get("author", "")))
+        html += f'<blockquote class="meta-quote"><p>{quote_text}</p><footer>— {author}</footer></blockquote>'
+    
+    html += '</div>'
+    return html
+
+
+def render_activities_section(activities: 'ActivitiesSection') -> str:
+    """Render activities section with quiz and application activities."""
+    html = '<div class="activities-section">'
+    html += '<h4 class="activities-title"><i class="mdi mdi-puzzle"></i> Actividades</h4>'
+    
+    # Quiz Activities
+    if activities.quiz:
+        html += '<div class="quiz-activities">'
+        html += '<h5 class="quiz-subtitle">Evaluación</h5>'
+        for idx, activity in enumerate(activities.quiz, 1):
+            activity_type_map = {
+                "order_list": ("Ordenar Lista", "mdi-order-numeric-ascending"),
+                "fill_gaps": ("Completar Espacios", "mdi-form-textbox"),
+                "swipper": ("Verdadero/Falso", "mdi-swap-horizontal"),
+                "linking_terms": ("Relacionar Términos", "mdi-link-variant"),
+                "multiple_choice": ("Opción Múltiple", "mdi-checkbox-multiple-marked"),
+                "multi_selection": ("Selección Múltiple", "mdi-checkbox-marked-circle")
+            }
+            type_label, icon = activity_type_map.get(activity.type, ("Actividad", "mdi-check"))
+            
+            html += f'<div class="activity-card quiz-card" onclick="toggleActivity(this)">'
+            html += f'<div class="activity-header">'
+            html += f'<i class="{icon}"></i> <strong>{type_label} {idx}</strong>'
+            html += '<span class="activity-toggle">▼</span>'
+            html += '</div>'
+            html += '<div class="activity-body" style="display: none;">'
+            
+            # Render activity content based on type
+            content = activity.content
+            if hasattr(content, 'question'):
+                html += f'<p class="activity-question">{escape_html(content.question)}</p>'
+            
+            html += '</div></div>'
+        html += '</div>'
+    
+    # Application Activities
+    if activities.application:
+        html += '<div class="application-activities">'
+        html += '<h5 class="application-subtitle">Aplicación Práctica</h5>'
+        for idx, activity in enumerate(activities.application, 1):
+            activity_type_map = {
+                "group_activity": ("Actividad Grupal", "mdi-account-group"),
+                "discussion_forum": ("Foro de Discusión", "mdi-forum"),
+                "individual_project": ("Proyecto Individual", "mdi-account-edit"),
+                "open_ended_quiz": ("Pregunta Abierta", "mdi-comment-question")
+            }
+            type_label, icon = activity_type_map.get(activity.type, ("Actividad", "mdi-check"))
+            
+            html += f'<div class="activity-card application-card">'
+            html += f'<div class="activity-header-static">'
+            html += f'<i class="{icon}"></i> <strong>{type_label}</strong>'
+            html += '</div>'
+            html += '<div class="activity-content">'
+            if hasattr(activity.content, 'question'):
+                html += f'<p>{escape_html(activity.content.question)}</p>'
+            html += '</div></div>'
+        html += '</div>'
+    
+    html += '</div>'
+    return html
+
+
 def render_section(section: Section, section_num: int) -> str:
     """Render a complete section with all its content in a simple, linear format."""
     html = f'<section class="course-section" id="section-{section_num}">'
@@ -213,6 +314,14 @@ def render_section(section: Section, section_num: int) -> str:
                 html += '</div>'
             else:
                 html += render_element(element)
+    
+    # Render meta elements (glossary, key concepts, facts, quotes)
+    if section.meta_elements:
+        html += render_meta_elements(section.meta_elements)
+    
+    # Render activities (quiz and application)
+    if section.activities:
+        html += render_activities_section(section.activities)
     
     html += '</section>'
     return html
@@ -714,6 +823,180 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
             padding: 15px;
         }}
         
+        /* Meta Elements Styles */
+        .meta-elements-section {{
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }}
+        
+        .key-concept-box {{
+            background: linear-gradient(to right, #e0f7fa, #ffffff);
+            border-left: 5px solid #00acc1;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 6px;
+        }}
+        .key-concept-title {{
+            color: #00838f;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .interesting-fact-box {{
+            background: linear-gradient(to right, #fff3e0, #ffffff);
+            border-left: 5px solid #ff9800;
+            padding: 20px;
+            margin: 15px 0;
+            border-radius: 6px;
+        }}
+        .fact-title {{
+            color: #e65100;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .glossary-section {{
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 6px;
+            border: 2px solid #e0e7ff;
+        }}
+        .glossary-title {{
+            color: #667eea;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        .glossary-list {{
+            margin: 0;
+            padding: 0;
+        }}
+        .glossary-term {{
+            font-weight: 600;
+            color: #667eea;
+            margin-top: 12px;
+            font-size: 1.05em;
+        }}
+        .glossary-explanation {{
+            margin: 5px 0 5px 20px;
+            color: #2c3e50;
+            line-height: 1.6;
+        }}
+        
+        .meta-quote {{
+            background: #fff9e6;
+            border-left: 5px solid #f59e0b;
+            padding: 20px 25px;
+            margin: 20px 0;
+            font-style: italic;
+            font-size: 1.1em;
+            color: #744210;
+        }}
+        
+        /* Activities Styles */
+        .activities-section {{
+            margin: 30px 0;
+            padding: 25px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            border: 2px solid #667eea;
+        }}
+        .activities-title {{
+            color: #667eea;
+            font-size: 1.4em;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }}
+        
+        .quiz-activities, .application-activities {{
+            margin: 20px 0;
+        }}
+        .quiz-subtitle, .application-subtitle {{
+            color: #764ba2;
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }}
+        
+        .activity-card {{
+            background: white;
+            border-radius: 8px;
+            margin: 10px 0;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: box-shadow 0.3s;
+        }}
+        .activity-card:hover {{
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }}
+        
+        .quiz-card {{
+            border-left: 4px solid #667eea;
+        }}
+        .application-card {{
+            border-left: 4px solid #10b981;
+        }}
+        
+        .activity-header {{
+            padding: 15px 20px;
+            background: linear-gradient(to right, #f0f4ff, #fefefe);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 1.05em;
+        }}
+        .activity-header:hover {{
+            background: linear-gradient(to right, #e0e7ff, #f0f4ff);
+        }}
+        .activity-header i {{
+            margin-right: 8px;
+            color: #667eea;
+        }}
+        
+        .activity-header-static {{
+            padding: 15px 20px;
+            background: linear-gradient(to right, #ecfdf5, #fefefe);
+            font-size: 1.05em;
+        }}
+        .activity-header-static i {{
+            margin-right: 8px;
+            color: #10b981;
+        }}
+        
+        .activity-body {{
+            padding: 20px;
+            border-top: 1px solid #e0e7ff;
+        }}
+        .activity-content {{
+            padding: 15px 20px;
+        }}
+        
+        .activity-question {{
+            font-weight: 500;
+            color: #2c3e50;
+            margin: 0;
+        }}
+        
+        .activity-toggle {{
+            transition: transform 0.3s;
+            color: #667eea;
+            font-size: 1.2em;
+        }}
+        
         /* Print Styles */
         @media print {{
             body {{ background: white; }}
@@ -725,6 +1008,18 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         function toggleAccordion(header) {{
             const body = header.nextElementSibling;
             const toggle = header.querySelector('.accordion-toggle');
+            if (body.style.display === 'none') {{
+                body.style.display = 'block';
+                toggle.style.transform = 'rotate(180deg)';
+            }} else {{
+                body.style.display = 'none';
+                toggle.style.transform = 'rotate(0deg)';
+            }}
+        }}
+        
+        function toggleActivity(card) {{
+            const body = card.querySelector('.activity-body');
+            const toggle = card.querySelector('.activity-toggle');
             if (body.style.display === 'none') {{
                 body.style.display = 'block';
                 toggle.style.transform = 'rotate(180deg)';
