@@ -27,9 +27,6 @@ def generate_index_from_pdf_node(state: CourseState) -> CourseState:
         words_per_page=config.words_per_page,
         provider="openai"  # Hardcoded to use OpenAI for PDF analysis
     )
-    
-    # Preserve original config, update only content fields
-    state.title = content_skeleton.title
     state.modules = content_skeleton.modules
     
     print("Course skeleton generated successfully from PDF!")

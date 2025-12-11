@@ -137,7 +137,7 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     model_name = resolve_text_model_name(provider)
     llm_kwargs = {"temperature": 0.0}
     if model_name:
-        llm_kwargs["model_name"] = "mistral-medium-latest"
+        llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
     # Create parser for List[HtmlElement]

@@ -158,7 +158,7 @@ def reflect_and_improve(
     try:
         # Create LLM with specified provider
         model_name = resolve_text_model_name(provider)
-        llm_kwargs = {"temperature": 0.3}
+        llm_kwargs = {"temperature": 0}
         if model_name:
             llm_kwargs["model_name"] = model_name
         llm = create_text_llm(provider=provider, **llm_kwargs)
@@ -247,9 +247,9 @@ def generate_section(state: SectionTask) -> dict:
     
     # Create LLM with specified provider
     model_name = resolve_text_model_name(provider)
-    llm_kwargs = {"temperature": 0.2}
+    llm_kwargs = {"temperature": 0}
     if model_name:
-        llm_kwargs["model_name"] = "mistral-medium-latest"
+        llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
     # Determine style guidelines based on position
