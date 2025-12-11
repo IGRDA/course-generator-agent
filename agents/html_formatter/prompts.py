@@ -14,7 +14,7 @@ You must create content that:
 
 Language: {language}"""),
     
-    ("human", f"""Convert this theory text into a structured HTML JSON format as a direct array:
+    ("human", """Convert this theory text into a structured HTML JSON format as a direct array:
 
 THEORY TEXT:
 {theory}
