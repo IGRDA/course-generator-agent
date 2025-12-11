@@ -3,7 +3,7 @@ from langchain.prompts import PromptTemplate
 SYLLABUS_ANALYSIS_TEMPLATE = """
 You are analyzing a course syllabus extracted from a PDF document to create a structured course outline.
 
-**IMPORTANT**: Your primary goal is to follow the existing structure and content from the syllabus as closely as possible. Extract the course title, description, and hierarchical structure (modules, submodules, sections) directly from the table of contents, index, or curriculum outline in the syllabus.
+**IMPORTANT**: Your primary goal is to follow the existing structure and content from the syllabus as closely as possible. Extract the course title (without translation), description, and hierarchical structure (modules, submodules, sections) directly from the table of contents, index, or curriculum outline in the syllabus.
 
 Follow these steps carefully, and output ONLY valid JSON that satisfies the schema and counts:
 
@@ -15,7 +15,7 @@ SYLLABUS CONTENT:
 ---
 
 2) Extract information:
-   - Course title: Extract from the syllabus header or title section
+   - Course title: Extract from the syllabus header or title section (keep it in its ORIGINAL language, do NOT translate)
    - Course description: Extract from course overview, description, or objectives section
    - Target language: {language}
    - Table of contents/Index: Identify the course structure (modules, topics, units, sections, etc.)
@@ -49,7 +49,8 @@ SYLLABUS CONTENT:
 IMPORTANT: 
 - Follow the syllabus structure, table of contents, and topic organization as closely as possible
 - Preserve topic names, terminology, and sequence from the original document
-- All course titles, module titles, submodule titles, and section titles must be in {language}
+- Extract the course title in its ORIGINAL language without translating it
+- Module titles, submodule titles, and section titles must be in {language}
 
 {format_instructions}
 """

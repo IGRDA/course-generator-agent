@@ -1,7 +1,7 @@
 from langchain.prompts import PromptTemplate
 
 GEN_TEMPLATE = """
-You are designing a complete course.
+You are designing a complete course structure (skeleton only).
 
 Follow these steps carefully, and output ONLY valid JSON that satisfies the schema and counts:
 
@@ -14,20 +14,24 @@ Follow these steps carefully, and output ONLY valid JSON that satisfies the sche
    - n_modules: {n_modules}
    - n_submodules per module: {n_submodules}
    - n_sections per submodule: {n_sections}
-   - n_words (target words per section, excluding 'theory' which must be empty): {n_words}
+   - Target words per section (for reference only): {n_words}
 
 3) Content rules:
+   - The COURSE TITLE must remain EXACTLY as provided: "{course_title}" (do not translate or modify it)
    - Every module, submodule, and section must have a concise, descriptive title.
-   - ALL TITLES must be written in {language}.
-   - theory: DO NOT generate any content. Set every 'theory' field to the empty string "" exactly.
+   - Each module, submodule, and section should have a brief description (1-2 sentences).
+   - Module titles, submodule titles, section titles, and descriptions must be written in {language}.
+   - Only include structural fields: title, index, description.
    - Ensure all lists have the exact specified lengths.
    - Use only the fields defined in the schema (extra fields are forbidden).
 
 4) Output format:
    - Return ONLY valid JSON that conforms to the schema below (no code fences, no extra commentary).
-   - The top-level object contains the course content structure.
+   - The top-level object contains the course structure skeleton.
 
-IMPORTANT: Write all course titles, module titles, submodule titles, and section titles in {language}.
+IMPORTANT: 
+- Keep the course title EXACTLY as provided: "{course_title}"
+- Write module titles, submodule titles, section titles, and descriptions in {language}.
 
 {format_instructions}
 """
@@ -43,7 +47,7 @@ retry_template = (
     "- Return pure JSON (no code fences, no extra text).\n"
     "- Use exactly the specified counts and field names.\n"
     "- No extra fields are allowed.\n"
-    "- Every 'theory' field must be the empty string \"\" (no content, no whitespace).\n"
-    "- All titles must be written in {language}.\n"
+    "- Only include structural fields: title, index, description.\n"
+    "- All titles and descriptions must be written in {language}.\n"
 )
 retry_prompt = PromptTemplate.from_template(retry_template)
