@@ -29,7 +29,15 @@ Generate the following:
 2. KEY CONCEPT (one sentence):
    - Provide a single sentence that captures the main idea of this section
 
-3. ACTIVITIES:
+3. INTERESTING FACT:
+   - Provide an interesting, relevant fact related to the section content
+   - Should be engaging and enhance understanding
+
+4. QUOTE:
+   - Provide a relevant quote from an expert or notable figure
+   - Format: {{"author": "Name", "text": "Quote text"}}
+
+5. ACTIVITIES:
    You must generate activities of these types: {activity_types}
    
    For each activity type:
@@ -58,7 +66,7 @@ Generate the following:
      Format: {{"question": "...", "solution": ["correct1", "correct2"], "other_options": ["wrong1", "wrong2"]}}
      Requirements: No overlap between solution and other_options, at least 4 total options
 
-4. FINAL ACTIVITIES:
+6. FINAL ACTIVITIES:
    Generate activities of these types: {final_activity_types}
    
    - **group_activity**: Collaborative task for teams

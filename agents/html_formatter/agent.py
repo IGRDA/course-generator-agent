@@ -1,7 +1,7 @@
 from typing import Annotated, List
 from operator import add
 from pydantic import BaseModel, Field
-from main.state import CourseState, HtmlStructure
+from main.state import CourseState, HtmlElement
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
@@ -126,12 +126,16 @@ def continue_to_html(state: HtmlFormattingState) -> list[Send]:
 
 def generate_section_html(state: SectionHtmlTask) -> dict:
     """
-    Generate HTML structure for a single section.
+    Generate HTML structure for a single section as a direct array.
     Uses structured output with RetryWithErrorOutputParser for validation.
     """
     # Extract context
     provider = state.course_state.config.text_llm_provider
     max_retries = state.course_state.config.max_retries
+    
+    # Parse allowed formats from config
+    allowed_formats = state.course_state.config.html_formats.split('|')
+    allowed_formats_str = ", ".join(f'"{fmt}"' for fmt in allowed_formats)
     
     # Create LLM
     model_name = resolve_text_model_name(provider)
@@ -140,8 +144,10 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
-    # Create parser
-    parser = PydanticOutputParser(pydantic_object=HtmlStructure)
+    # Create parser for List[HtmlElement]
+    from pydantic import create_model
+    HtmlElementList = create_model('HtmlElementList', elements=(List[HtmlElement], ...))
+    parser = PydanticOutputParser(pydantic_object=HtmlElementList)
     
     # Create fix parser for retry
     fix_parser = RetryWithErrorOutputParser.from_llm(
@@ -157,7 +163,7 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     quote_instruction = ""
     if state.include_quotes:
         quote_instruction = """- Optionally include quote elements with author and quote text
-  Format: {{"type": "quote", "content": {{"author": "...", "quote": "..."}}}}"""
+  Format: {{"type": "quote", "content": {{"author": "...", "text": "..."}}}}"""
     
     table_instruction = ""
     if state.include_tables:
@@ -174,12 +180,14 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
         "quote_instruction": quote_instruction,
         "table_instruction": table_instruction,
         "suggested_icon": suggested_icon,
+        "allowed_formats": allowed_formats_str,
         "format_instructions": parser.get_format_instructions(),
     })
     
     # Try to parse, with fallback to retry parser
     try:
         result = parser.parse(raw)
+        html_array = result.elements
     except Exception as e:
         print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting correction...")
         result = fix_parser.parse_with_prompt(
@@ -190,17 +198,40 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
                 format_instructions=parser.get_format_instructions(),
             ),
         )
+        html_array = result.elements
+    
+    # Apply random format override if configured
+    if state.course_state.config.select_html == "random":
+        import random
+        
+        # Deterministic seed based on global seed + section position
+        seed = (state.course_state.config.html_random_seed + 
+                state.module_idx * 1000 + 
+                state.submodule_idx * 100 + 
+                state.section_idx)
+        random.seed(seed)
+        
+        # Randomly select format from allowed formats
+        selected_format = random.choice(allowed_formats)
+        
+        # Override the format type in the HTML structure
+        for element in html_array:
+            # Find the interactive format element (not p, ul, quote, table)
+            if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+                element.type = selected_format
+                print(f"  🎲 Random override: {element.type} → {selected_format}")
+                break
     
     print(f"✓ Generated HTML for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
     
-    # Return the completed section info
+    # Return the completed section info with direct array
     return {
         "completed_html": [{
             "module_idx": state.module_idx,
             "submodule_idx": state.submodule_idx,
             "section_idx": state.section_idx,
-            "html_structure": result
+            "html_structure": html_array
         }]
     }
 

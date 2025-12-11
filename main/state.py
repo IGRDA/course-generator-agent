@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Literal, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
@@ -43,28 +43,67 @@ class FinalActivity(BaseModel):
     type: Literal["group_activity", "discussion_forum", "individual_project", "open_ended_quiz"] = Field(..., description="Type of final activity")
     content: FinalActivityContent = Field(..., description="Final activity content")
 
-# ---- Other Elements ----
-class OtherElements(BaseModel):
+# ---- Meta Elements ----
+class MetaElements(BaseModel):
     glossary: List[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
-    activities: List[Activity] = Field(default_factory=list, description="Interactive activities for the section")
-    key_concept: str = Field(default="", alias="keyConcept", description="Key concept summary for the section")
-    final_activities: List[FinalActivity] = Field(default_factory=list, description="Final assessment activities for the section")
+    key_concept: str = Field(default="", description="Key concept summary for the section")
+    interesting_fact: str = Field(default="", description="Interesting fact related to the section")
+    quote: Optional[dict] = Field(default=None, description="Quote with author and text fields")
 
-    class Config:
-        populate_by_name = True
+# ---- Activities Section ----
+class ActivitiesSection(BaseModel):
+    quiz: List[Activity] = Field(default_factory=list, description="Quiz activities for the section")
+    application: List[FinalActivity] = Field(default_factory=list, description="Application activities for the section")
 
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
-    type: Literal["p", "ul", "quote", "table", "paragraphs"] = Field(..., description="Type of HTML element")
+    """HTML element with type-specific content structure.
+    
+    Content types by element type:
+    - 'p': str (paragraph text)
+    - 'ul': List[str] (unordered list items)
+    - 'quote', 'table': Dict[str, Any] (structured data)
+    - 'paragraphs', 'accordion', 'tabs', 'carousel', 'flip', 'timeline', 'conversation': List[ParagraphBlock]
+      (all interactive formats use the same block structure)
+    """
+    type: Literal["p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"] = Field(..., description="Type of HTML element")
     content: Union[str, List[str], Dict[str, Any], List['ParagraphBlock']] = Field(..., description="Content of the element")
-
+    
+    @model_validator(mode='after')
+    def validate_content_type(self) -> 'HtmlElement':
+        """Ensure content type matches element type."""
+        element_type = self.type
+        content = self.content
+        
+        # Simple text paragraph
+        if element_type == "p":
+            if not isinstance(content, str):
+                raise ValueError(f"Element type 'p' requires content to be a string, got {type(content).__name__}")
+        
+        # Unordered list
+        elif element_type == "ul":
+            if not isinstance(content, list) or not all(isinstance(item, str) for item in content):
+                raise ValueError(f"Element type 'ul' requires content to be a list of strings")
+        
+        # Structured elements (quote, table)
+        elif element_type in ["quote", "table"]:
+            if not isinstance(content, dict):
+                raise ValueError(f"Element type '{element_type}' requires content to be a dictionary")
+        
+        # Interactive formats (ALL use the same ParagraphBlock structure)
+        elif element_type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+            if not isinstance(content, list):
+                raise ValueError(f"Interactive format '{element_type}' requires content to be a list of ParagraphBlock")
+            # Check that items are ParagraphBlock (will be validated by Pydantic)
+            for idx, block in enumerate(content):
+                if not isinstance(block, (dict, ParagraphBlock)):
+                    raise ValueError(f"Interactive format '{element_type}' block {idx} must be a ParagraphBlock")
+        
+        return self
 class ParagraphBlock(BaseModel):
     title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")
     elements: List[HtmlElement] = Field(..., description="List of HTML elements within this block")
-
-class HtmlStructure(BaseModel):
-    theory: List[HtmlElement] = Field(..., description="List of HTML elements forming the section theory")
 
 # Update forward references for recursive definition
 HtmlElement.model_rebuild()
@@ -72,30 +111,33 @@ HtmlElement.model_rebuild()
 # ---- Section level ----
 class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1.1')")
-    index: int = Field(default=0, description="Sequential index of the section")
+    index: int = Field(default=0, description="Section index within submodule")
     description: str = Field(default="", description="Description of the section")
     
     theory: str = Field(
         default="", 
-        description="Text of the section, expected to be ~n_words words. Can be empty initially for skeleton generation."
+        description="Theory text content for the section"
     )
     
-    other_elements: Optional[OtherElements] = Field(
+    html: Optional[List[HtmlElement]] = Field(
         default=None,
-        description="Interactive elements and metadata nested structure"
+        description="Structured HTML format as direct array of elements"
     )
     
-    html: Optional[HtmlStructure] = Field(
+    meta_elements: Optional[MetaElements] = Field(
         default=None,
-        description="Structured HTML format for the section content"
+        description="Metadata elements: glossary, key concepts, facts, quotes"
+    )
+    
+    activities: Optional[ActivitiesSection] = Field(
+        default=None,
+        description="Activities section with quiz and application activities"
     )
 
 # ---- Submodule level ----
 class Submodule(BaseModel):
     title: str = Field(..., description="Title of the submodule")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1.1')")
-    index: int = Field(default=0, description="Sequential index of the submodule")
+    index: int = Field(default=0, description="Submodule index within module")
     description: str = Field(default="", description="Description of the submodule")
     duration: float = Field(default=0.0, description="Duration in hours")
     
@@ -106,8 +148,8 @@ class Submodule(BaseModel):
 # ---- Module level ----
 class Module(BaseModel):
     title: str = Field(..., description="Title of the module")
-    id: str = Field(default="", description="Hierarchical ID (e.g., '1')")
-    index: int = Field(default=0, description="Sequential index of the module")
+    id: str = Field(default="", description="Simple string identifier matching index")
+    index: int = Field(default=0, description="Module index in course")
     description: str = Field(default="", description="Description of the module")
     duration: float = Field(default=0.0, description="Duration in hours")
     type: Literal["module"] = Field(default="module", description="Type identifier")
@@ -139,7 +181,9 @@ class CourseConfig(BaseModel):
     
     # HTML configuration
     html_concurrency: int = Field(default=8, description="Number of concurrent HTML structure generations")
-    html_format: Literal["tabs", "accordion", "timeline", "cards"] = Field(default="tabs", description="Format for HTML content display")
+    select_html: Literal["LLM", "random"] = Field(default="LLM", description="HTML format selection mode: LLM chooses or random selection")
+    html_formats: str = Field(default="paragraphs|accordion|tabs|carousel|flip|timeline|conversation", description="Available HTML formats (pipe-separated)")
+    html_random_seed: int = Field(default=42, description="Seed for deterministic random format selection")
     include_quotes_in_html: bool = Field(default=False, description="Whether to include quote elements in HTML structure")
     include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
 

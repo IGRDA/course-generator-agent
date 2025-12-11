@@ -27,9 +27,6 @@ def generate_index_from_pdf_node(state: CourseState) -> CourseState:
         words_per_page=config.words_per_page,
         provider="openai"  # Hardcoded to use OpenAI for PDF analysis
     )
-    
-    # Preserve original config, update only content fields
-    state.title = content_skeleton.title
     state.modules = content_skeleton.modules
     
     print("Course skeleton generated successfully from PDF!")
@@ -74,24 +71,21 @@ def generate_activities_node(state: CourseState) -> CourseState:
 
 
 def calculate_metadata_node(state: CourseState) -> CourseState:
-    """Calculate indices, IDs, and durations for all course elements"""
-    print("Calculating course metadata (IDs, Indices, Durations)...")
+    """Calculate IDs and durations for all course elements"""
+    print("Calculating course metadata (IDs, Durations)...")
     
     for m_idx, module in enumerate(state.modules):
-        module.index = m_idx + 1
-        module.id = str(module.index)
+        module.id = str(m_idx + 1)
         if not module.description:
             module.description = module.title
             
         for sm_idx, submodule in enumerate(module.submodules):
-            submodule.index = sm_idx + 1
-            submodule.id = f"{module.id}.{submodule.index}"
+            submodule.id = f"{module.id}.{sm_idx + 1}"
             if not submodule.description:
                 submodule.description = submodule.title
             
             for s_idx, section in enumerate(submodule.sections):
-                section.index = s_idx + 1
-                section.id = f"{submodule.id}.{section.index}"
+                section.id = f"{submodule.id}.{s_idx + 1}"
                 if not section.description:
                     section.description = section.title
             

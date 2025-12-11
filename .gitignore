@@ -217,3 +217,9 @@ output/
 test.pdf
 
 .DS_Store
+
+# Stract module
+stract_module.py
+
+# Migration
+migration/

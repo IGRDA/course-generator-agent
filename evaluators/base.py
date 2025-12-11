@@ -55,7 +55,7 @@ class BaseEvaluator:
         """Lazy-load the LLM."""
         if self._llm is None:
             model_name = resolve_text_model_name(self.provider)
-            llm_kwargs = {"temperature": 0.0}
+            llm_kwargs = {"temperature": 0}
             if model_name:
                 llm_kwargs["model_name"] = model_name
             self._llm = create_text_llm(provider=self.provider, **llm_kwargs)
