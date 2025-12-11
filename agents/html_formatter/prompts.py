@@ -46,6 +46,14 @@ REQUIREMENTS:
    {quote_instruction}
    {table_instruction}
    
+   CONTENT FORMATTING RULES:
+   - For paragraphs ("p") and lists ("ul"): Use HTML tags like <b> for bold, <i> for italic, <u> for underline
+   - For tables ("table"): Use plain text ONLY - NO HTML tags (<b>, <i>, <u>) inside table cells
+   - NEVER use markdown syntax (no #, *, -, `, etc.)
+   - NEVER include line breaks (no \n, no \r characters)
+   - NEVER use alphanumeric list prefixes (no "a)", "1.", "2)", "-", etc.)
+   - Write all content as continuous flowing text with HTML tags for emphasis (except in tables)
+   
    NOTE: There is NO difference in structure between formats - only in how they're displayed in the UI.
    Do NOT create special structures like "front"/"back" for flip cards - use the universal block structure.
 
@@ -130,6 +138,7 @@ IMPORTANT:
 - Each format should have minimum 4 blocks to provide substantial content
 - ALL INTERACTIVE FORMATS USE THE SAME STRUCTURE: {{title, icon, elements}} blocks - no exceptions!
 - For "flip" cards: Use the SAME block structure, NOT "front"/"back" fields
+- CONTENT FORMATTING: HTML tags (<b>, <i>, <u>) for paragraphs/lists only, plain text in tables, no markdown, no line breaks, no list prefixes
 """)
 ])
 
@@ -156,4 +165,5 @@ Common issues to check:
 4. Quotes need both "author" and "text" fields
 5. Tables need "title", "headers" (array), and "rows" (array of arrays)
 6. The "flip" format uses blocks with title/icon/elements, NOT front/back structure
+7. CONTENT FORMATTING: HTML tags (<b>, <i>, <u>) for paragraphs/lists, plain text in tables - NO markdown (*, #, -, `), NO line breaks (\n, \r), NO list prefixes (1., a), -)
 """)

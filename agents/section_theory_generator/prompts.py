@@ -21,6 +21,9 @@ Requirements:
 - Use clear, educational language appropriate for learning
 - Structure the content with proper paragraphs and flow
 - Make it practical and actionable where appropriate
+- Write in plain text ONLY - NO HTML tags (<b>, <i>, <u>, etc.)
+- NEVER use markdown syntax (no #, *, -, `, etc.)
+- NEVER use alphanumeric list prefixes (no "a)", "1.", "2)", "-", etc.)
 
 CRITICAL LANGUAGE INSTRUCTION:
 Write the ENTIRE content exclusively in {language}. Every single word, phrase, sentence, and paragraph must be in {language}. Do not mix languages or include any English text unless specifically requested.
@@ -161,6 +164,9 @@ Requirements:
 - Ensure all formulas, laws, dates, and facts are accurate
 - Keep the engaging, educational tone
 - Preserve what was already good
+- Write in plain text ONLY - NO HTML tags (<b>, <i>, <u>, etc.)
+- NEVER use markdown syntax (no #, *, -, `, etc.)
+- NEVER use alphanumeric list prefixes (no "a)", "1.", "2)", "-", etc.)
 
 CRITICAL LANGUAGE INSTRUCTION:
 Write the ENTIRE improved content exclusively in {language}. Every single word must be in {language}."""),
