@@ -32,7 +32,7 @@ def render_element(element: HtmlElement) -> str:
     elif element.type == "quote":
         quote_data = element.content
         if isinstance(quote_data, dict):
-            quote_text = escape_html(str(quote_data.get("quote", "")))
+            quote_text = escape_html(str(quote_data.get("text", "")))
             author = escape_html(str(quote_data.get("author", "")))
             return f'<blockquote class="quote"><p>{quote_text}</p><footer>— {author}</footer></blockquote>'
         return ""
@@ -223,7 +223,7 @@ def render_meta_elements(meta: 'MetaElements') -> str:
     
     # Quote
     if meta.quote:
-        quote_text = escape_html(str(meta.quote.get("quote", "")))
+        quote_text = escape_html(str(meta.quote.get("text", "")))
         author = escape_html(str(meta.quote.get("author", "")))
         html += f'<blockquote class="meta-quote"><p>{quote_text}</p><footer>— {author}</footer></blockquote>'
     

@@ -153,7 +153,7 @@ Common issues to check:
    - Each block: {{"title": "...", "icon": "mdi-...", "elements": [...]}}
    - NO special fields like "front"/"back" for flip cards
 3. Element types must be "p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", or "conversation"
-4. Quotes need both "author" and "quote" fields
+4. Quotes need both "author" and "text" fields
 5. Tables need "title", "headers" (array), and "rows" (array of arrays)
 6. The "flip" format uses blocks with title/icon/elements, NOT front/back structure
 """)

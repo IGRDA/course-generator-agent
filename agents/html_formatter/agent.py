@@ -159,7 +159,7 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
     quote_instruction = ""
     if state.include_quotes:
         quote_instruction = """- Optionally include quote elements with author and quote text
-  Format: {{"type": "quote", "content": {{"author": "...", "quote": "..."}}}}"""
+  Format: {{"type": "quote", "content": {{"author": "...", "text": "..."}}}}"""
     
     table_instruction = ""
     if state.include_tables:
