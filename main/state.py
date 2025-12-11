@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Literal, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
@@ -57,8 +57,49 @@ class ActivitiesSection(BaseModel):
 
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
+    """HTML element with type-specific content structure.
+    
+    Content types by element type:
+    - 'p': str (paragraph text)
+    - 'ul': List[str] (unordered list items)
+    - 'quote', 'table': Dict[str, Any] (structured data)
+    - 'paragraphs', 'accordion', 'tabs', 'carousel', 'flip', 'timeline', 'conversation': List[ParagraphBlock]
+      (all interactive formats use the same block structure)
+    """
     type: Literal["p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"] = Field(..., description="Type of HTML element")
     content: Union[str, List[str], Dict[str, Any], List['ParagraphBlock']] = Field(..., description="Content of the element")
+    
+    @model_validator(mode='after')
+    def validate_content_type(self) -> 'HtmlElement':
+        """Ensure content type matches element type."""
+        element_type = self.type
+        content = self.content
+        
+        # Simple text paragraph
+        if element_type == "p":
+            if not isinstance(content, str):
+                raise ValueError(f"Element type 'p' requires content to be a string, got {type(content).__name__}")
+        
+        # Unordered list
+        elif element_type == "ul":
+            if not isinstance(content, list) or not all(isinstance(item, str) for item in content):
+                raise ValueError(f"Element type 'ul' requires content to be a list of strings")
+        
+        # Structured elements (quote, table)
+        elif element_type in ["quote", "table"]:
+            if not isinstance(content, dict):
+                raise ValueError(f"Element type '{element_type}' requires content to be a dictionary")
+        
+        # Interactive formats (ALL use the same ParagraphBlock structure)
+        elif element_type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+            if not isinstance(content, list):
+                raise ValueError(f"Interactive format '{element_type}' requires content to be a list of ParagraphBlock")
+            # Check that items are ParagraphBlock (will be validated by Pydantic)
+            for idx, block in enumerate(content):
+                if not isinstance(block, (dict, ParagraphBlock)):
+                    raise ValueError(f"Interactive format '{element_type}' block {idx} must be a ParagraphBlock")
+        
+        return self
 class ParagraphBlock(BaseModel):
     title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")

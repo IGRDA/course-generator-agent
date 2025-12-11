@@ -31,20 +31,23 @@ REQUIREMENTS:
 2. MAIN CONTENT (required):
    - Use one of the interactive format types for the main body content
    - Available formats: "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"
-   - Content is a list of blocks, each representing a key aspect
-   - Minimum 3 blocks
    
-   For each block in the interactive format:
-   - Title: Short, descriptive title (3-6 words)
-   - Icon: Material Design Icon name (e.g., "mdi-book", "mdi-lightbulb", "mdi-chart-line")
-     Suggested icon based on section: {suggested_icon}
-   - Elements: Minimum 2 elements per block
+   UNIVERSAL BLOCK STRUCTURE (ALL interactive formats use this EXACT structure):
+   - Content: List of blocks (minimum 3 blocks)
+   - Each block has THREE required fields:
+     * title: Short, descriptive title (3-6 words)
+     * icon: Material Design Icon name (e.g., "mdi-book", "mdi-lightbulb", "mdi-chart-line")
+       Suggested icon based on section: {suggested_icon}
+     * elements: List of HTML elements (minimum 2 elements per block)
    
-   Element types inside blocks:
+   Element types allowed inside blocks:
    - "p": Paragraph text (string content)
    - "ul": Bullet list (array of strings)
    {quote_instruction}
    {table_instruction}
+   
+   NOTE: There is NO difference in structure between formats - only in how they're displayed in the UI.
+   Do NOT create special structures like "front"/"back" for flip cards - use the universal block structure.
 
 3. CONCLUSION (required):
    - Last element in the array
@@ -52,15 +55,22 @@ REQUIREMENTS:
    - Content: A summary or closing thought (2-3 sentences)
 
 INTERACTIVE FORMAT TYPES (Choose the most appropriate based on content):
+
+IMPORTANT: ALL interactive formats use the SAME structure - a list of blocks where each block has:
+- title: Short descriptive title (3-6 words)
+- icon: Material Design Icon name (mdi-*)
+- elements: List of content elements (p, ul, quote, table)
+
+Choose the format that best fits how users will interact with the content:
 - "paragraphs": General educational content, standard explanations, default choice for most topics
 - "accordion": Large amounts of information that benefit from collapsible sections, FAQs, detailed breakdowns
 - "tabs": Content with distinct categories or topics that can be clearly separated (e.g., theory vs practice, different methods)
 - "carousel": Sequential information, step-by-step processes, progressive learning concepts
-- "flip": Key concepts with front/back information (terms and definitions, questions and answers, concept pairs)
+- "flip": Interactive flip cards with blocks that reveal content on interaction (terms/definitions, questions/answers). Same block structure as other formats
 - "timeline": Chronological events, historical progressions, evolution of ideas or technologies
 - "conversation": Dialogues, Q&A format, contrasting viewpoints, debates between perspectives
 
-EXAMPLE STRUCTURE (using accordion format):
+EXAMPLE STRUCTURE (works for ANY interactive format - accordion, tabs, flip, carousel, etc.):
 {{
   "elements": [
     {{
@@ -102,8 +112,11 @@ EXAMPLE STRUCTURE (using accordion format):
   ]
 }}
 
-Note: Replace "INTERACTIVE FORMAT" with the format type you determine is most appropriate for the content (paragraphs, accordion, tabs, carousel, flip, timeline, conversation).
-Choose the best mdi icon for the content.
+CRITICAL NOTES:
+- Replace "INTERACTIVE FORMAT" with one of: paragraphs, accordion, tabs, carousel, flip, timeline, conversation
+- This EXACT structure applies to ALL formats (including "flip" - no special "front"/"back" fields!)
+- The only difference between formats is the UI presentation, NOT the data structure
+- Choose the best mdi icon for each block's content
 
 {format_instructions}
 
@@ -115,6 +128,8 @@ IMPORTANT:
 - Consider: Is the content chronological? Use timeline. Is it Q&A? Use conversation. Are there distinct categories? Use tabs.
 - Choose icons that match the content theme
 - Each format should have minimum 4 blocks to provide substantial content
+- ALL INTERACTIVE FORMATS USE THE SAME STRUCTURE: {{title, icon, elements}} blocks - no exceptions!
+- For "flip" cards: Use the SAME block structure, NOT "front"/"back" fields
 """)
 ])
 
@@ -133,8 +148,12 @@ Please fix the errors and return valid JSON following these requirements:
 
 Common issues to check:
 1. Root object must have "elements" array (not "theory")
-2. Interactive formats (paragraphs, accordion, tabs, carousel, flip, timeline, conversation) content must be a list of blocks with title, icon, and elements
+2. ALL interactive formats (paragraphs, accordion, tabs, carousel, flip, timeline, conversation) MUST use the SAME structure:
+   - content: List of blocks
+   - Each block: {{"title": "...", "icon": "mdi-...", "elements": [...]}}
+   - NO special fields like "front"/"back" for flip cards
 3. Element types must be "p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", or "conversation"
 4. Quotes need both "author" and "quote" fields
 5. Tables need "title", "headers" (array), and "rows" (array of arrays)
+6. The "flip" format uses blocks with title/icon/elements, NOT front/back structure
 """)
