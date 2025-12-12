@@ -1,6 +1,6 @@
 from typing import Annotated, List
 from operator import add
-import time
+import os
 from pydantic import BaseModel, Field
 from main.state import CourseState, HtmlElement, ParagraphBlock
 from langchain_core.output_parsers import StrOutputParser
@@ -9,9 +9,6 @@ from langgraph.types import Send, RetryPolicy
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from tools.imagesearch.factory import create_image_search
 from .prompts import image_query_prompt
-
-# Rate limiting: delay between image API calls to avoid 429 errors
-IMAGE_API_DELAY = 0  # seconds between calls
 
 
 # ---- State for individual section task ----
@@ -147,9 +144,6 @@ def generate_section_images(state: ImageGenerationTask) -> dict:
                             
                             images_added += 1
                             
-                            # Rate limiting: delay to avoid overwhelming image API
-                            time.sleep(IMAGE_API_DELAY)
-                            
                         except Exception as e:
                             # Fail loudly as specified
                             print(f"❌ Error generating image for block '{block_obj.title}': {str(e)}")
@@ -270,7 +264,9 @@ if __name__ == "__main__":
     from main.state import CourseConfig
     
     INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251211_190850.json"
-    OUTPUT_FILE = "output_with_images.json"
+    # Generate OUTPUT_FILE from INPUT_FILE with _images suffix
+    base, ext = os.path.splitext(INPUT_FILE)
+    OUTPUT_FILE = f"{base}_images{ext}"
     
     # Hardcoded defaults - change these to override config values
     DEFAULT_LLM_PROVIDER = "mistral"
@@ -342,7 +338,6 @@ if __name__ == "__main__":
     print(f"\n🚀 Starting image generation...")
     print(f"   Using LLM: {course_state.config.text_llm_provider}")
     print(f"   Image provider: {course_state.config.image_search_provider}")
-    print(f"   Rate limit: {IMAGE_API_DELAY}s between API calls")
     
     try:
         updated_state = generate_all_section_images(
