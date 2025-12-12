@@ -189,7 +189,10 @@ class CourseConfig(BaseModel):
     include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
     
     # Image generation configuration
-    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg )")
+    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg)")
+    use_vision_ranking: bool = Field(default=False, description="Use vision LLM (Pixtral) to rank images; if False, picks first result")
+    num_images_to_fetch: int = Field(default=5, description="Number of images to fetch for ranking (only used if use_vision_ranking=True)")
+    vision_llm_provider: str = Field(default="pixtral", description="Vision LLM provider for image ranking (pixtral)")
 
 # ---- Course State ----
 class CourseState(BaseModel):

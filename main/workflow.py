@@ -121,10 +121,17 @@ def generate_html_node(state: CourseState) -> CourseState:
 def generate_images_node(state: CourseState) -> CourseState:
     """Generate images for all HTML blocks using configured image search provider"""
     print(f"Generating images for HTML blocks using {state.config.image_search_provider}...")
+    if state.config.use_vision_ranking:
+        print(f"   Vision ranking enabled: fetching {state.config.num_images_to_fetch} images, ranking with {state.config.vision_llm_provider}")
+    else:
+        print("   Vision ranking disabled: picking first image result")
     
     updated_state = generate_all_section_images(
         state,
-        max_retries=state.config.max_retries
+        max_retries=state.config.max_retries,
+        use_vision_ranking=state.config.use_vision_ranking,
+        num_images_to_fetch=state.config.num_images_to_fetch,
+        vision_provider=state.config.vision_llm_provider,
     )
     
     print("All images generated successfully!")
@@ -197,7 +204,10 @@ if __name__ == "__main__":
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing"  # Image search provider: bing | freepik | ddg 
+        image_search_provider="bing",  # Image search provider: bing | freepik | ddg
+        use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
+        num_images_to_fetch=5,  # Number of images to fetch for ranking
+        vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
     )
     
     initial_state = CourseState(
