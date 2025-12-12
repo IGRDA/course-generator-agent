@@ -79,7 +79,7 @@ def generate_section_images(state: ImageGenerationTask) -> dict:
     model_name = resolve_text_model_name(llm_provider)
     llm_kwargs = {"temperature": 0.3}  # Slightly creative for better queries
     if model_name:
-        llm_kwargs["model_name"] = "model_name"
+        llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=llm_provider, **llm_kwargs)
     
     # Create query generation chain
