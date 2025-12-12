@@ -4,6 +4,7 @@ from agents.section_theory_generator.agent import generate_all_section_theories
 from agents.activities_generator.agent import generate_all_section_activities
 from agents.html_formatter.agent import generate_all_section_html
 from agents.html_formatter.exporter import export_to_html
+from agents.image_generator.agent import generate_all_section_images
 from langgraph.graph import StateGraph, START, END
 
 def generate_index_node(state: CourseState) -> CourseState:
@@ -117,6 +118,19 @@ def generate_html_node(state: CourseState) -> CourseState:
     return updated_state
 
 
+def generate_images_node(state: CourseState) -> CourseState:
+    """Generate images for all HTML blocks using configured image search provider"""
+    print(f"Generating images for HTML blocks using {state.config.image_search_provider}...")
+    
+    updated_state = generate_all_section_images(
+        state,
+        max_retries=state.config.max_retries
+    )
+    
+    print("All images generated successfully!")
+    return updated_state
+
+
 # Build the graph
 def build_course_generation_graph():
     """Build and return the course generation graph"""
@@ -128,6 +142,7 @@ def build_course_generation_graph():
     graph.add_node("generate_activities", generate_activities_node)
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
+    graph.add_node("generate_images", generate_images_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index")
@@ -135,7 +150,8 @@ def build_course_generation_graph():
     graph.add_edge("generate_theories", "generate_activities")
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
-    graph.add_edge("generate_html", END)
+    graph.add_edge("generate_html", "generate_images")
+    graph.add_edge("generate_images", END)
     
     return graph.compile()
 
@@ -179,7 +195,9 @@ if __name__ == "__main__":
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list of available formats
         html_random_seed=42,  # Seed for deterministic random selection
         include_quotes_in_html=True,  # Include quote elements
-        include_tables_in_html=True  # Include table elements
+        include_tables_in_html=True,  # Include table elements
+        # Image generation configuration
+        image_search_provider="bing"  # Image search provider: bing | freepik | ddg | openverse
     )
     
     initial_state = CourseState(
@@ -231,3 +249,4 @@ if __name__ == "__main__":
     print(f"   Language: {final_state.language}")
     print(f"   HTML Selection: {final_state.config.select_html}")
     print(f"   Available Formats: {final_state.config.html_formats}")
+    print(f"   Image Provider: {final_state.config.image_search_provider}")

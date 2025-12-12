@@ -23,7 +23,8 @@ dependencies = [
     "langsmith==0.4.31",
     "wikipedia",
     "docling",
-    "easyocr>=1.7.0"  # PDF to Markdown conversion
+    "easyocr>=1.7.0",  # PDF to Markdown conversion
+    "selenium>=4.15.0"  # Web scraping for Freepik image search
 ]
 
 [project.optional-dependencies]

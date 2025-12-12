@@ -103,6 +103,7 @@ class HtmlElement(BaseModel):
 class ParagraphBlock(BaseModel):
     title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")
+    image: Optional[dict] = Field(None, description="Image with type, query, and content URL")
     elements: List[HtmlElement] = Field(..., description="List of HTML elements within this block")
 
 # Update forward references for recursive definition
@@ -186,6 +187,9 @@ class CourseConfig(BaseModel):
     html_random_seed: int = Field(default=42, description="Seed for deterministic random format selection")
     include_quotes_in_html: bool = Field(default=False, description="Whether to include quote elements in HTML structure")
     include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
+    
+    # Image generation configuration
+    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg | openverse)")
 
 # ---- Course State ----
 class CourseState(BaseModel):
