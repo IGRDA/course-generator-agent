@@ -264,7 +264,7 @@ if __name__ == "__main__":
     # Hardcoded defaults - change these to override config values
     DEFAULT_LLM_PROVIDER = "mistral"
     DEFAULT_LANGUAGE = "English"
-    DEFAULT_IMAGE_PROVIDER = "bing"  # Options: bing | freepik | ddg
+    DEFAULT_IMAGE_PROVIDER = "freepik"  # Options: bing | freepik | ddg
     
     print("="*60)
     print("Image Generator - Standalone Mode")

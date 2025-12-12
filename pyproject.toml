@@ -43,9 +43,10 @@ evaluation = [
     "sentence-transformers==5.1.2",
 ]
 # Optional dependencies for Freepik image scraper
-# Requires chromedriver installed via: brew install chromedriver , apt install chromium-chromedriver or other package manager
+# Run: playwright install chromium after installing
 scraper = [
-    "selenium",
+    "playwright>=1.40.0",
+    "playwright-stealth>=1.0.6",
 ]
 
 [tool.setuptools.packages.find]
