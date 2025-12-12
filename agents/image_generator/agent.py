@@ -122,7 +122,7 @@ def generate_section_images(state: ImageGenerationTask) -> dict:
                                 "block_title": block_obj.title,
                                 "content_preview": content_preview
                             })
-                            query = query.strip().strip('"')
+                            query = query.strip().replace('*', '').replace('"', '').strip()
                             
                             # Search for image using configured provider
                             results = search_images(query, max_results=1)
@@ -253,13 +253,6 @@ def generate_all_section_images(
 
 
 if __name__ == "__main__":
-    """
-    Standalone script to add images to a JSON file.
-    Usage: python agents/image_generator/agent.py
-    
-    Reads from: input.json
-    Writes to: output_with_images.json
-    """
     import json
     from main.state import CourseConfig
     
@@ -271,7 +264,7 @@ if __name__ == "__main__":
     # Hardcoded defaults - change these to override config values
     DEFAULT_LLM_PROVIDER = "mistral"
     DEFAULT_LANGUAGE = "English"
-    DEFAULT_IMAGE_PROVIDER = "freepik"  # Options: bing | freepik | ddg | openverse
+    DEFAULT_IMAGE_PROVIDER = "bing"  # Options: bing | freepik | ddg
     
     print("="*60)
     print("Image Generator - Standalone Mode")
@@ -361,4 +354,29 @@ if __name__ == "__main__":
         print(f"❌ Error: Failed to save output: {str(e)}")
         exit(1)
     
+    # Print all image queries
+    print("\n" + "="*60)
+    print("📝 All Generated Image Queries:")
+    print("="*60)
+    
+    query_count = 0
+    for m_idx, module in enumerate(updated_state.modules):
+        for sm_idx, submodule in enumerate(module.submodules):
+            for s_idx, section in enumerate(submodule.sections):
+                if section.html:
+                    section_has_images = False
+                    for element in section.html:
+                        if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+                            if isinstance(element.content, list):
+                                for block in element.content:
+                                    if isinstance(block, (dict, ParagraphBlock)):
+                                        block_obj = block if isinstance(block, ParagraphBlock) else ParagraphBlock(**block)
+                                        if block_obj.image and "query" in block_obj.image:
+                                            if not section_has_images:
+                                                print(f"\n📍 Module {m_idx+1}.{sm_idx+1}.{s_idx+1}: {section.title}")
+                                                section_has_images = True
+                                            query_count += 1
+                                            print(f"   {query_count}. [{block_obj.title}] → \"{block_obj.image['query']}\"")
+    
+    print(f"\n✨ Total queries generated: {query_count}")
     print("="*60)

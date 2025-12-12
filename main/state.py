@@ -189,7 +189,7 @@ class CourseConfig(BaseModel):
     include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
     
     # Image generation configuration
-    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg | openverse)")
+    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg )")
 
 # ---- Course State ----
 class CourseState(BaseModel):

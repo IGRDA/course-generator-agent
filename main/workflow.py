@@ -197,7 +197,7 @@ if __name__ == "__main__":
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing"  # Image search provider: bing | freepik | ddg | openverse
+        image_search_provider="bing"  # Image search provider: bing | freepik | ddg 
     )
     
     initial_state = CourseState(
@@ -249,4 +249,3 @@ if __name__ == "__main__":
     print(f"   Language: {final_state.language}")
     print(f"   HTML Selection: {final_state.config.select_html}")
     print(f"   Available Formats: {final_state.config.html_formats}")
-    print(f"   Image Provider: {final_state.config.image_search_provider}")
