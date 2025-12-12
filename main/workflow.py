@@ -189,15 +189,15 @@ if __name__ == "__main__":
         language="Español",        
         description="",
         max_retries=8,
-        concurrency=10,  # Number of concurrent section theory generations
+        concurrency=8,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Activities configuration
-        activities_concurrency=10,  # Number of concurrent activity generations
+        activities_concurrency=30,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
         num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
-        html_concurrency=10,  # Number of concurrent HTML generations
+        html_concurrency=15,  # Number of concurrent HTML generations
         select_html="random",  # "LLM" | "random"
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list of available formats
         html_random_seed=42,  # Seed for deterministic random selection

@@ -369,7 +369,7 @@ def generate_all_section_theories(
     
     Args:
         course_state: CourseState with skeleton structure (empty theories)
-        concurrency: Number of concurrent requests (not used directly, LangGraph handles this)
+        concurrency: Maximum number of concurrent section generations
         max_retries: Maximum number of retry attempts for each LLM call
         initial_delay: Initial delay in seconds before first retry (default: 1.0)
         backoff_factor: Multiplier for exponential backoff (default: 2.0)
@@ -396,9 +396,8 @@ def generate_all_section_theories(
     # Initialize state
     initial_state = TheoryGenerationState(course_state=course_state)
     
-    # Execute the graph (LangGraph handles parallelization automatically)
-    # Note: concurrency is controlled by LangGraph's executor settings
-    result = graph.invoke(initial_state)
+    # Execute the graph with concurrency limit
+    result = graph.invoke(initial_state, config={"max_concurrency": concurrency})
     
     return result["course_state"]
 
