@@ -4,6 +4,11 @@ from langchain_mistralai import ChatMistralAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 
+def _log_retry(retry_state):
+    """Log retry attempts to console."""
+    print(f"[Pixtral] Retrying call (attempt {retry_state.attempt_number}) after error: {retry_state.outcome.exception()}")
+
+
 class ChatPixtral(ChatMistralAI):
     """ChatMistralAI for Pixtral vision model with exponential backoff retry (20s-500s)."""
     
@@ -11,7 +16,8 @@ class ChatPixtral(ChatMistralAI):
         @retry(
             stop=stop_after_attempt(10),
             wait=wait_exponential(multiplier=20, min=20, max=500),
-            reraise=True
+            reraise=True,
+            before_sleep=_log_retry
         )
         def _call():
             return super(ChatPixtral, self)._generate(*args, **kwargs)
@@ -21,7 +27,8 @@ class ChatPixtral(ChatMistralAI):
         @retry(
             stop=stop_after_attempt(10),
             wait=wait_exponential(multiplier=20, min=20, max=500),
-            reraise=True
+            reraise=True,
+            before_sleep=_log_retry
         )
         async def _acall():
             return await super(ChatPixtral, self)._agenerate(*args, **kwargs)
