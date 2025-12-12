@@ -122,7 +122,7 @@ def generate_section_images(state: ImageGenerationTask) -> dict:
                                 "block_title": block_obj.title,
                                 "content_preview": content_preview
                             })
-                            query = query.strip()
+                            query = query.strip().strip('"')
                             
                             # Search for image using configured provider
                             results = search_images(query, max_results=1)
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     import json
     from main.state import CourseConfig
     
-    INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251211_190850.json"
+    INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251211_172927.json"
     # Generate OUTPUT_FILE from INPUT_FILE with _images suffix
     base, ext = os.path.splitext(INPUT_FILE)
     OUTPUT_FILE = f"{base}_images{ext}"
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     # Hardcoded defaults - change these to override config values
     DEFAULT_LLM_PROVIDER = "mistral"
     DEFAULT_LANGUAGE = "English"
-    DEFAULT_IMAGE_PROVIDER = "bing"  # Options: bing | freepik | ddg | openverse
+    DEFAULT_IMAGE_PROVIDER = "freepik"  # Options: bing | freepik | ddg | openverse
     
     print("="*60)
     print("Image Generator - Standalone Mode")
