@@ -1,7 +1,40 @@
 import os
 
 from langchain_mistralai import ChatMistralAI
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
+
+
+def _is_retryable_error(exception: BaseException) -> bool:
+    """
+    Determine if an exception should trigger a retry.
+    
+    Returns False for 4xx client errors (permanent, e.g., bad URL, invalid request).
+    Returns True for 5xx server errors, timeouts, and other transient issues.
+    """
+    exc_str = str(exception).lower()
+    
+    # Check for HTTP status codes in exception message
+    # 4xx errors are client errors - don't retry (bad URL, invalid request, etc.)
+    if any(code in exc_str for code in ['400', '401', '403', '404', '422']):
+        print(f"[Pixtral] Permanent error (4xx), skipping retry: {exception}")
+        return False
+    
+    # Check for common httpx/requests exception attributes
+    if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
+        status = exception.response.status_code
+        if 400 <= status < 500:
+            print(f"[Pixtral] Permanent error ({status}), skipping retry: {exception}")
+            return False
+    
+    # Check for Mistral-specific error attributes
+    if hasattr(exception, 'status_code'):
+        status = exception.status_code
+        if 400 <= status < 500:
+            print(f"[Pixtral] Permanent error ({status}), skipping retry: {exception}")
+            return False
+    
+    # Retry for all other errors (5xx, timeouts, connection issues, etc.)
+    return True
 
 
 def _log_retry(retry_state):
@@ -10,12 +43,13 @@ def _log_retry(retry_state):
 
 
 class ChatPixtral(ChatMistralAI):
-    """ChatMistralAI for Pixtral vision model with exponential backoff retry (20s-500s)."""
+    """ChatMistralAI for Pixtral vision model with exponential backoff retry (5s-60s, max 5 attempts)."""
     
     def _generate(self, *args, **kwargs):
         @retry(
-            stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=20, min=20, max=500),
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=1, min=5, max=60),
+            retry=retry_if_exception(_is_retryable_error),
             reraise=True,
             before_sleep=_log_retry
         )
@@ -25,8 +59,9 @@ class ChatPixtral(ChatMistralAI):
     
     async def _agenerate(self, *args, **kwargs):
         @retry(
-            stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=20, min=20, max=500),
+            stop=stop_after_attempt(5),
+            wait=wait_exponential(multiplier=1, min=5, max=60),
+            retry=retry_if_exception(_is_retryable_error),
             reraise=True,
             before_sleep=_log_retry
         )
