@@ -189,7 +189,7 @@ if __name__ == "__main__":
         language="Español",        
         description="",
         max_retries=8,
-        concurrency=8,  # Number of concurrent section theory generations
+        concurrency=10,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Activities configuration
@@ -204,7 +204,7 @@ if __name__ == "__main__":
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing",  # Image search provider: bing | freepik | ddg
+        image_search_provider="freepik",  # Image search provider: bing | freepik | ddg
         use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
         num_images_to_fetch=5,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
