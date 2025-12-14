@@ -11,29 +11,43 @@ def _is_retryable_error(exception: BaseException) -> bool:
     Returns False for 4xx client errors (permanent, e.g., bad URL, invalid request).
     Returns True for 5xx server errors, timeouts, and other transient issues.
     """
-    exc_str = str(exception).lower()
+    import re
+    exc_str = str(exception)
     
-    # Check for HTTP status codes in exception message
-    # 4xx errors are client errors - don't retry (bad URL, invalid request, etc.)
-    if any(code in exc_str for code in ['400', '401', '403', '404', '422']):
-        print(f"[Pixtral] Permanent error (4xx), skipping retry: {exception}")
-        return False
+    # First check for 5xx errors - these should ALWAYS be retried
+    # Match patterns like "Error response 502", "status 503", "500 Internal"
+    if re.search(r'(?:response|status|error)[:\s]+5\d{2}', exc_str, re.IGNORECASE):
+        print(f"[Pixtral] Server error (5xx), will retry: {exc_str[:100]}...")
+        return True
     
     # Check for common httpx/requests exception attributes
     if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
         status = exception.response.status_code
+        if status >= 500:
+            print(f"[Pixtral] Server error ({status}), will retry")
+            return True
         if 400 <= status < 500:
-            print(f"[Pixtral] Permanent error ({status}), skipping retry: {exception}")
+            print(f"[Pixtral] Client error ({status}), skipping retry: {exc_str[:150]}")
             return False
     
     # Check for Mistral-specific error attributes
     if hasattr(exception, 'status_code'):
         status = exception.status_code
+        if status >= 500:
+            print(f"[Pixtral] Server error ({status}), will retry")
+            return True
         if 400 <= status < 500:
-            print(f"[Pixtral] Permanent error ({status}), skipping retry: {exception}")
+            print(f"[Pixtral] Client error ({status}), skipping retry: {exc_str[:150]}")
             return False
     
-    # Retry for all other errors (5xx, timeouts, connection issues, etc.)
+    # Check for HTTP 4xx status codes in exception message (more precise matching)
+    # Match patterns like "Error response 400", "status 403", "400 Bad Request"
+    if re.search(r'(?:response|status|error)[:\s]+4\d{2}', exc_str, re.IGNORECASE):
+        print(f"[Pixtral] Client error (4xx), skipping retry: {exc_str[:150]}")
+        return False
+    
+    # Retry for all other errors (timeouts, connection issues, etc.)
+    print(f"[Pixtral] Transient error, will retry: {exc_str[:100]}...")
     return True
 
 
@@ -43,12 +57,12 @@ def _log_retry(retry_state):
 
 
 class ChatPixtral(ChatMistralAI):
-    """ChatMistralAI for Pixtral vision model with exponential backoff retry (5s-60s, max 5 attempts)."""
+    """ChatMistralAI for Pixtral vision model with exponential backoff retry (2s-20s, max 3 attempts)."""
     
     def _generate(self, *args, **kwargs):
         @retry(
-            stop=stop_after_attempt(5),
-            wait=wait_exponential(multiplier=1, min=5, max=60),
+            stop=stop_after_attempt(10),  # Reduced from 5 to fail faster on persistent issues
+            wait=wait_exponential(multiplier=8, min=8, max=500),  # Reduced max wait from 60s to 20s
             retry=retry_if_exception(_is_retryable_error),
             reraise=True,
             before_sleep=_log_retry
@@ -59,8 +73,8 @@ class ChatPixtral(ChatMistralAI):
     
     async def _agenerate(self, *args, **kwargs):
         @retry(
-            stop=stop_after_attempt(5),
-            wait=wait_exponential(multiplier=1, min=5, max=60),
+            stop=stop_after_attempt(10),  # Reduced from 5 to fail faster on persistent issues
+            wait=wait_exponential(multiplier=8, min=8, max=500),  # Reduced max wait from 60s to 20s
             retry=retry_if_exception(_is_retryable_error),
             reraise=True,
             before_sleep=_log_retry
@@ -113,6 +127,7 @@ def build_pixtral_chat_model(
         temperature=temperature,
         max_retries=0,  # Disable internal retries, we use custom exponential backoff
         mistral_api_key=api_key,
+        timeout=60,  # 30-second request timeout to fail fast on hanging requests
         **kwargs,
     )
 
