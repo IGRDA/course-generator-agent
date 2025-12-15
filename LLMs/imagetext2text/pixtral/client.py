@@ -8,13 +8,23 @@ def _is_retryable_error(exception: BaseException) -> bool:
     """
     Determine if an exception should trigger a retry.
     
-    Returns False for 4xx client errors (permanent, e.g., bad URL, invalid request).
-    Returns True for 5xx server errors, timeouts, and other transient issues.
+    Returns True for:
+    - 429 Rate Limit errors (temporary, should retry with backoff)
+    - 5xx server errors (temporary)
+    - Timeouts and connection issues (transient)
+    
+    Returns False for:
+    - 4xx client errors EXCEPT 429 (permanent errors like bad URL, invalid request)
     """
     import re
     exc_str = str(exception)
     
-    # First check for 5xx errors - these should ALWAYS be retried
+    # Check for 429 Rate Limit - this MUST be retried (it's temporary)
+    if re.search(r'(?:response|status|error)[:\s]+429', exc_str, re.IGNORECASE) or '429' in exc_str:
+        print(f"[Pixtral] Rate limit (429), will retry with backoff...")
+        return True
+    
+    # Check for 5xx errors - these should ALWAYS be retried
     # Match patterns like "Error response 502", "status 503", "500 Internal"
     if re.search(r'(?:response|status|error)[:\s]+5\d{2}', exc_str, re.IGNORECASE):
         print(f"[Pixtral] Server error (5xx), will retry: {exc_str[:100]}...")
@@ -23,6 +33,9 @@ def _is_retryable_error(exception: BaseException) -> bool:
     # Check for common httpx/requests exception attributes
     if hasattr(exception, 'response') and hasattr(exception.response, 'status_code'):
         status = exception.response.status_code
+        if status == 429:
+            print(f"[Pixtral] Rate limit (429), will retry with backoff...")
+            return True
         if status >= 500:
             print(f"[Pixtral] Server error ({status}), will retry")
             return True
@@ -33,6 +46,9 @@ def _is_retryable_error(exception: BaseException) -> bool:
     # Check for Mistral-specific error attributes
     if hasattr(exception, 'status_code'):
         status = exception.status_code
+        if status == 429:
+            print(f"[Pixtral] Rate limit (429), will retry with backoff...")
+            return True
         if status >= 500:
             print(f"[Pixtral] Server error ({status}), will retry")
             return True
@@ -42,7 +58,8 @@ def _is_retryable_error(exception: BaseException) -> bool:
     
     # Check for HTTP 4xx status codes in exception message (more precise matching)
     # Match patterns like "Error response 400", "status 403", "400 Bad Request"
-    if re.search(r'(?:response|status|error)[:\s]+4\d{2}', exc_str, re.IGNORECASE):
+    # But NOT 429 which we already handled above
+    if re.search(r'(?:response|status|error)[:\s]+4(?!29)\d{2}', exc_str, re.IGNORECASE):
         print(f"[Pixtral] Client error (4xx), skipping retry: {exc_str[:150]}")
         return False
     

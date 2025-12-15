@@ -1,20 +1,19 @@
 from langchain_core.prompts import ChatPromptTemplate
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, AliasChoices
 from typing import List
 
 
 # ---- Image Query Generation Prompt ----
 image_query_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert at creating concise image search queries.
-Generate a 5-10 word description that captures the visual concept.
-Focus on concrete, visual elements that would make a good educational illustration.
+    ("system", """You are an expert at creating image search queries.
+Generate a 3-5 word query that captures the visual concept.
+Focus on visual elements that would make a good educational illustration.
 Always keep the query relevant to the course topic and the block title and content preview."""),
     
     ("human", """Generate an image search query (3-5 words) for this content block:
 
 Course Topic: {course_title}
 Block Title: {block_title}
-Content Preview: {content_preview}
 
 The image must visually relate to "{course_title}". Return ONLY the search query, nothing else.""")
 ])
@@ -25,24 +24,22 @@ class ImageRankingScore(BaseModel):
     """Rubric-based score for evaluating an image's suitability for educational content."""
     
     alignment: int = Field(
-        ge=0, le=5,
-        description="How well the image aligns with the content (0=no relation, 5=perfect match)"
+        ge=0, le=8,
+        description="How well image aligns with topic AND block title (0=unrelated, 1=topic only, 2=weak, 4=good, 8=ideal)"
     )
     no_watermark: int = Field(
         ge=0, le=2,
         description="2 if the image has NO watermarks/logos, 0 if it has watermarks"
     )
     has_text: int = Field(
-        ge=0, le=1,
-        description="1 if the image contains readable text/labels, 0 if no text"
-    )
-    style: int = Field(
-        ge=0, le=2,
-        description="Style appropriateness (0=inappropriate, 1=acceptable, 2=professional/educational)"
+        ge=0,
+        le=2,
+        validation_alias=AliasChoices("has_text", "no_text"),
+        description="0 if image contains text/labels, 2 if clean (no text)"
     )
     total: int = Field(
-        ge=0, le=10,
-        description="Sum of all scores (alignment + no_watermark + has_text + style)"
+        ge=0, le=12,
+        description="Sum of all scores (alignment + no_watermark + has_text). Max 12 points."
     )
     
     @field_validator('total', mode='before')
@@ -50,7 +47,7 @@ class ImageRankingScore(BaseModel):
     def compute_total(cls, v, info):
         """Auto-compute total if not provided or validate if provided."""
         data = info.data
-        computed = data.get('alignment', 0) + data.get('no_watermark', 0) + data.get('has_text', 0) + data.get('style', 0)
+        computed = data.get('alignment', 0) + data.get('no_watermark', 0) + data.get('has_text', 0)
         if v is None:
             return computed
         return v
@@ -66,29 +63,27 @@ class ImageRankingResult(BaseModel):
 
 # ---- Image Ranking Prompt (for Vision LLM) ----
 IMAGE_RANKING_SYSTEM_PROMPT = """You are an expert image evaluator for educational content.
-You will be shown one or more images and must score each one using the following rubric:
+Score each image using this rubric:
 
-SCORING RUBRIC (Max 10 points total):
-1. ALIGNMENT (0-5 points): How well does the image match the course topic and block content?
-   - 0: No relation to the topic
-   - 1-2: Loosely related
-   - 3-4: Good match
-   - 5: Perfect visual representation
+SCORING RUBRIC (Max 12 points):
 
-2. NO WATERMARKS (0 or 2 points): Does the image have watermarks, logos, or stock photo marks?
-   - 2: Clean image with NO watermarks
-   - 0: Has visible watermarks or stock photo marks
+1. ALIGNMENT (0, 1, 2, 4, or 8 points): The image must match BOTH the course topic AND the block title.
+   - 0: Unrelated to the course topic
+   - 1: Matches course topic only, not the block title
+   - 2: Loosely connected to both, but unclear fit
+   - 4: Good match for both topic and block title
+   - 8: Ideal - perfectly illustrates both the course subject and block concept
 
-3. HAS TEXT (0 or 1 point): Does the image contain readable text, labels, or annotations?
-   - 0: Contains helpful text/labels
-   - 1: No text visible
+2. NO WATERMARKS (0 or 2 points):
+   - 2: Clean, no watermarks or logos
+   - 0: Has watermarks or stock photo marks
 
-4. STYLE (0-2 points): Is the image style appropriate for educational/course material?
-   - 0: Inappropriate (low quality, offensive, or unprofessional)
-   - 1: Acceptable quality and no text
-   - 2: Professional, high-quality, suitable for textbook/course
+3. HAS_TEXT (0 or 2 points):
+   - 2: No visible text/labels (clean image)
+   - 0: Contains visible text/labels
+   Important: in the JSON output, this field MUST be named "has_text".
 
-Return your evaluation as a JSON object with the exact structure specified."""
+Return your evaluation as JSON with the exact structure specified."""
 
 
 def create_image_ranking_prompt(
@@ -109,55 +104,84 @@ def create_image_ranking_prompt(
     Returns:
         Formatted prompt string
     """
-    return f"""Evaluate the following {num_images} image(s) for use in educational content.
+    return f"""Evaluate {num_images} image(s) for educational content.
 
 CONTEXT:
 - Course Topic: {course_title}
 - Block Title: {block_title}
-- Content Preview: {content_preview}
 
-Score each image using the rubric. Return a JSON object with this exact structure:
+Return JSON with this structure:
 {{
     "scores": [
         {{
-            "alignment": <0-5>,
-            "no_watermark": <0 or 2>,
-            "has_text": <0 or 1>,
-            "style": <0-2>,
-            "total": <sum of above>
+            "alignment": <0|1|2|4|8>,
+            "no_watermark": <0|2>,
+            "has_text": <0|2>,
+            "total": <sum>
         }}
     ]
 }}
 
-The "scores" array must have exactly {num_images} element(s), one for each image in order.
-Return ONLY the JSON object, no other text."""
+Array must have exactly {num_images} element(s). Return ONLY JSON."""
+
+
+def create_single_image_ranking_prompt(
+    course_title: str,
+    block_title: str,
+    content_preview: str,
+) -> str:
+    """
+    Create the human message prompt for scoring a single image.
+    
+    Args:
+        course_title: The course topic
+        block_title: The content block title
+        content_preview: Preview of the block content
+    
+    Returns:
+        Formatted prompt string for single image evaluation
+    """
+    return f"""Evaluate this image for educational content.
+
+CONTEXT:
+- Course Topic: {course_title}
+- Block Title: {block_title}
+
+The image must match BOTH the topic AND the block title.
+Return JSON:
+{{
+    "alignment": <0|1|2|4|8>,
+    "no_watermark": <0|2>,
+    "has_text": <0|2>,
+    "total": <sum>
+}}
+
+Return ONLY JSON."""
 
 
 # ---- Fallback Parsing Prompt ----
 FALLBACK_PARSE_PROMPT = ChatPromptTemplate.from_messages([
-    ("system", """You are a JSON parser assistant. Your task is to extract structured data from text and return valid JSON.
-The output must match the exact schema provided. If the input contains scoring information, extract it.
-If values are missing, use reasonable defaults: alignment=0, no_watermark=0, has_text=0, style=0, total=0."""),
+    ("system", """You are a JSON parser. Extract structured data from text and return valid JSON.
+If values are missing, use defaults: alignment=0, no_watermark=0, has_text=0, total=0."""),
     
-    ("human", """Parse the following text and extract image ranking scores.
+    ("human", """Parse this text and extract image ranking scores.
 
-Expected JSON structure:
+Expected JSON:
 {{
     "scores": [
         {{
-            "alignment": <0-5>,
-            "no_watermark": <0 or 2>,
-            "has_text": <0 or 1>,
-            "style": <0-2>,
-            "total": <sum of above>
+            "alignment": <0|1|2|4|8>,
+            "no_watermark": <0|2>,
+            "has_text": <0|2>,
+            "total": <sum>
         }}
     ]
 }}
 
-Number of images to extract scores for: {num_images}
+Number of images: {num_images}
 
 Text to parse:
 {raw_text}
 
-Return ONLY valid JSON matching the structure above, nothing else.""")
+Return ONLY valid JSON.""")
 ])

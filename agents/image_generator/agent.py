@@ -1,5 +1,8 @@
 from typing import Annotated, List, Tuple
 from operator import add
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
+import re
 import os
 import json
 from pydantic import BaseModel, Field
@@ -21,9 +24,61 @@ from .prompts import (
 )
 
 
-# ---- Default configuration ----
-DEFAULT_NUM_IMAGES_TO_FETCH = 5
-DEFAULT_VISION_PROVIDER = "pixtral"
+# ---- Global concurrency control ----
+# Global semaphore to cap concurrent Pixtral calls across all blocks/sections.
+# This prevents concurrency multiplication (sections * blocks * per-block ranking).
+_VISION_CALL_SEMAPHORE: threading.Semaphore | None = None
+
+
+def _set_vision_call_semaphore(max_concurrent_calls: int) -> None:
+    global _VISION_CALL_SEMAPHORE
+    _VISION_CALL_SEMAPHORE = threading.Semaphore(max(1, int(max_concurrent_calls)))
+
+
+def _vision_invoke(vision_llm, messages):
+    if _VISION_CALL_SEMAPHORE is None:
+        return vision_llm.invoke(messages)
+    _VISION_CALL_SEMAPHORE.acquire()
+    try:
+        return vision_llm.invoke(messages)
+    finally:
+        _VISION_CALL_SEMAPHORE.release()
+
+
+def _chunk_list(items: List[str], chunk_size: int) -> List[List[str]]:
+    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
+
+
+def _looks_like_invalid_image_error(exc: BaseException) -> bool:
+    """True for Pixtral 400-style invalid image URL errors (permanent, should drop URL)."""
+    s = str(exc)
+    return ("Error response 400" in s) or ("invalid_request_file" in s) or ("code\":\"3310" in s) or ("code': '3310" in s)
+
+
+def _extract_invalid_image_url(exc: BaseException) -> str | None:
+    """
+    Try to extract the offending image URL from Pixtral 400 errors.
+
+    Examples seen:
+    - \"Image, 'https://...png', could not be loaded as a valid image\"
+    - \"File could not be fetched from url 'https://...'\"
+    - \"Image is an animated GIF. Image URL: https://...gif\"
+    """
+    s = str(exc)
+
+    m = re.search(r"Image URL:\s*(https?://\S+)", s)
+    if m:
+        return m.group(1).rstrip("',\"")
+
+    m = re.search(r"from url '([^']+)'", s)
+    if m:
+        return m.group(1)
+
+    m = re.search(r"Image,\s*'([^']+)'", s)
+    if m:
+        return m.group(1)
+
+    return None
 
 
 # ---- State for individual section task ----
@@ -51,18 +106,20 @@ def rank_images(
     block_title: str,
     content_preview: str,
     text_llm_provider: str,
-    vision_provider: str = DEFAULT_VISION_PROVIDER,
+    vision_provider: str,
+    imagetext2text_concurrency: int,
+    batch_size: int,
 ) -> Tuple[str, ImageRankingScore]:
     """
-    Rank multiple images using a vision LLM and return the best one.
+    Rank multiple images using batched vision LLM calls and return the best one.
+
+    This avoids making one Pixtral call per image. Instead, it scores images in batches
+    (up to `batch_size` images per call) and selects the best image locally.
     
-    Uses Pixtral (or configured vision LLM) to score images based on a rubric:
-    - Alignment (0-5): How well image matches content
+    Scoring rubric (max 12 points):
+    - Alignment (0,1,2,4,8): How well image matches topic AND block title
     - No Watermark (0 or 2): Clean images score higher
-    - Has Text (0 or 1): Images with text get bonus
-    - Style (0-2): Professional/educational style
-    
-    Falls back to text LLM for parsing if structured output fails.
+    - No Text (0 or 2): Images without text score higher
     
     Args:
         image_urls: List of image URLs to rank
@@ -71,6 +128,7 @@ def rank_images(
         content_preview: Content preview for context
         text_llm_provider: Provider for fallback parsing (e.g., 'mistral')
         vision_provider: Vision LLM provider (default: 'pixtral')
+        imagetext2text_concurrency: Max parallel Pixtral calls (default: 5)
     
     Returns:
         Tuple of (best_image_url, score)
@@ -81,96 +139,114 @@ def rank_images(
     if len(image_urls) == 1:
         # No need to rank a single image, return with default score
         return image_urls[0], ImageRankingScore(
-            alignment=3, no_watermark=1, has_text=0, style=1, total=5
+            alignment=4, no_watermark=2, has_text=2, total=8
         )
-    
-    # Create vision LLM
+
+    # If semaphore wasn't initialized at run start, initialize best-effort here.
+    if _VISION_CALL_SEMAPHORE is None:
+        _set_vision_call_semaphore(imagetext2text_concurrency)
+
+    # Create vision LLM once per block ranking
     vision_model_name = resolve_vision_model_name(vision_provider)
-    vision_kwargs = {"temperature": 0.1}  # Low temp for consistent scoring
+    vision_kwargs = {"temperature": 0.1}
     if vision_model_name:
         vision_kwargs["model_name"] = vision_model_name
     vision_llm = create_vision_llm(provider=vision_provider, **vision_kwargs)
-    
-    # Build multimodal message with all images
-    human_prompt = create_image_ranking_prompt(
-        course_title=course_title,
-        block_title=block_title,
-        content_preview=content_preview,
-        num_images=len(image_urls)
-    )
-    
-    # Create content list with text and images
-    content = [{"type": "text", "text": human_prompt}]
-    for url in image_urls:
-        content.append({
-            "type": "image_url",
-            "image_url": {"url": url}
-        })
-    
-    messages = [
-        {"role": "system", "content": IMAGE_RANKING_SYSTEM_PROMPT},
-        HumanMessage(content=content)
-    ]
-    
-    # Try to get structured output from vision LLM
-    try:
-        response = vision_llm.invoke(messages)
-        raw_response = response.content
-        
-        # Try to parse as JSON
-        try:
-            # Clean up response - extract JSON if wrapped in markdown
-            json_str = raw_response
-            if "```json" in json_str:
-                json_str = json_str.split("```json")[1].split("```")[0]
-            elif "```" in json_str:
-                json_str = json_str.split("```")[1].split("```")[0]
-            json_str = json_str.strip()
-            
-            parsed_data = json.loads(json_str)
-            ranking_result = ImageRankingResult.model_validate(parsed_data)
-            
-        except (json.JSONDecodeError, Exception) as parse_error:
-            print(f"⚠️ Vision LLM output parsing failed: {parse_error}")
-            print(f"   Raw response: {raw_response[:500]}...")
-            print("   Attempting fallback parsing with text LLM...")
-            
-            # Fallback: Use text LLM to parse the raw response
-            ranking_result = _fallback_parse_ranking(
-                raw_response, 
-                len(image_urls), 
-                text_llm_provider
+
+    scored_images: List[Tuple[str, ImageRankingScore]] = []
+    for batch in _chunk_list(image_urls, batch_size):
+        # We may need to drop invalid URLs and retry the same batch
+        remaining = list(batch)
+
+        while remaining:
+            human_prompt = create_image_ranking_prompt(
+                course_title=course_title,
+                block_title=block_title,
+                content_preview=content_preview,
+                num_images=len(remaining),
             )
-        
-        # Validate we have the right number of scores
-        if len(ranking_result.scores) != len(image_urls):
-            print(f"⚠️ Score count mismatch: got {len(ranking_result.scores)}, expected {len(image_urls)}")
-            # Pad with default scores or truncate
-            while len(ranking_result.scores) < len(image_urls):
-                ranking_result.scores.append(ImageRankingScore(
-                    alignment=0, no_watermark=0, has_text=0, style=0, total=0
-                ))
-            ranking_result.scores = ranking_result.scores[:len(image_urls)]
-        
-        # Find best image by total score
-        best_idx = 0
-        best_score = ranking_result.scores[0]
-        for idx, score in enumerate(ranking_result.scores):
-            # Recompute total to ensure consistency
-            score.total = score.alignment + score.no_watermark + score.has_text + score.style
-            if score.total > best_score.total:
-                best_idx = idx
-                best_score = score
-        
-        print(f"   🏆 Best image: #{best_idx + 1} with score {best_score.total}/10")
-        return image_urls[best_idx], best_score
-        
-    except Exception as e:
-        print(f"❌ Vision LLM call failed: {str(e)}")
-        # Return first image as fallback
+
+            content = [{"type": "text", "text": human_prompt}]
+            for url in remaining:
+                content.append({"type": "image_url", "image_url": {"url": url}})
+
+            messages = [
+                {"role": "system", "content": IMAGE_RANKING_SYSTEM_PROMPT},
+                HumanMessage(content=content),
+            ]
+
+            try:
+                response = _vision_invoke(vision_llm, messages)
+                raw_response = response.content
+
+                try:
+                    json_str = raw_response
+                    if "```json" in json_str:
+                        json_str = json_str.split("```json")[1].split("```")[0]
+                    elif "```" in json_str:
+                        json_str = json_str.split("```")[1].split("```")[0]
+                    json_str = json_str.strip()
+
+                    parsed_data = json.loads(json_str)
+                    ranking_result = ImageRankingResult.model_validate(parsed_data)
+                except (json.JSONDecodeError, Exception) as parse_error:
+                    print(f"⚠️ Vision LLM output parsing failed: {parse_error}")
+                    print(f"   Raw response: {raw_response[:500]}...")
+                    print("   Attempting fallback parsing with text LLM...")
+                    ranking_result = _fallback_parse_ranking(raw_response, len(remaining), text_llm_provider)
+
+                # Ensure score count matches batch size
+                if len(ranking_result.scores) != len(remaining):
+                    while len(ranking_result.scores) < len(remaining):
+                        ranking_result.scores.append(
+                            ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)
+                        )
+                    ranking_result.scores = ranking_result.scores[: len(remaining)]
+
+                for url, score in zip(remaining, ranking_result.scores):
+                    score.total = score.alignment + score.no_watermark + score.has_text
+                    scored_images.append((url, score))
+
+                # Batch succeeded; move to next batch
+                break
+
+            except Exception as e:
+                # For 400 invalid-image style errors, drop the offending URL and retry the batch.
+                if _looks_like_invalid_image_error(e):
+                    bad_url = _extract_invalid_image_url(e)
+                    if bad_url and bad_url in remaining:
+                        remaining.remove(bad_url)
+                        continue
+                    # Heuristic: drop any GIFs (Pixtral rejects animated GIFs)
+                    gif_urls = [u for u in remaining if u.lower().endswith(".gif")]
+                    if gif_urls:
+                        remaining.remove(gif_urls[0])
+                        continue
+
+                # Give up on this remaining batch and assign zero scores
+                print(f"❌ Vision LLM call failed for batch of {len(remaining)} images: {str(e)}")
+                for url in remaining:
+                    scored_images.append((url, ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)))
+                break
+    
+    # Find best image by total score
+    if not scored_images:
+        # Fallback: return first URL with zero score
         return image_urls[0], ImageRankingScore(
-            alignment=0, no_watermark=0, has_text=0, style=0, total=0
+            alignment=0, no_watermark=0, has_text=0, total=0
         )
+    
+    best_url, best_score = scored_images[0]
+    for url, score in scored_images[1:]:
+        if score.total > best_score.total:
+            best_url = url
+            best_score = score
+    
+    # Find index for logging
+    best_idx = image_urls.index(best_url) + 1
+    print(f"   🏆 Best image: #{best_idx} with score {best_score.total}/12")
+    
+    return best_url, best_score
 
 
 def _fallback_parse_ranking(
@@ -220,7 +296,7 @@ def _fallback_parse_ranking(
         print(f"⚠️ Fallback parsing also failed: {str(e)}")
         # Return default scores
         default_scores = [
-            ImageRankingScore(alignment=0, no_watermark=0, has_text=0, style=0, total=0)
+            ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)
             for _ in range(num_images)
         ]
         return ImageRankingResult(scores=default_scores)
@@ -261,16 +337,105 @@ def continue_to_images(state: ImageGenerationState) -> list[Send]:
     return sends
 
 
+def _process_single_block(
+    block_obj: ParagraphBlock,
+    course_title: str,
+    llm_provider: str,
+    image_provider: str,
+    k_images: int,
+    use_vision_ranking: bool,
+    vision_provider: str,
+    imagetext2text_concurrency: int,
+    vision_ranking_batch_size: int,
+    query_chain,
+    search_images,
+) -> bool:
+    """
+    Process a single block to add an image.
+    
+    Returns True if image was added successfully, False otherwise.
+    """
+    # Extract first paragraph content for context
+    content_preview = ""
+    for elem in block_obj.elements:
+        if elem.type == "p":
+            content_preview = elem.content[:200]  # First 200 chars
+            break
+    
+    # Generate image query using LLM
+    query = query_chain.invoke({
+        "course_title": course_title,
+        "block_title": block_obj.title,
+        "content_preview": content_preview
+    })
+    query = query.strip().replace('*', '').replace('"', '').strip()
+    
+    # Search for K images using configured provider
+    print(f"   🔍 Searching for {k_images} images: '{query}'")
+    results = search_images(query, max_results=k_images)
+    
+    # Check for errors
+    if not results:
+        raise Exception(f"Image search ({image_provider}) returned no results for query '{query}'")
+    
+    # Filter out error results
+    valid_results = [r for r in results if "error" not in r]
+    if not valid_results:
+        error_msg = results[0].get("error", "Unknown error") if results else "No results"
+        raise Exception(f"Image search ({image_provider}) failed for query '{query}': {error_msg}")
+    
+    # Extract image URLs
+    image_urls = [r["url"] for r in valid_results]
+    
+    # Select image based on config
+    if use_vision_ranking and len(image_urls) > 1:
+        # Rank images and select best one using vision LLM
+        print(f"   🎯 Ranking {len(image_urls)} images for '{block_obj.title}'...")
+        best_url, best_score = rank_images(
+            image_urls=image_urls,
+            course_title=course_title,
+            block_title=block_obj.title,
+            content_preview=content_preview,
+            text_llm_provider=llm_provider,
+            vision_provider=vision_provider,
+            imagetext2text_concurrency=imagetext2text_concurrency,
+            batch_size=vision_ranking_batch_size,
+        )
+        
+        # Add image to block with ranking metadata
+        block_obj.image = {
+            "type": "img",
+            "query": query,
+            "content": best_url,
+            "ranking_score": best_score.total,
+            "ranking_details": {
+                "alignment": best_score.alignment,
+                "no_watermark": best_score.no_watermark,
+                "has_text": best_score.has_text,
+            }
+        }
+    else:
+        # Just use first image (no ranking)
+        best_url = image_urls[0]
+        block_obj.image = {
+            "type": "img",
+            "query": query,
+            "content": best_url,
+        }
+    
+    return True
+
+
 def generate_section_images(
     state: ImageGenerationTask,
-    num_images_to_fetch: int = DEFAULT_NUM_IMAGES_TO_FETCH,
-    vision_provider: str = DEFAULT_VISION_PROVIDER,
 ) -> dict:
     """
     Generate images for all interactive blocks in a single section.
     
+    Processes blocks in parallel using ThreadPoolExecutor with image_blocks_concurrency.
     If use_vision_ranking is enabled in config, fetches K images for each block, 
-    ranks them using vision LLM, and selects the best one based on rubric scoring.
+    ranks them using vision LLM (in parallel with imagetext2text_concurrency), 
+    and selects the best one based on rubric scoring.
     If disabled, fetches only 1 image and uses it directly.
     
     Args:
@@ -278,15 +443,20 @@ def generate_section_images(
         num_images_to_fetch: Number of images to fetch for ranking (default: 5)
         vision_provider: Vision LLM provider for ranking (default: 'pixtral')
     """
-    # Extract context
+    # Extract context and config
     llm_provider = state.course_state.config.text_llm_provider
     image_provider = state.course_state.config.image_search_provider
     course_title = state.course_state.title
     
-    # Get config values with defaults
-    use_vision_ranking = getattr(state.course_state.config, 'use_vision_ranking', True)
-    k_images = getattr(state.course_state.config, 'num_images_to_fetch', num_images_to_fetch) if use_vision_ranking else 1
-    vision_provider = getattr(state.course_state.config, 'vision_llm_provider', vision_provider)
+    # Get config values (all required fields)
+    use_vision_ranking = state.course_state.config.use_vision_ranking
+    num_images_to_fetch = state.course_state.config.num_images_to_fetch
+    vision_provider = state.course_state.config.vision_llm_provider
+    image_blocks_concurrency = state.course_state.config.image_blocks_concurrency
+    imagetext2text_concurrency = state.course_state.config.imagetext2text_concurrency
+    vision_ranking_batch_size = state.course_state.config.vision_ranking_batch_size
+    
+    k_images = num_images_to_fetch if use_vision_ranking else 1
     
     # Create LLM for query generation
     model_name = resolve_text_model_name(llm_provider)
@@ -304,97 +474,72 @@ def generate_section_images(
     # Interactive formats that need images
     interactive_formats = ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]
     
-    images_added = 0
+    # Collect all blocks that need images
+    blocks_to_process: List[ParagraphBlock] = []
     
-    # Process each HTML element
     for element in state.html_elements:
-        # Check if this is an interactive format
         if element.type in interactive_formats:
-            # Process each block in the content array
             if isinstance(element.content, list):
                 for block in element.content:
-                    # Ensure it's a ParagraphBlock (has title, icon, elements)
                     if isinstance(block, (dict, ParagraphBlock)):
                         # Convert dict to ParagraphBlock if needed
                         if isinstance(block, dict):
                             block_obj = ParagraphBlock(**block)
+                            # Replace the dict with the object in the list
+                            idx = element.content.index(block)
+                            element.content[idx] = block_obj
                         else:
                             block_obj = block
-                        
-                        # Extract first paragraph content for context
-                        content_preview = ""
-                        for elem in block_obj.elements:
-                            if elem.type == "p":
-                                content_preview = elem.content[:200]  # First 200 chars
-                                break
-                        
-                        # Generate image query using LLM
-                        try:
-                            query = query_chain.invoke({
-                                "course_title": course_title,
-                                "block_title": block_obj.title,
-                                "content_preview": content_preview
-                            })
-                            query = query.strip().replace('*', '').replace('"', '').strip()
-                            
-                            # Search for K images using configured provider
-                            print(f"   🔍 Searching for {k_images} images: '{query}'")
-                            results = search_images(query, max_results=k_images)
-                            
-                            # Check for errors
-                            if not results:
-                                raise Exception(f"Image search ({image_provider}) returned no results for query '{query}'")
-                            
-                            # Filter out error results
-                            valid_results = [r for r in results if "error" not in r]
-                            if not valid_results:
-                                error_msg = results[0].get("error", "Unknown error") if results else "No results"
-                                raise Exception(f"Image search ({image_provider}) failed for query '{query}': {error_msg}")
-                            
-                            # Extract image URLs
-                            image_urls = [r["url"] for r in valid_results]
-                            
-                            # Select image based on config
-                            if use_vision_ranking and len(image_urls) > 1:
-                                # Rank images and select best one using vision LLM
-                                print(f"   🎯 Ranking {len(image_urls)} images for '{block_obj.title}'...")
-                                best_url, best_score = rank_images(
-                                    image_urls=image_urls,
-                                    course_title=course_title,
-                                    block_title=block_obj.title,
-                                    content_preview=content_preview,
-                                    text_llm_provider=llm_provider,
-                                    vision_provider=vision_provider,
-                                )
-                                
-                                # Add image to block with ranking metadata
-                                block_obj.image = {
-                                    "type": "img",
-                                    "query": query,
-                                    "content": best_url,
-                                    "ranking_score": best_score.total,
-                                    "ranking_details": {
-                                        "alignment": best_score.alignment,
-                                        "no_watermark": best_score.no_watermark,
-                                        "has_text": best_score.has_text,
-                                        "style": best_score.style,
-                                    }
-                                }
-                            else:
-                                # Just use first image (no ranking)
-                                best_url = image_urls[0]
-                                block_obj.image = {
-                                    "type": "img",
-                                    "query": query,
-                                    "content": best_url,
-                                }
-                            
-                            images_added += 1
-                            
-                        except Exception as e:
-                            # Fail loudly as specified
-                            print(f"❌ Error generating image for block '{block_obj.title}': {str(e)}")
-                            raise
+                        blocks_to_process.append(block_obj)
+    
+    if not blocks_to_process:
+        print(f"✓ No blocks to process for Module {state.module_idx+1}, "
+              f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
+        return {
+            "completed_sections": [{
+                "module_idx": state.module_idx,
+                "submodule_idx": state.submodule_idx,
+                "section_idx": state.section_idx,
+                "html_elements": state.html_elements
+            }]
+        }
+    
+    # Process blocks in parallel
+    images_added = 0
+    errors = []
+    
+    with ThreadPoolExecutor(max_workers=image_blocks_concurrency) as executor:
+        future_to_block = {
+            executor.submit(
+                _process_single_block,
+                block_obj,
+                course_title,
+                llm_provider,
+                image_provider,
+                k_images,
+                use_vision_ranking,
+                vision_provider,
+                imagetext2text_concurrency,
+                vision_ranking_batch_size,
+                query_chain,
+                search_images,
+            ): block_obj
+            for block_obj in blocks_to_process
+        }
+        
+        for future in as_completed(future_to_block):
+            block_obj = future_to_block[future]
+            try:
+                if future.result():
+                    images_added += 1
+            except Exception as e:
+                print(f"❌ Error generating image for block '{block_obj.title}': {str(e)}")
+                errors.append((block_obj.title, str(e)))
+    
+    # If there were errors, raise to trigger retry
+    if errors:
+        error_msg = "; ".join([f"{title}: {err}" for title, err in errors])
+        raise Exception(f"Failed to generate images for {len(errors)} blocks: {error_msg}")
     
     print(f"✓ Generated {images_added} images for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
@@ -467,8 +612,8 @@ def generate_all_section_images(
     initial_delay: float = 1.0,
     backoff_factor: float = 2.0,
     use_vision_ranking: bool = True,
-    num_images_to_fetch: int = DEFAULT_NUM_IMAGES_TO_FETCH,
-    vision_provider: str = DEFAULT_VISION_PROVIDER,
+    num_images_to_fetch: int = None,
+    vision_provider: str = None,
 ) -> CourseState:
     """
     Main function to generate images for all section HTML blocks using LangGraph Send pattern.
@@ -476,6 +621,11 @@ def generate_all_section_images(
     If use_vision_ranking is True, fetches K images for each block, ranks them using 
     vision LLM (Pixtral), and selects the best one based on rubric scoring.
     If False, fetches only 1 image and uses it directly (faster, no vision LLM calls).
+    
+    Concurrency is controlled at three levels:
+    - image_sections_concurrency: Max parallel sections (LangGraph max_concurrency)
+    - image_blocks_concurrency: Max parallel blocks within a section
+    - imagetext2text_concurrency: Max parallel Pixtral calls per block
     
     Args:
         course_state: CourseState with HTML structures filled
@@ -490,11 +640,29 @@ def generate_all_section_images(
         Updated CourseState with all images added to HTML blocks
     """
     image_provider = course_state.config.image_search_provider
+    
+    # Get settings from config (required fields)
+    if num_images_to_fetch is None:
+        num_images_to_fetch = course_state.config.num_images_to_fetch
+    if vision_provider is None:
+        vision_provider = course_state.config.vision_llm_provider
+    
+    # Get concurrency settings from config (required fields)
+    image_sections_concurrency = course_state.config.image_sections_concurrency
+    image_blocks_concurrency = course_state.config.image_blocks_concurrency
+    imagetext2text_concurrency = course_state.config.imagetext2text_concurrency
+    vision_ranking_batch_size = course_state.config.vision_ranking_batch_size
+
+    # Enforce a global cap on concurrent Pixtral calls across all blocks/sections.
+    _set_vision_call_semaphore(imagetext2text_concurrency)
+    
     print(f"🚀 Starting parallel image generation with provider={image_provider}, "
           f"max_retries={max_retries}, initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
+    print(f"   📊 Concurrency: sections={image_sections_concurrency}, "
+          f"blocks={image_blocks_concurrency}, vision_calls={imagetext2text_concurrency}")
     
     if use_vision_ranking:
-        print(f"   📸 Fetching {num_images_to_fetch} images per block, ranking with {vision_provider}")
+        print(f"   📸 Fetching {num_images_to_fetch} images per block, ranking with {vision_provider} (batch_size={vision_ranking_batch_size})")
     else:
         print("   📸 Vision ranking disabled: picking first image result")
     
@@ -508,8 +676,11 @@ def generate_all_section_images(
     # Initialize state
     initial_state = ImageGenerationState(course_state=course_state)
     
-    # Execute the graph
-    result = graph.invoke(initial_state)
+    # Execute the graph with concurrency control
+    result = graph.invoke(
+        initial_state,
+        config={"max_concurrency": image_sections_concurrency}
+    )
     
     return result["course_state"]
 
@@ -527,9 +698,13 @@ if __name__ == "__main__":
     DEFAULT_LLM_PROVIDER = "mistral"
     DEFAULT_LANGUAGE = "English"
     DEFAULT_IMAGE_PROVIDER = "bing"  # Options: bing | freepik | ddg
-    USE_VISION_RANKING = True  # Set to True to rank images with Pixtral, False to pick first result
-    NUM_IMAGES_TO_FETCH = 5  # Number of images to fetch for ranking (only used if USE_VISION_RANKING=True)
+    USE_VISION_RANKING = False  # Set to True to rank images with Pixtral, False to pick first result
+    NUM_IMAGES_TO_FETCH = 8  # Number of images to fetch for ranking (only used if USE_VISION_RANKING=True)
     VISION_PROVIDER = "pixtral"  # Vision LLM for ranking
+    IMAGE_SECTIONS_CONCURRENCY = 2  # Number of sections to process in parallel
+    IMAGE_BLOCKS_CONCURRENCY = 5  # Number of blocks to process in parallel within each section
+    IMAGETEXT2TEXT_CONCURRENCY = 5  # Number of Pixtral calls in parallel for image scoring
+    VISION_RANKING_BATCH_SIZE = 8
     
     print("="*60)
     print("Image Generator - Standalone Mode")
@@ -566,6 +741,10 @@ if __name__ == "__main__":
             course_state.config.use_vision_ranking = USE_VISION_RANKING
             course_state.config.num_images_to_fetch = NUM_IMAGES_TO_FETCH
             course_state.config.vision_llm_provider = VISION_PROVIDER
+            course_state.config.image_sections_concurrency = IMAGE_SECTIONS_CONCURRENCY
+            course_state.config.image_blocks_concurrency = IMAGE_BLOCKS_CONCURRENCY
+            course_state.config.imagetext2text_concurrency = IMAGETEXT2TEXT_CONCURRENCY
+            course_state.config.vision_ranking_batch_size = VISION_RANKING_BATCH_SIZE
         
         if not course_state.language:
             course_state.language = DEFAULT_LANGUAGE
@@ -603,6 +782,7 @@ if __name__ == "__main__":
     if USE_VISION_RANKING:
         print(f"   Images to fetch per block: {NUM_IMAGES_TO_FETCH}")
         print(f"   Vision LLM for ranking: {VISION_PROVIDER}")
+    print(f"   Concurrency: sections={IMAGE_SECTIONS_CONCURRENCY}, blocks={IMAGE_BLOCKS_CONCURRENCY}, vision_calls={IMAGETEXT2TEXT_CONCURRENCY}")
     
     try:
         updated_state = generate_all_section_images(
@@ -652,7 +832,7 @@ if __name__ == "__main__":
                                                 section_has_images = True
                                             query_count += 1
                                             score = block_obj.image.get('ranking_score')
-                                            score_str = f"score: {score}/10" if score is not None else "no ranking"
+                                            score_str = f"score: {score}/12" if score is not None else "no ranking"
                                             print(f"   {query_count}. [{block_obj.title}] → \"{block_obj.image['query']}\" ({score_str})")
     
     print(f"\n✨ Total queries generated: {query_count}")

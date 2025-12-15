@@ -193,6 +193,10 @@ class CourseConfig(BaseModel):
     use_vision_ranking: bool = Field(default=False, description="Use vision LLM (Pixtral) to rank images; if False, picks first result")
     num_images_to_fetch: int = Field(default=5, description="Number of images to fetch for ranking (only used if use_vision_ranking=True)")
     vision_llm_provider: str = Field(default="pixtral", description="Vision LLM provider for image ranking (pixtral)")
+    image_sections_concurrency: int = Field(default=5, description="Number of sections to process in parallel")
+    image_blocks_concurrency: int = Field(default=3, description="Number of blocks to process in parallel within each section")
+    imagetext2text_concurrency: int = Field(default=5, description="Number of Pixtral vision LLM calls in parallel for image scoring")
+    vision_ranking_batch_size: int = Field(default=8, description="Number of images per batch for Pixtral ranking calls")
 
 # ---- Course State ----
 class CourseState(BaseModel):
