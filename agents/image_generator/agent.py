@@ -92,11 +92,23 @@ class ImageGenerationTask(BaseModel):
     html_elements: List[HtmlElement]
 
 
+# ---- Failed block info for retry queue ----
+class FailedBlockInfo(BaseModel):
+    """Information about a failed block for retry queue"""
+    module_idx: int
+    submodule_idx: int
+    section_idx: int
+    block_title: str
+    block_obj: ParagraphBlock
+    error: str
+
+
 # ---- State for aggregating results ----
 class ImageGenerationState(BaseModel):
     """State for the image generation subgraph"""
     course_state: CourseState
     completed_sections: Annotated[list[dict], add] = Field(default_factory=list)
+    failed_blocks: Annotated[list[FailedBlockInfo], add] = Field(default_factory=list)
     total_sections: int = 0
 
 
@@ -460,9 +472,9 @@ def generate_section_images(
     
     # Create LLM for query generation
     model_name = resolve_text_model_name(llm_provider)
-    llm_kwargs = {"temperature": 0.3}  # Slightly creative for better queries
+    llm_kwargs = {"temperature": 0.1}  # Slightly creative for better queries
     if model_name:
-        llm_kwargs["model_name"] = model_name
+        llm_kwargs["model_name"] = "mistral-small-latest"
     llm = create_text_llm(provider=llm_provider, **llm_kwargs)
     
     # Create query generation chain
@@ -506,7 +518,7 @@ def generate_section_images(
     
     # Process blocks in parallel
     images_added = 0
-    errors = []
+    failed_blocks_list = []
     
     with ThreadPoolExecutor(max_workers=image_blocks_concurrency) as executor:
         future_to_block = {
@@ -533,30 +545,38 @@ def generate_section_images(
                 if future.result():
                     images_added += 1
             except Exception as e:
-                print(f"❌ Error generating image for block '{block_obj.title}': {str(e)}")
-                errors.append((block_obj.title, str(e)))
+                error_msg = str(e)
+                print(f"❌ Error generating image for block '{block_obj.title}': {error_msg}")
+                # Collect failed block for retry queue instead of raising
+                failed_blocks_list.append(FailedBlockInfo(
+                    module_idx=state.module_idx,
+                    submodule_idx=state.submodule_idx,
+                    section_idx=state.section_idx,
+                    block_title=block_obj.title,
+                    block_obj=block_obj,
+                    error=error_msg
+                ))
     
-    # If there were errors, raise to trigger retry
-    if errors:
-        error_msg = "; ".join([f"{title}: {err}" for title, err in errors])
-        raise Exception(f"Failed to generate images for {len(errors)} blocks: {error_msg}")
+    if failed_blocks_list:
+        print(f"⚠️ {len(failed_blocks_list)} blocks failed, queued for retry later")
     
     print(f"✓ Generated {images_added} images for Module {state.module_idx+1}, "
           f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
     
-    # Return the completed section info
+    # Return the completed section info along with any failed blocks
     return {
         "completed_sections": [{
             "module_idx": state.module_idx,
             "submodule_idx": state.submodule_idx,
             "section_idx": state.section_idx,
             "html_elements": state.html_elements
-        }]
+        }],
+        "failed_blocks": failed_blocks_list
     }
 
 
 def reduce_images(state: ImageGenerationState) -> dict:
-    """Fan-in: Aggregate all generated images back into the course state."""
+    """Fan-in: Aggregate all generated images back into the course state and retry failed blocks."""
     print(f"📦 Reducing {len(state.completed_sections)} sections with images")
     
     # Update course state with all generated images
@@ -568,9 +588,114 @@ def reduce_images(state: ImageGenerationState) -> dict:
         section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
         section.html = section_info["html_elements"]
     
-    print(f"✅ All {state.total_sections} section images generated successfully!")
+    # Check if there are failed blocks to retry
+    if state.failed_blocks:
+        print(f"\n🔄 Retrying {len(state.failed_blocks)} failed blocks sequentially...")
+        
+        # Retry failed blocks one at a time (sequential, lower concurrency)
+        still_failed = _retry_failed_blocks(
+            state.failed_blocks,
+            state.course_state,
+        )
+        
+        if still_failed:
+            print(f"⚠️ {len(still_failed)} blocks still failed after retry:")
+            for fb in still_failed:
+                print(f"   - [{fb.block_title}] in Module {fb.module_idx+1}.{fb.submodule_idx+1}.{fb.section_idx+1}")
+            print("   (Continuing without these images)")
+        else:
+            print("✅ All retried blocks succeeded!")
+    
+    success_count = state.total_sections
+    if state.failed_blocks:
+        failed_after_retry = len([fb for fb in state.failed_blocks if fb.block_obj.image is None])
+        if failed_after_retry > 0:
+            print(f"✅ Image generation complete! ({failed_after_retry} blocks without images)")
+        else:
+            print(f"✅ All {state.total_sections} section images generated successfully!")
+    else:
+        print(f"✅ All {state.total_sections} section images generated successfully!")
     
     return {"course_state": state.course_state}
+
+
+def _retry_failed_blocks(
+    failed_blocks: List[FailedBlockInfo],
+    course_state: CourseState,
+) -> List[FailedBlockInfo]:
+    """
+    Retry failed blocks sequentially (one at a time) with fresh browser context.
+    
+    Args:
+        failed_blocks: List of failed block info
+        course_state: Current course state for config access
+        
+    Returns:
+        List of blocks that still failed after retry
+    """
+    from tools.imagesearch.factory import create_image_search
+    
+    llm_provider = course_state.config.text_llm_provider
+    image_provider = course_state.config.image_search_provider
+    course_title = course_state.title
+    
+    use_vision_ranking = course_state.config.use_vision_ranking
+    num_images_to_fetch = course_state.config.num_images_to_fetch
+    vision_provider = course_state.config.vision_llm_provider
+    imagetext2text_concurrency = course_state.config.imagetext2text_concurrency
+    vision_ranking_batch_size = course_state.config.vision_ranking_batch_size
+    
+    k_images = num_images_to_fetch if use_vision_ranking else 1
+    
+    # Create LLM for query generation
+    model_name = resolve_text_model_name(llm_provider)
+    llm_kwargs = {"temperature": 0.3}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=llm_provider, **llm_kwargs)
+    
+    # Create query generation chain
+    query_chain = image_query_prompt | llm | StrOutputParser()
+    
+    # Get fresh image search function
+    search_images = create_image_search(image_provider)
+    
+    still_failed = []
+    
+    for i, fb in enumerate(failed_blocks):
+        print(f"   🔄 Retrying block {i+1}/{len(failed_blocks)}: '{fb.block_title}'...")
+        
+        # Wait between retries to avoid rate limiting
+        if i > 0:
+            import time
+            time.sleep(2)  # 2 second delay between retries
+        
+        try:
+            success = _process_single_block(
+                fb.block_obj,
+                course_title,
+                llm_provider,
+                image_provider,
+                k_images,
+                use_vision_ranking,
+                vision_provider,
+                imagetext2text_concurrency,
+                vision_ranking_batch_size,
+                query_chain,
+                search_images,
+            )
+            
+            if success:
+                print(f"   ✅ Retry succeeded for '{fb.block_title}'")
+            else:
+                print(f"   ❌ Retry failed for '{fb.block_title}'")
+                still_failed.append(fb)
+                
+        except Exception as e:
+            print(f"   ❌ Retry error for '{fb.block_title}': {str(e)}")
+            still_failed.append(fb)
+    
+    return still_failed
 
 
 def build_image_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
@@ -689,7 +814,7 @@ if __name__ == "__main__":
     import json
     from main.state import CourseConfig
     
-    INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251211_172927.json"
+    INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251215_213954.json"
     # Generate OUTPUT_FILE from INPUT_FILE with _images suffix
     base, ext = os.path.splitext(INPUT_FILE)
     OUTPUT_FILE = f"{base}_images{ext}"
@@ -697,7 +822,7 @@ if __name__ == "__main__":
     # Hardcoded defaults - change these to override config values
     DEFAULT_LLM_PROVIDER = "mistral"
     DEFAULT_LANGUAGE = "English"
-    DEFAULT_IMAGE_PROVIDER = "bing"  # Options: bing | freepik | ddg
+    DEFAULT_IMAGE_PROVIDER = "google"  # Options: bing | freepik | ddg
     USE_VISION_RANKING = False  # Set to True to rank images with Pixtral, False to pick first result
     NUM_IMAGES_TO_FETCH = 8  # Number of images to fetch for ranking (only used if USE_VISION_RANKING=True)
     VISION_PROVIDER = "pixtral"  # Vision LLM for ranking

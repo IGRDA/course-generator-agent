@@ -3,7 +3,42 @@ Deterministic HTML exporter for CourseState.
 Converts the structured JSON data into a complete HTML page with interactive elements.
 """
 from typing import List
+from urllib.parse import urlparse
 from main.state import CourseState, Section, HtmlElement
+
+
+def is_valid_image_url(url: str) -> bool:
+    """
+    Quick validation that a URL is suitable for embedding in HTML.
+    
+    Args:
+        url: The image URL to validate
+        
+    Returns:
+        True if the URL appears valid for HTML embedding
+    """
+    if not url or not isinstance(url, str):
+        return False
+    
+    url = url.strip()
+    
+    # Must start with http:// or https://
+    if not url.startswith(('http://', 'https://')):
+        return False
+    
+    # URL shouldn't be too long
+    if len(url) > 2000:
+        return False
+    
+    # Basic URL structure check
+    try:
+        parsed = urlparse(url)
+        if not parsed.netloc:
+            return False
+    except Exception:
+        return False
+    
+    return True
 
 
 def escape_html(text: str) -> str:
@@ -75,6 +110,11 @@ def render_element(element: HtmlElement) -> str:
                 html += '<div class="content-item">'
                 html += f'<h4 class="item-title"><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
                 html += '<div class="item-body">'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div></div>'
@@ -92,6 +132,11 @@ def render_element(element: HtmlElement) -> str:
                 html += '<span class="accordion-toggle">▼</span>'
                 html += '</div>'
                 html += f'<div class="accordion-body" style="display: {"block" if idx == 0 else "none"};">'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div></div>'
@@ -114,6 +159,11 @@ def render_element(element: HtmlElement) -> str:
             for idx, block in enumerate(element.content):
                 display_style = "block" if idx == 0 else "none"
                 html += f'<div class="tab-content" id="tab-{idx}" style="display: {display_style};">'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div>'
@@ -128,6 +178,11 @@ def render_element(element: HtmlElement) -> str:
                 display_style = "block" if idx == 0 else "none"
                 html += f'<div class="carousel-slide" style="display: {display_style};">'
                 html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div>'
@@ -146,6 +201,11 @@ def render_element(element: HtmlElement) -> str:
                 html += '<div class="flip-card" onclick="this.classList.toggle(\'flipped\')">'
                 html += '<div class="flip-card-inner">'
                 html += '<div class="flip-card-front">'
+                # Render image on front if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image flip-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
                 html += '<p class="flip-hint">Click to flip</p>'
                 html += '</div>'
@@ -167,6 +227,11 @@ def render_element(element: HtmlElement) -> str:
                 html += '<div class="timeline-marker"></div>'
                 html += '<div class="timeline-content">'
                 html += f'<h4><i class="{block.icon}"></i> {escape_html(block.title)}</h4>'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div></div>'
@@ -183,6 +248,11 @@ def render_element(element: HtmlElement) -> str:
                 html += '<div class="message-bubble">'
                 html += f'<div class="message-header"><i class="{block.icon}"></i> {escape_html(block.title)}</div>'
                 html += '<div class="message-body">'
+                # Render image if present and valid
+                if hasattr(block, 'image') and block.image and block.image.get('content'):
+                    img_url = block.image.get('content', '')
+                    if is_valid_image_url(img_url):
+                        html += f'<div class="block-image"><img src="{escape_html(img_url)}" alt="{escape_html(block.title)}" loading="lazy" onerror="this.style.display=\'none\'"></div>'
                 for sub_element in block.elements:
                     html += render_element(sub_element)
                 html += '</div></div></div>'
@@ -449,6 +519,25 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         }}
         .item-body {{ 
             padding-left: 35px;
+        }}
+        
+        /* Block Images */
+        .block-image {{
+            margin: 15px 0;
+            text-align: center;
+        }}
+        .block-image img {{
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            object-fit: contain;
+        }}
+        .flip-image {{
+            margin: 10px 0;
+        }}
+        .flip-image img {{
+            max-height: 120px;
         }}
         
         .section-conclusion {{ 
