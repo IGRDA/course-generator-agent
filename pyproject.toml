@@ -23,14 +23,11 @@ dependencies = [
     "langsmith==0.4.31",
     "wikipedia",
     "docling",
-    "easyocr>=1.7.0"  # PDF to Markdown conversion
+    "easyocr>=1.7.0",  # PDF to Markdown conversion
+    "playwright>=1.40.0",  # Required for Freepik image search
 ]
 
 [project.optional-dependencies]
-# Optional dependencies for advanced visualization
-visualization = [
-    "pygraphviz",  # Requires system GraphViz: brew install graphviz
-]
 # Optional dependencies for alternative rendering methods
 rendering = [
     "pyppeteer",  # Alternative to playwright
@@ -42,12 +39,5 @@ evaluation = [
     "nltk==3.9.2",
     "sentence-transformers==5.1.2",
 ]
-# Optional dependencies for Freepik image scraper
-# Run: playwright install chromium after installing
-scraper = [
-    "playwright>=1.40.0",
-    "playwright-stealth>=1.0.6",
-]
-
 [tool.setuptools.packages.find]
 include = ["agents*", "main*", "tools*", "evaluators*", "evaluation*"]
