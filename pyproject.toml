@@ -23,14 +23,12 @@ dependencies = [
     "langsmith==0.4.31",
     "wikipedia",
     "docling",
-    "easyocr>=1.7.0"  # PDF to Markdown conversion
+    "easyocr>=1.7.0",  # PDF to Markdown conversion
+    "playwright>=1.55.0",  # Required for Freepik and Google image search
+    "playwright-stealth==2.0.0"
 ]
 
 [project.optional-dependencies]
-# Optional dependencies for advanced visualization
-visualization = [
-    "pygraphviz",  # Requires system GraphViz: brew install graphviz
-]
 # Optional dependencies for alternative rendering methods
 rendering = [
     "pyppeteer",  # Alternative to playwright
@@ -42,10 +40,5 @@ evaluation = [
     "nltk==3.9.2",
     "sentence-transformers==5.1.2",
 ]
-
-# Removed script entry until main() function is restored
-# [project.scripts]
-# course-generator = "agents.index_generator.agent:main"
-
 [tool.setuptools.packages.find]
 include = ["agents*", "main*", "tools*", "evaluators*", "evaluation*"]

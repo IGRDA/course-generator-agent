@@ -320,7 +320,7 @@ def generate_all_section_html(
     # Initialize state
     initial_state = HtmlFormattingState(course_state=course_state)
     
-    # Execute the graph
-    result = graph.invoke(initial_state)
+    # Execute the graph with concurrency limit
+    result = graph.invoke(initial_state, config={"max_concurrency": concurrency})
     
     return result["course_state"]

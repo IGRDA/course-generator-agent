@@ -4,6 +4,7 @@ from agents.section_theory_generator.agent import generate_all_section_theories
 from agents.activities_generator.agent import generate_all_section_activities
 from agents.html_formatter.agent import generate_all_section_html
 from agents.html_formatter.exporter import export_to_html
+from agents.image_generator.agent import generate_all_section_images
 from langgraph.graph import StateGraph, START, END
 
 def generate_index_node(state: CourseState) -> CourseState:
@@ -117,6 +118,26 @@ def generate_html_node(state: CourseState) -> CourseState:
     return updated_state
 
 
+def generate_images_node(state: CourseState) -> CourseState:
+    """Generate images for all HTML blocks using configured image search provider"""
+    print(f"Generating images for HTML blocks using {state.config.image_search_provider}...")
+    if state.config.use_vision_ranking:
+        print(f"   Vision ranking enabled: fetching {state.config.num_images_to_fetch} images, ranking with {state.config.vision_llm_provider}")
+    else:
+        print("   Vision ranking disabled: picking first image result")
+    
+    updated_state = generate_all_section_images(
+        state,
+        max_retries=state.config.max_retries,
+        use_vision_ranking=state.config.use_vision_ranking,
+        num_images_to_fetch=state.config.num_images_to_fetch,
+        vision_provider=state.config.vision_llm_provider,
+    )
+    
+    print("All images generated successfully!")
+    return updated_state
+
+
 # Build the graph
 def build_course_generation_graph():
     """Build and return the course generation graph"""
@@ -128,6 +149,7 @@ def build_course_generation_graph():
     graph.add_node("generate_activities", generate_activities_node)
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
+    graph.add_node("generate_images", generate_images_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index")
@@ -135,7 +157,8 @@ def build_course_generation_graph():
     graph.add_edge("generate_theories", "generate_activities")
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
-    graph.add_edge("generate_html", END)
+    graph.add_edge("generate_html", "generate_images")
+    graph.add_edge("generate_images", END)
     
     return graph.compile()
 
@@ -170,16 +193,25 @@ if __name__ == "__main__":
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Activities configuration
-        activities_concurrency=10,  # Number of concurrent activity generations
+        activities_concurrency=30,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
         num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
         # HTML configuration
-        html_concurrency=10,  # Number of concurrent HTML generations
-        select_html="random",  # "LLM" | "random"
+        html_concurrency=15,  # Number of concurrent HTML generations
+        select_html="LLM",  # "LLM" | "random"
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list of available formats
         html_random_seed=42,  # Seed for deterministic random selection
         include_quotes_in_html=True,  # Include quote elements
-        include_tables_in_html=True  # Include table elements
+        include_tables_in_html=True,  # Include table elements
+        # Image generation configuration
+        image_search_provider="bing",  # Image search provider: bing | freepik | ddg | google
+        use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
+        num_images_to_fetch=8,  # Number of images to fetch for ranking
+        vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
+        image_sections_concurrency=5,  # Number of sections to process in parallel
+        image_blocks_concurrency=3,  # Number of blocks to process in parallel within each section
+        imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel for image scoring
+        vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking calls
     )
     
     initial_state = CourseState(
