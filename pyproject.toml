@@ -24,7 +24,7 @@ dependencies = [
     "wikipedia",
     "docling",
     "easyocr>=1.7.0",  # PDF to Markdown conversion
-    "playwright>=1.40.0",  # Required for Freepik image search
+    "playwright>=1.55.0",  # Required for Freepik image search
 ]
 
 [project.optional-dependencies]
