@@ -12,11 +12,17 @@ Course Context:
 - Section: {section_title}
 - Target Language: {language}
 
+Other Sections in this Submodule (avoid repeating their content):
+{sibling_sections}
+
 Style Guidelines:
 {style_guidelines}
 
 Requirements:
 - Write approximately {n_words} words of educational content
+- Focus ONLY on content unique to "{section_title}"
+- DO NOT cover topics that belong to sibling sections listed above
+- Assume sibling sections will handle their own topics comprehensively
 - Create engaging, informative theory that fits the section topic
 - Use clear, educational language appropriate for learning
 - Structure the content with proper paragraphs and flow
@@ -158,6 +164,9 @@ regeneration_prompt = ChatPromptTemplate.from_messages([
 Requirements:
 - Maintain the original structure and flow
 - Keep approximately {n_words} words
+- Focus ONLY on content unique to this section
+- DO NOT cover topics that belong to sibling sections
+- Assume sibling sections will handle their own topics comprehensively
 - Fix all factual errors identified
 - Update outdated information
 - Add missing important context
@@ -174,6 +183,9 @@ Write the ENTIRE improved content exclusively in {language}. Every single word m
 Title: {section_title}
 Module: {module_title}
 Submodule: {submodule_title}
+
+Other Sections in this Submodule (avoid repeating their content):
+{sibling_sections}
 
 Original Content:
 {theory}

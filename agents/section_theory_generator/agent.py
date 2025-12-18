@@ -146,6 +146,7 @@ def reflect_and_improve(
     section_title: str,
     module_title: str,
     submodule_title: str,
+    sibling_sections: str,
     language: str,
     n_words: int,
     num_queries: int,
@@ -154,6 +155,18 @@ def reflect_and_improve(
 ) -> str:
     """
     Apply reflection pattern: generate queries → parallel search → reflect → regenerate if needed
+    
+    Args:
+        theory: Current theory content to improve
+        section_title: Title of this section
+        module_title: Title of the parent module
+        submodule_title: Title of the parent submodule
+        sibling_sections: Formatted string of sibling section titles to avoid repetition
+        language: Target language for content
+        n_words: Target word count
+        num_queries: Number of verification queries to generate
+        provider: LLM provider name
+        web_search_provider: Web search provider name
     """
     try:
         # Create LLM with specified provider
@@ -210,6 +223,7 @@ def reflect_and_improve(
                 "section_title": section_title,
                 "module_title": module_title,
                 "submodule_title": submodule_title,
+                "sibling_sections": sibling_sections,
                 "reflection": reflection_result.critique,
                 "search_results": all_search_results,
                 "language": language,
@@ -260,6 +274,13 @@ def generate_section(state: SectionTask) -> dict:
         total_sections_in_submodule=len(submodule.sections)
     )
     
+    # Build sibling section context to avoid content repetition
+    sibling_titles = [
+        s.title for s in submodule.sections 
+        if s.title != state.section_title
+    ]
+    sibling_sections = "\n".join(f"- {title}" for title in sibling_titles) if sibling_titles else "None (this is the only section)"
+    
     # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
     theory = section_chain.invoke({
@@ -269,7 +290,8 @@ def generate_section(state: SectionTask) -> dict:
         "section_title": state.section_title,
         "language": state.course_state.language,
         "n_words": n_words,
-        "style_guidelines": style_guidelines
+        "style_guidelines": style_guidelines,
+        "sibling_sections": sibling_sections
     }).strip()
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
@@ -282,6 +304,7 @@ def generate_section(state: SectionTask) -> dict:
             section_title=state.section_title,
             module_title=module.title,
             submodule_title=submodule.title,
+            sibling_sections=sibling_sections,
             language=state.course_state.language,
             n_words=n_words,
             num_queries=state.num_queries,
