@@ -1,107 +1,219 @@
 from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 
-# ---- Main Activities Generation Prompt ----
+# ============================================================================
+# ROLE & EXPERTISE DEFINITION
+# ============================================================================
+
+PEDAGOGY_EXPERT_ROLE = """You are an expert pedagogy specialist and educational assessment designer with deep knowledge of:
+- Learning science principles and cognitive load theory
+- Bloom's Taxonomy for designing assessments at multiple cognitive levels
+
+Your activities should test understanding across cognitive levels:
+- REMEMBER: Recall facts, terms, basic concepts
+- UNDERSTAND: Explain ideas, interpret meaning, summarize
+- APPLY: Use knowledge in new situations, solve problems
+- ANALYZE: Draw connections, compare, contrast, organize
+
+Create activities that are engaging and fair."""
+
+# ============================================================================
+# NEUTRALITY GUIDELINES
+# ============================================================================
+
+NEUTRALITY_GUIDELINES = """
+=====================================
+NEUTRALITY REQUIREMENTS
+=====================================
+Your activities MUST maintain neutrality:
+- Avoid political topics or framing that could be controversial
+- Do not embed cultural, religious, or ideological bias in questions
+- Present factual information without editorial slant
+- When using examples, ensure they don't privilege one perspective
+- Write clear, unambiguous questions
+- Ensure activities test knowledge, not cultural familiarity
+"""
+
+# ============================================================================
+# ACTIVITY QUALITY STANDARDS
+# ============================================================================
+
+ACTIVITY_QUALITY_STANDARDS = """
+=====================================
+ACTIVITY QUALITY REQUIREMENTS
+=====================================
+All activities MUST meet these standards:
+
+ALIGNMENT:
+- Every activity must directly relate to the theory content
+- Questions should assess understanding of key concepts
+- Avoid testing trivial or peripheral information
+
+FAIRNESS:
+- All answer options must be plausible (no obvious wrong answers)
+- Correct answers should not be identifiable by length or pattern
+- Avoid "trick questions" or ambiguous wording
+- Test knowledge, not reading comprehension or puzzle-solving
+
+ENGAGEMENT:
+- Make activities interesting and relevant
+- Connect to real-world applications where possible
+- Vary difficulty within the set of activities
+
+FORMAT COMPLIANCE:
+- Follow exact JSON structure for each activity type
+- No alphanumeric prefixes (a), 1., etc.) in options
+- No duplicate options within any single activity
+- Ensure all required fields are present and correctly typed
+"""
+
+# ============================================================================
+# VERIFICATION MANDATE
+# ============================================================================
+
+ACTIVITY_VERIFICATION = """
+=====================================
+FINAL VERIFICATION (MANDATORY)
+=====================================
+Before outputting, verify that your activities:
+✓ Are directly based on the theory content provided
+✓ Contain no political, religious, or ideological bias
+✓ Follow exact format specifications for each type
+✓ Have no duplicate options or overlapping answers
+✓ Are written entirely in the target language
+✓ Test genuine understanding, not trivia or tricks
+✓ Quote is from an identifiable, real person or entity
+"""
+
+# ============================================================================
+# MAIN ACTIVITIES GENERATION PROMPT
+# ============================================================================
+
 activities_generation_prompt = ChatPromptTemplate.from_messages([
-    ("system", """You are an expert pedagogy specialist and educational content designer.
-Your task is to extract key educational elements from theory text and create engaging interactive activities.
+    ("system", f"""{PEDAGOGY_EXPERT_ROLE}
+
+{NEUTRALITY_GUIDELINES}
+
+{ACTIVITY_QUALITY_STANDARDS}
 
 You must generate activities that:
 - Are aligned with the theory content
-- Test understanding at different levels (recall, comprehension, application)
-- Are appropriate for the language: {language}
+- Test understanding at different cognitive levels (recall, comprehension, application)
+- Are appropriate for the language: {{language}}
 - Follow exact format specifications for each activity type
 
 Be creative and educational, but follow the required formats precisely."""),
     
     ("human", """Analyze this theory text and generate educational activities:
 
-THEORY TEXT:
+=====================================
+THEORY TEXT
+=====================================
 {theory}
 
-SECTION TITLE: {section_title}
+=====================================
+SECTION TITLE
+=====================================
+{section_title}
 
-Generate the following:
+=====================================
+REQUIRED OUTPUTS
+=====================================
 
 1. GLOSSARY (1-4 terms):
    - Extract 1 to 4 key terms that are essential for understanding this content
    - Each term must have a clear, concise explanation
+   - Use terms that appear in the theory and are important for comprehension
 
 2. KEY CONCEPT (one sentence):
    - Provide a single sentence that captures the main idea of this section
+   - This should be the most important takeaway for learners
 
 3. INTERESTING FACT:
    - Provide an interesting, relevant fact related to the section content
-   - Should be engaging and enhance understanding
+   - Should be engaging, memorable, and enhance understanding
+   - Ensure it is accurate and verifiable
 
 4. QUOTE:
-   - Provide a relevant quote from an expert or notable figure
-   - Format: {{"author": "Name", "text": "Quote text"}}
+   - Provide a relevant quote from an IDENTIFIABLE, REAL person or entity
+   - Must be an actual person or organization (not fictional, not "Anonymous")
+   - Quote must be relevant to the topic and verifiable
+   - Format: {{"author": "Full Name or Organization", "text": "Quote text"}}
 
 5. ACTIVITIES:
    You must generate activities of these types: {activity_types}
    
-   For each activity type:
+   Activity Format Specifications:
    
-   - **order_list**: Create a question where students must order items in correct sequence
+   - **order_list**: Sequence ordering activity
      Format: {{"question": "...", "solution": ["item1", "item2", "item3", ...]}}
-     Requirements: At least 2 items, items should be distinct
+     Requirements: At least 2 items, items should be distinct steps or elements
    
-   - **fill_gaps**: Create a text with 2-4 blanks marked with *blanquito*
+   - **fill_gaps**: Gap-fill completion activity
      Format: {{"question": "Text with *blanquito* placeholders", "solution": ["word1", "word2", ...]}}
      Requirements: Number of *blanquito* must equal number of solutions, at least 2 blanks
    
-   - **swipper**: Create statements students categorize as true or false
+   - **swipper**: True/false categorization activity
      Format: {{"question": "Context or instruction", "solution": {{"true": ["stmt1", ...], "false": ["stmt2", ...]}}}}
-     Requirements: At least one statement in true or false
+     Requirements: At least one statement in true or false, statements must be clearly true or false
    
-   - **linking_terms**: Create concept-definition pairs to match
+   - **linking_terms**: Matching pairs activity
      Format: {{"question": "Match the concepts", "solution": [{{"concept": "...", "related": "..."}}, ...]}}
-     Requirements: At least 2 pairs
+     Requirements: At least 2 pairs, concepts and related items must be clearly connected
    
-   - **multiple_choice**: Create a question with one correct answer and 3+ incorrect options
+   - **multiple_choice**: Single correct answer activity
      Format: {{"question": "...", "solution": "correct answer", "other_options": ["wrong1", "wrong2", "wrong3"]}}
-     Requirements: Solution must NOT appear in other_options, at least 3 other options, no duplicates
+     Requirements: Solution must NOT appear in other_options, at least 3 other options, no duplicates, all options plausible
    
-   - **multi_selection**: Create a question with multiple correct answers
+   - **multi_selection**: Multiple correct answers activity
      Format: {{"question": "...", "solution": ["correct1", "correct2"], "other_options": ["wrong1", "wrong2"]}}
      Requirements: No overlap between solution and other_options, at least 4 total options
 
 6. FINAL ACTIVITIES:
    Generate activities of these types: {final_activity_types}
    
-   - **group_activity**: Collaborative task for teams
+   - **group_activity**: Collaborative task for teams to work together
    - **discussion_forum**: Thought-provoking discussion question
-   - **individual_project**: Individual project applying knowledge
-   - **open_ended_quiz**: Open-ended question requiring detailed response
+   - **individual_project**: Individual project applying knowledge to a real-world scenario
+   - **open_ended_quiz**: Open-ended question requiring detailed, thoughtful response
    
    Format: {{"question": "Task or question description"}}
+   Requirements: Should encourage critical thinking and application of knowledge
 
 {format_instructions}
 
-IMPORTANT:
-- Ensure all activities are based on the theory content
-- Follow the exact formats specified
-- Make sure all required fields are present
-- Activities should be engaging and educational""")
+""" + ACTIVITY_VERIFICATION)
 ])
 
 
-# ---- Correction Prompt ----
+# ============================================================================
+# CORRECTION PROMPT
+# ============================================================================
+
 correction_prompt = PromptTemplate.from_template("""The previous output had validation errors.
 
-ERROR:
+=====================================
+ERROR DETAILS
+=====================================
 {error}
 
-ORIGINAL OUTPUT:
+=====================================
+ORIGINAL OUTPUT
+=====================================
 {completion}
 
+=====================================
+CORRECTION INSTRUCTIONS
+=====================================
 Please fix the errors and return valid JSON following these requirements:
 {format_instructions}
 
-Make sure to:
-1. Include all required fields
-2. Follow the exact format specifications
-3. Ensure data types are correct
+Checklist for correction:
+1. Include all required fields for each activity type
+2. Follow the exact format specifications (JSON structure)
+3. Ensure data types are correct (strings, arrays, objects as specified)
 4. Fix any validation issues mentioned in the error
+5. Ensure no duplicate options within any activity
+6. Verify solution does not appear in other_options for multiple_choice
+7. Verify no overlap between solution and other_options for multi_selection
+8. Ensure quote is from an identifiable, real person or entity
 """)
-
