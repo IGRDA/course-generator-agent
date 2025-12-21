@@ -27,3 +27,18 @@ def web_search(query: str, max_results: int = 5) -> str:
     except Exception as e:
         return f"Wikipedia search failed: {str(e)}"
 
+
+if __name__ == "__main__":
+    query = "inteligencia artificial"
+    max_results = 3
+    
+    print(f"🔍 Searching Wikipedia for: '{query}'")
+    print("-" * 80)
+    
+    result = web_search(query, max_results)
+    
+    print(f"\n📚 Wikipedia Results:\n")
+    if result.startswith("Wikipedia search failed"):
+        print(f"❌ {result}")
+    else:
+        print(result)
