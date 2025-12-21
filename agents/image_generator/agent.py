@@ -278,10 +278,11 @@ def _fallback_parse_ranking(
         Parsed ImageRankingResult
     """
     # Create text LLM for parsing
-    model_name = "mistral"
+    model_name = resolve_text_model_name(text_llm_provider)
+
     llm_kwargs = {"temperature": 0}  # Deterministic for parsing
     if model_name:
-        llm_kwargs["model_name"] = "mistral-small-latest"
+        llm_kwargs["model_name"] = model_name
     text_llm = create_text_llm(provider=text_llm_provider, **llm_kwargs)
     
     # Create parsing chain
@@ -471,10 +472,10 @@ def generate_section_images(
     k_images = num_images_to_fetch if use_vision_ranking else 1
     
     # Create LLM for query generation
-    model_name = "mistral"
+    model_name = resolve_text_model_name(llm_provider)
     llm_kwargs = {"temperature": 0.1}  # Slightly creative for better queries
     if model_name:
-        llm_kwargs["model_name"] = "mistral-small-latest"
+        llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=llm_provider, **llm_kwargs)
     
     # Create query generation chain
@@ -648,10 +649,10 @@ def _retry_failed_blocks(
     k_images = num_images_to_fetch if use_vision_ranking else 1
     
     # Create LLM for query generation
-    model_name = "mistral"
+    model_name = resolve_text_model_name(llm_provider)
     llm_kwargs = {"temperature": 0.3}
     if model_name:
-        llm_kwargs["model_name"] = "mistral-small-latest"
+        llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=llm_provider, **llm_kwargs)
     
     # Create query generation chain
