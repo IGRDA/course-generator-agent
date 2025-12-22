@@ -38,8 +38,8 @@ def web_search(query: str, max_results: int = 5) -> str:
 
 
 if __name__ == "__main__":
-    query = "inteligencia artificial"
-    max_results = 3
+    query = "artificial inteligence"
+    max_results = 10
     
     print(f"🔍 Searching Wikipedia for: '{query}'")
     print("-" * 80)
