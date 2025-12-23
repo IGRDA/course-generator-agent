@@ -90,10 +90,10 @@ def calculate_metadata_node(state: CourseState) -> CourseState:
                     section.description = section.title
             
             # Calculate submodule duration: 0.1 hours per section
-            submodule.duration = len(submodule.sections) * 0.1
+            submodule.duration = round(len(submodule.sections) * 0.1, 1)
             
         # Calculate module duration
-        module.duration = sum(sm.duration for sm in module.submodules)
+        module.duration = round(sum(sm.duration for sm in module.submodules), 1)
         
     print("Metadata calculation completed!")
     return state

@@ -1,6 +1,17 @@
 from typing import List, Optional, Union, Literal, Dict, Any
 from pydantic import BaseModel, Field, model_validator
 
+
+# ---- Research Models ----
+class CourseResearch(BaseModel):
+    """Research output from the topic research phase"""
+    course_summary: str = Field(default="", description="Comprehensive summary of the course topic")
+    learning_objectives: List[str] = Field(default_factory=list, description="What students will achieve")
+    assumed_prerequisites: List[str] = Field(default_factory=list, description="Required prior knowledge")
+    out_of_scope: List[str] = Field(default_factory=list, description="Topics explicitly excluded from the course")
+    key_topics: List[str] = Field(default_factory=list, description="Canonical domain topics to cover")
+    raw_research: str = Field(default="", description="Concatenated raw search results for reference")
+
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
     term: str = Field(..., description="Glossary term")
@@ -114,6 +125,7 @@ class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
     index: int = Field(default=0, description="Section index within submodule")
     description: str = Field(default="", description="Description of the section")
+    summary: str = Field(default="", description="3-line summary of what this section will cover")
     
     theory: str = Field(
         default="", 
@@ -197,12 +209,23 @@ class CourseConfig(BaseModel):
     image_blocks_concurrency: int = Field(default=3, description="Number of blocks to process in parallel within each section")
     imagetext2text_concurrency: int = Field(default=5, description="Number of Pixtral vision LLM calls in parallel for image scoring")
     vision_ranking_batch_size: int = Field(default=8, description="Number of images per batch for Pixtral ranking calls")
+    
+    # Research configuration
+    enable_research: bool = Field(default=True, description="Enable research phase before index generation")
+    research_max_queries: int = Field(default=5, description="Maximum number of search queries to generate")
+    research_max_results_per_query: int = Field(default=3, description="Maximum results per search query")
 
 # ---- Course State ----
 class CourseState(BaseModel):
     """Main course state - agents should only modify content fields"""
     # Configuration (should not be modified by agents)
     config: CourseConfig = Field(..., description="Course generation configuration")
+    
+    # Research output (populated by research phase)
+    research: Optional[CourseResearch] = Field(
+        default=None, 
+        description="Research output from topic analysis phase"
+    )
     
     # Content fields (can be modified by agents)
     title: str = Field(..., description="Title of the course (initialized from config, can be refined by agents)")

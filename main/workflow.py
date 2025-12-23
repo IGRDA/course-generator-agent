@@ -15,6 +15,7 @@ def generate_index_node(state: CourseState) -> CourseState:
     config = state.config
     
     # Generate new course content skeleton (with empty theories)
+    # Now includes research phase if enabled
     content_skeleton = generate_course_state(
         title=state.title,
         total_pages=config.total_pages,
@@ -22,12 +23,26 @@ def generate_index_node(state: CourseState) -> CourseState:
         language=config.language,
         max_retries=config.max_retries,
         words_per_page=config.words_per_page,
-        provider=config.text_llm_provider
+        provider=config.text_llm_provider,
+        # Research configuration
+        enable_research=config.enable_research,
+        web_search_provider=config.web_search_provider,
+        research_max_queries=config.research_max_queries,
+        research_max_results_per_query=config.research_max_results_per_query,
     )
     
+    # Transfer generated content to state
     state.modules = content_skeleton.modules
     
+    # Preserve research output for downstream agents
+    state.research = content_skeleton.research
+    
     print("Course skeleton generated successfully!")
+    if state.research:
+        print(f"   Research summary: {state.research.course_summary[:100]}...")
+        print(f"   Learning objectives: {len(state.research.learning_objectives)}")
+        print(f"   Key topics: {len(state.research.key_topics)}")
+    
     return state
 
 
@@ -95,10 +110,10 @@ def calculate_metadata_node(state: CourseState) -> CourseState:
                     section.description = section.title
             
             # Calculate submodule duration: 0.1 hours per section
-            submodule.duration = len(submodule.sections) * 0.1
+            submodule.duration = round(len(submodule.sections) * 0.1, 1)
             
         # Calculate module duration
-        module.duration = sum(sm.duration for sm in module.submodules)
+        module.duration = round(sum(sm.duration for sm in module.submodules), 1)
         
     print("Metadata calculation completed!")
     return state
@@ -181,9 +196,9 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     config = CourseConfig(
-        title="Chess masterclass",
+        title="Quantum Theory",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
-        web_search_provider="tavily",  # Web search provider: ddg | tavily | wikipedia
+        web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=args.total_pages,  # Total pages for the course
         words_per_page=400,  # Target words per page
         language="Español",        
@@ -192,6 +207,10 @@ if __name__ == "__main__":
         concurrency=10,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
+        # Research configuration
+        enable_research=True,  # Enable research phase before index generation
+        research_max_queries= 10,  # Number of search queries to generate
+        research_max_results_per_query=5,  # Results per search query
         # Activities configuration
         activities_concurrency=30,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"

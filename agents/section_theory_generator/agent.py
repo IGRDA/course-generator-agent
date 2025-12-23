@@ -141,12 +141,79 @@ def select_style_guidelines(
     return STYLE_CONTINUATION
 
 
+def build_course_context(
+    course_state: CourseState,
+    current_module_idx: int,
+    current_submodule_idx: int,
+    max_outline_chars: int = 600,
+    max_sections_chars: int = 800
+) -> tuple[str, str]:
+    """
+    Build course-wide context for anti-repetition.
+    
+    Returns:
+        (course_outline, same_module_sections) tuple:
+        - course_outline: Condensed view of all modules and their submodules
+        - same_module_sections: Section titles from OTHER submodules in the same module
+    """
+    # Build course outline: "Module 1: Submod A, Submod B | Module 2: ..."
+    outline_parts = []
+    for m_idx, module in enumerate(course_state.modules):
+        if m_idx == current_module_idx:
+            # Mark current module
+            submod_names = ", ".join(sm.title for sm in module.submodules)
+            outline_parts.append(f"[CURRENT] {module.title}: {submod_names}")
+        else:
+            submod_names = ", ".join(sm.title for sm in module.submodules)
+            outline_parts.append(f"{module.title}: {submod_names}")
+    
+    course_outline = " | ".join(outline_parts)
+    
+    # Truncate if too long
+    if len(course_outline) > max_outline_chars:
+        truncated = course_outline[:max_outline_chars]
+        # Find last complete module separator
+        last_sep = truncated.rfind(" | ")
+        if last_sep > 0:
+            truncated = truncated[:last_sep]
+        remaining_modules = len(course_state.modules) - truncated.count(":") 
+        course_outline = f"{truncated} | ... and {remaining_modules} more modules"
+    
+    # Build same-module sections (from OTHER submodules in current module)
+    current_module = course_state.modules[current_module_idx]
+    section_parts = []
+    
+    for sm_idx, submodule in enumerate(current_module.submodules):
+        if sm_idx == current_submodule_idx:
+            continue  # Skip current submodule (handled by sibling_summaries)
+        
+        section_titles = [s.title for s in submodule.sections]
+        section_parts.append(f"{submodule.title}: {', '.join(section_titles)}")
+    
+    same_module_sections = "\n".join(section_parts) if section_parts else "None (only one submodule in this module)"
+    
+    # Truncate if too long
+    if len(same_module_sections) > max_sections_chars:
+        truncated = same_module_sections[:max_sections_chars]
+        # Find last complete line
+        last_newline = truncated.rfind("\n")
+        if last_newline > 0:
+            truncated = truncated[:last_newline]
+        # Count remaining sections
+        total_sections = sum(len(sm.sections) for sm in current_module.submodules if sm != current_module.submodules[current_submodule_idx])
+        shown_sections = truncated.count(",") + truncated.count("\n") + 1
+        remaining = max(0, total_sections - shown_sections)
+        same_module_sections = f"{truncated}\n... and {remaining} more sections in this module"
+    
+    return course_outline, same_module_sections
+
+
 def reflect_and_improve(
     theory: str,
     section_title: str,
     module_title: str,
     submodule_title: str,
-    sibling_sections: str,
+    sibling_summaries: str,
     language: str,
     n_words: int,
     num_queries: int,
@@ -161,7 +228,7 @@ def reflect_and_improve(
         section_title: Title of this section
         module_title: Title of the parent module
         submodule_title: Title of the parent submodule
-        sibling_sections: Formatted string of sibling section titles to avoid repetition
+        sibling_summaries: Formatted string of sibling sections with their summaries
         language: Target language for content
         n_words: Target word count
         num_queries: Number of verification queries to generate
@@ -223,7 +290,7 @@ def reflect_and_improve(
                 "section_title": section_title,
                 "module_title": module_title,
                 "submodule_title": submodule_title,
-                "sibling_sections": sibling_sections,
+                "sibling_sections": sibling_summaries,
                 "reflection": reflection_result.critique,
                 "search_results": all_search_results,
                 "language": language,
@@ -274,12 +341,22 @@ def generate_section(state: SectionTask) -> dict:
         total_sections_in_submodule=len(submodule.sections)
     )
     
-    # Build sibling section context to avoid content repetition
-    sibling_titles = [
-        s.title for s in submodule.sections 
-        if s.title != state.section_title
-    ]
-    sibling_sections = "\n".join(f"- {title}" for title in sibling_titles) if sibling_titles else "None (this is the only section)"
+    # Build sibling section context with summaries to avoid content repetition
+    sibling_parts = []
+    for s in submodule.sections:
+        if s.title != state.section_title:
+            if s.summary:
+                sibling_parts.append(f"- {s.title}:\n  {s.summary}")
+            else:
+                sibling_parts.append(f"- {s.title}: (no summary available)")
+    sibling_summaries = "\n".join(sibling_parts) if sibling_parts else "None (this is the only section in this submodule)"
+    
+    # Build course-wide context to avoid repetition across modules/submodules
+    course_outline, same_module_sections = build_course_context(
+        state.course_state,
+        state.module_idx,
+        state.submodule_idx
+    )
     
     # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
@@ -291,7 +368,9 @@ def generate_section(state: SectionTask) -> dict:
         "language": state.course_state.language,
         "n_words": n_words,
         "style_guidelines": style_guidelines,
-        "sibling_sections": sibling_sections
+        "sibling_summaries": sibling_summaries,
+        "course_outline": course_outline,
+        "same_module_sections": same_module_sections
     }).strip()
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
@@ -304,7 +383,7 @@ def generate_section(state: SectionTask) -> dict:
             section_title=state.section_title,
             module_title=module.title,
             submodule_title=submodule.title,
-            sibling_sections=sibling_sections,
+            sibling_summaries=sibling_summaries,
             language=state.course_state.language,
             n_words=n_words,
             num_queries=state.num_queries,

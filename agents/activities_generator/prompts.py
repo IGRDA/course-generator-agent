@@ -101,7 +101,8 @@ You must generate activities that:
 - Are appropriate for the language: {{language}}
 - Follow exact format specifications for each activity type
 
-Be creative and educational, but follow the required formats precisely."""),
+Be creative and educational, but follow the required formats precisely.
+Avoid LaTeX notation in JSON strings - use plain text or Unicode symbols (ℏ, ψ, Ψ, α, β, γ, δ, Δ, π, Σ, ∫, ∂, →, ≠, ≤, ≥, ∞)."""),
     
     ("human", """Analyze this theory text and generate educational activities:
 
@@ -216,4 +217,5 @@ Checklist for correction:
 6. Verify solution does not appear in other_options for multiple_choice
 7. Verify no overlap between solution and other_options for multi_selection
 8. Ensure quote is from an identifiable, real person or entity
+9. Avoid LaTeX notation - use plain text or Unicode symbols instead
 """)

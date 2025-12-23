@@ -156,8 +156,24 @@ COURSE CONTEXT
 - Section: {section_title}
 - Target Language: {language}
 
-Other Sections in this Submodule (avoid repeating their content):
-{sibling_sections}
+=====================================
+SIBLING SECTIONS (DO NOT OVERLAP)
+=====================================
+The following sections are in the same submodule. Each has a planned content summary.
+Your content MUST NOT overlap with theirs - they will cover their own topics.
+
+{sibling_summaries}
+
+=====================================
+COURSE-WIDE CONTEXT (AVOID REPETITION)
+=====================================
+Course structure (all modules and submodules):
+{course_outline}
+
+Other sections in this module (from different submodules):
+{same_module_sections}
+
+Your content must be DISTINCT from topics covered elsewhere in the course.
 
 {tone_framework}
 
@@ -198,7 +214,8 @@ def get_section_theory_prompt():
         template=SECTION_THEORY_TEMPLATE,
         input_variables=[
             "course_title", "module_title", "submodule_title", "section_title",
-            "language", "sibling_sections", "style_guidelines", "n_words"
+            "language", "sibling_summaries", "style_guidelines", "n_words",
+            "course_outline", "same_module_sections"
         ],
         partial_variables={
             "expert_role": EXPERT_ROLE,
@@ -213,7 +230,8 @@ section_theory_prompt = PromptTemplate(
     template=SECTION_THEORY_TEMPLATE,
     input_variables=[
         "course_title", "module_title", "submodule_title", "section_title",
-        "language", "sibling_sections", "style_guidelines", "n_words"
+        "language", "sibling_summaries", "style_guidelines", "n_words",
+        "course_outline", "same_module_sections"
     ],
     partial_variables={
         "expert_role": EXPERT_ROLE,
@@ -266,6 +284,12 @@ Generate exactly {k} targeted search queries to verify the factual accuracy of t
 # Prompt for reflecting on content quality based on search results
 reflection_prompt = ChatPromptTemplate.from_messages([
     ("system", """You are an expert educational content reviewer. Analyze the course section content and identify factual errors, outdated information, or improvements needed.
+
+IMPORTANT: Only consider search results that are:
+- Relevant to the section topic
+- From credible, authoritative sources
+- Current and factually sound
+Ignore error messages, irrelevant results, or low-quality content.
 
 Focus on:
 - Factual accuracy (formulas, laws, dates, definitions)
