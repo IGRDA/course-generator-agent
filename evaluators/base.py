@@ -1,5 +1,6 @@
 """Base evaluator with shared LLM-as-judge logic and retry pattern."""
 
+import re
 from typing import Type, TypeVar, Iterator, Tuple
 from pydantic import BaseModel, Field
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
@@ -7,6 +8,39 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from main.state import CourseState
+
+
+def _sanitize_json_string(raw: str) -> str:
+    """
+    Sanitize raw LLM output to fix common JSON parsing issues.
+    
+    Handles:
+    - Unescaped backslashes (e.g., LaTeX: \frac, \pi, \hbar)
+    - Invalid escape sequences in JSON strings
+    """
+    # Find JSON content (between first { and last })
+    start = raw.find('{')
+    end = raw.rfind('}')
+    if start == -1 or end == -1:
+        return raw
+    
+    prefix = raw[:start]
+    json_content = raw[start:end + 1]
+    suffix = raw[end + 1:]
+    
+    # Fix unescaped backslashes that are not valid JSON escapes
+    # Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+    # Pattern matches backslash NOT followed by valid JSON escape chars
+    def escape_invalid_backslashes(match):
+        s = match.group(1)
+        # Escape backslashes that aren't followed by valid JSON escape sequences
+        result = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', s)
+        return f'"{result}"'
+    
+    # Process strings within quotes (to avoid breaking JSON structure)
+    sanitized = re.sub(r'"((?:[^"\\]|\\.)*)"', escape_invalid_backslashes, json_content)
+    
+    return prefix + sanitized + suffix
 
 
 # ---- Rubric Score Models ----
@@ -116,8 +150,11 @@ class BaseEvaluator:
         
         raw = chain.invoke(prompt_variables)
         
+        # Sanitize raw output to fix common JSON issues (e.g., unescaped LaTeX backslashes)
+        sanitized_raw = _sanitize_json_string(raw)
+        
         try:
-            return parser.parse(raw)
+            return parser.parse(sanitized_raw)
         except Exception as e:
             if correction_prompt is None:
                 correction_prompt = ChatPromptTemplate.from_messages([
@@ -134,10 +171,10 @@ Please provide a corrected JSON output.""")
                 ])
             
             return fix_parser.parse_with_prompt(
-                completion=raw,
+                completion=sanitized_raw,
                 prompt_value=correction_prompt.format_prompt(
                     error=str(e),
-                    completion=raw,
+                    completion=sanitized_raw,
                     format_instructions=parser.get_format_instructions(),
                 ),
             )

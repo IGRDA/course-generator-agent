@@ -62,9 +62,9 @@ class OverallEvaluator(BaseEvaluator):
         for _, _, _, section in self.iter_sections(course_state):
             if section.theory and section.theory.strip():
                 with_theory += 1
-            if section.other_elements and section.other_elements.activities:
+            if section.activities and section.activities.quiz:
                 with_activities += 1
-            if section.html and section.html.theory:
+            if section.html:
                 with_html += 1
         
         total = self.count_sections(course_state)
