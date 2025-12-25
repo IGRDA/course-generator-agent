@@ -1,3 +1,4 @@
+import re
 from typing import Annotated, List
 from operator import add
 from pydantic import BaseModel, Field
@@ -8,6 +9,42 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send, RetryPolicy
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import html_generation_prompt, correction_prompt
+
+
+def strip_latex_from_raw_json(raw: str) -> str:
+    """
+    Strip/fix LaTeX patterns from raw JSON string as last resort fallback.
+    Operates on the raw string BEFORE JSON parsing when LLM retries are exhausted.
+    
+    Handles patterns like \\frac, \\pi, \\epsilon, \\(, \\), etc. that cause
+    JSON parsing errors due to invalid escape sequences.
+    
+    Strategy: Process only content INSIDE JSON string values to avoid breaking
+    JSON structure. Escapes invalid backslashes rather than removing content.
+    """
+    # Find JSON content (between first { and last })
+    start = raw.find('{')
+    end = raw.rfind('}')
+    if start == -1 or end == -1:
+        return raw
+    
+    prefix = raw[:start]
+    json_content = raw[start:end + 1]
+    suffix = raw[end + 1:]
+    
+    def fix_string_content(match):
+        """Fix backslashes inside a JSON string value."""
+        s = match.group(1)
+        # Escape backslashes that aren't followed by valid JSON escape sequences
+        # Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+        result = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', s)
+        return f'"{result}"'
+    
+    # Process only strings within quotes (to avoid breaking JSON structure)
+    # This regex matches JSON string values: "..."
+    sanitized = re.sub(r'"((?:[^"\\]|\\.)*)"', fix_string_content, json_content)
+    
+    return prefix + sanitized + suffix
 
 
 # ---- Icon Mapping ----
@@ -184,21 +221,34 @@ def generate_section_html(state: SectionHtmlTask) -> dict:
         "format_instructions": parser.get_format_instructions(),
     })
     
-    # Try to parse, with fallback to retry parser
+    # Try to parse, with fallback to retry parser, then LaTeX stripping as last resort
     try:
         result = parser.parse(raw)
         html_array = result.elements
     except Exception as e:
-        print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting correction...")
-        result = fix_parser.parse_with_prompt(
-            completion=raw,
-            prompt_value=correction_prompt.format_prompt(
-                error=str(e),
+        print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting LLM correction...")
+        try:
+            # Let LLM retry with configured max_retries
+            result = fix_parser.parse_with_prompt(
                 completion=raw,
-                format_instructions=parser.get_format_instructions(),
-            ),
-        )
-        html_array = result.elements
+                prompt_value=correction_prompt.format_prompt(
+                    error=str(e),
+                    completion=raw,
+                    format_instructions=parser.get_format_instructions(),
+                ),
+            )
+            html_array = result.elements
+        except Exception as retry_error:
+            # All LLM retries exhausted - last resort: strip LaTeX and try once more
+            print(f"  ⚠ LLM retries exhausted for section {state.section_idx}, stripping LaTeX as fallback...")
+            stripped_raw = strip_latex_from_raw_json(raw)
+            try:
+                result = parser.parse(stripped_raw)
+                html_array = result.elements
+                print(f"  ✓ Recovered section {state.section_idx} by stripping LaTeX")
+            except Exception as final_error:
+                print(f"  ✗ All recovery attempts failed for section {state.section_idx}: {final_error}")
+                raise final_error
     
     # Apply random format override if configured
     if state.course_state.config.select_html == "random":
