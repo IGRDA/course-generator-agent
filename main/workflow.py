@@ -269,8 +269,7 @@ if __name__ == "__main__":
         use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
-        image_sections_concurrency=5,  # Number of sections to process in parallel
-        image_blocks_concurrency=3,  # Number of blocks to process in parallel within each section
+        image_concurrency=10,  # Number of image blocks to process in parallel
         imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel for image scoring
         vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking calls
     )

@@ -1,12 +1,20 @@
-from typing import List, Optional, Union
+from typing import List, Optional, Union, Annotated
 import json
 import logging
 import concurrent.futures
 from pydantic import BaseModel, Field
+from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send, RetryPolicy
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
 from main.state import CourseState, CourseConfig, Module, Submodule, Section, CourseResearch
+
+
+# Helper for state accumulation
+def add(a: list, b: list) -> list:
+    """Accumulator for list fields in LangGraph state."""
+    return a + b
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser, JsonOutputParser
 from LLMs.text2text import create_text_llm, resolve_text_model_name
@@ -113,6 +121,51 @@ titles_only_parser = PydanticOutputParser(pydantic_object=TitleOnlyCourse)
 
 # Parser for research synthesis
 research_parser = PydanticOutputParser(pydantic_object=CourseResearch)
+
+
+# -------------------------------------------------------
+# LangGraph State Models for Skeleton Generation Subgraph
+# -------------------------------------------------------
+class SkeletonGenerationState(BaseModel):
+    """State for skeleton generation subgraph (4 sequential steps)."""
+    # Inputs (set once at start)
+    title: str
+    language: str
+    research: Optional[CourseResearch] = None
+    n_modules: int
+    n_submodules: int
+    n_sections: int
+    provider: str
+    
+    # Progressive outputs (each step populates the next)
+    modules_course: Optional[ModulesOnlyCourse] = None
+    course_with_submodules: Optional[ModulesWithSubmodulesCourse] = None
+    titles_course: Optional[TitleOnlyCourse] = None
+    skeleton_course: Optional[SkeletonCourse] = None
+
+
+# -------------------------------------------------------
+# LangGraph State Models for Summary Generation Subgraph
+# -------------------------------------------------------
+class ModuleSummaryTask(BaseModel):
+    """Input for processing one module's summaries via Send."""
+    course_title: str
+    module_idx: int
+    module_title: str
+    module_description: str
+    sections_list: str  # Pre-formatted section list for prompt
+    language: str
+    provider: str
+
+
+class SummaryGenerationState(BaseModel):
+    """State for summary generation subgraph (Send pattern)."""
+    course_state: CourseState
+    language: str
+    provider: str
+    # Accumulated results from parallel module processing
+    completed_summaries: Annotated[list[dict], add] = Field(default_factory=list)
+    total_modules: int = 0
 
 
 def validate_structure_counts(
@@ -396,6 +449,183 @@ def _titles_to_skeleton(titles_course: TitleOnlyCourse) -> SkeletonCourse:
             title=m.title, description="", submodules=submodules
         ))
     return SkeletonCourse(title=titles_course.title, modules=modules)
+
+
+# -------------------------------------------------------
+# Skeleton Subgraph Node Functions (LangGraph nodes)
+# -------------------------------------------------------
+def skeleton_generate_modules_node(state: SkeletonGenerationState) -> dict:
+    """
+    Node 1: Generate module titles only.
+    Raises exception on parse failure (RetryPolicy handles retry).
+    """
+    print(f"   Step 1: Generating module titles...")
+    
+    model_name = resolve_text_model_name(state.provider)
+    llm_kwargs = {"temperature": 0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=state.provider, **llm_kwargs)
+    
+    # Choose prompt based on research availability
+    if state.research is not None:
+        chain = modules_only_with_research_prompt | llm | StrOutputParser()
+        invoke_params = {
+            "course_title": state.title,
+            "language": state.language,
+            "key_topics": "\n".join(f"- {topic}" for topic in state.research.key_topics),
+            "learning_objectives": "\n".join(f"- {obj}" for obj in state.research.learning_objectives),
+            "n_modules": state.n_modules,
+            "format_instructions": modules_only_parser.get_format_instructions(),
+        }
+    else:
+        chain = modules_only_prompt | llm | StrOutputParser()
+        invoke_params = {
+            "course_title": state.title,
+            "language": state.language,
+            "n_modules": state.n_modules,
+            "format_instructions": modules_only_parser.get_format_instructions(),
+        }
+    
+    raw = chain.invoke(invoke_params)
+    
+    # Parse - raises exception on failure (RetryPolicy will retry)
+    modules_course = modules_only_parser.parse(raw)
+    
+    # Validate module count
+    actual_modules = len(modules_course.modules)
+    if actual_modules != state.n_modules:
+        raise ValueError(f"Expected {state.n_modules} modules, got {actual_modules}")
+    
+    print(f"   ✓ Step 1 complete: {state.n_modules} modules generated")
+    return {"modules_course": modules_course}
+
+
+def skeleton_generate_submodules_node(state: SkeletonGenerationState) -> dict:
+    """
+    Node 2: Add submodules to each module.
+    Raises exception on parse failure (RetryPolicy handles retry).
+    """
+    print(f"   Step 2: Adding submodules...")
+    
+    model_name = resolve_text_model_name(state.provider)
+    llm_kwargs = {"temperature": 0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=state.provider, **llm_kwargs)
+    
+    modules_json = state.modules_course.model_dump_json(indent=2)
+    chain = add_submodules_prompt | llm | StrOutputParser()
+    
+    raw = chain.invoke({
+        "course_title": state.modules_course.title,
+        "language": state.language,
+        "modules_structure": modules_json,
+        "n_submodules": state.n_submodules,
+        "format_instructions": modules_with_submodules_parser.get_format_instructions(),
+    })
+    
+    # Parse - raises exception on failure (RetryPolicy will retry)
+    result = modules_with_submodules_parser.parse(raw)
+    
+    print(f"   ✓ Step 2 complete: {state.n_submodules} submodules per module")
+    return {"course_with_submodules": result}
+
+
+def skeleton_generate_sections_node(state: SkeletonGenerationState) -> dict:
+    """
+    Node 3: Add sections to each submodule.
+    Raises exception on parse failure (RetryPolicy handles retry).
+    """
+    print(f"   Step 3: Adding sections...")
+    
+    model_name = resolve_text_model_name(state.provider)
+    llm_kwargs = {"temperature": 0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=state.provider, **llm_kwargs)
+    
+    structure_json = state.course_with_submodules.model_dump_json(indent=2)
+    chain = add_sections_prompt | llm | StrOutputParser()
+    
+    raw = chain.invoke({
+        "course_title": state.course_with_submodules.title,
+        "language": state.language,
+        "structure_with_submodules": structure_json,
+        "n_sections": state.n_sections,
+        "format_instructions": titles_only_parser.get_format_instructions(),
+    })
+    
+    # Parse - raises exception on failure (RetryPolicy will retry)
+    result = titles_only_parser.parse(raw)
+    
+    print(f"   ✓ Step 3 complete: {state.n_sections} sections per submodule")
+    return {"titles_course": result}
+
+
+def skeleton_generate_descriptions_node(state: SkeletonGenerationState) -> dict:
+    """
+    Node 4: Expand titles with descriptions.
+    On persistent failure, falls back to empty descriptions.
+    """
+    print(f"   Step 4: Adding descriptions...")
+    
+    model_name = resolve_text_model_name(state.provider)
+    llm_kwargs = {"temperature": 0}
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=state.provider, **llm_kwargs)
+    
+    titles_json = state.titles_course.model_dump_json(indent=2)
+    chain = expand_descriptions_prompt | llm | StrOutputParser()
+    
+    raw = chain.invoke({
+        "course_title": state.titles_course.title,
+        "language": state.language,
+        "titles_structure": titles_json,
+        "format_instructions": skeleton_parser.get_format_instructions(),
+    })
+    
+    # Parse - raises exception on failure (RetryPolicy will retry)
+    skeleton_course = skeleton_parser.parse(raw)
+    
+    print(f"   ✓ Step 4 complete: Descriptions added")
+    return {"skeleton_course": skeleton_course}
+
+
+def skeleton_fallback_descriptions_node(state: SkeletonGenerationState) -> dict:
+    """
+    Fallback node: Create skeleton with empty descriptions if all retries fail.
+    """
+    print(f"   ⚠ Description generation failed, using empty descriptions")
+    skeleton_course = _titles_to_skeleton(state.titles_course)
+    return {"skeleton_course": skeleton_course}
+
+
+def build_skeleton_graph(max_retries: int = 3):
+    """
+    Build the skeleton generation subgraph with 4 sequential nodes.
+    Uses RetryPolicy for automatic retry on parse failures.
+    """
+    graph = StateGraph(SkeletonGenerationState)
+    
+    # Configure retry policy for parse failures
+    retry = RetryPolicy(max_attempts=max_retries)
+    
+    # Add nodes with retry policy
+    graph.add_node("generate_modules", skeleton_generate_modules_node, retry=retry)
+    graph.add_node("generate_submodules", skeleton_generate_submodules_node, retry=retry)
+    graph.add_node("generate_sections", skeleton_generate_sections_node, retry=retry)
+    graph.add_node("generate_descriptions", skeleton_generate_descriptions_node, retry=retry)
+    
+    # Sequential edges
+    graph.add_edge(START, "generate_modules")
+    graph.add_edge("generate_modules", "generate_submodules")
+    graph.add_edge("generate_submodules", "generate_sections")
+    graph.add_edge("generate_sections", "generate_descriptions")
+    graph.add_edge("generate_descriptions", END)
+    
+    return graph.compile()
 
 
 # -------------------------------------------------------
@@ -738,6 +968,142 @@ def generate_all_summaries(
 
 
 # -------------------------------------------------------
+# Summary Subgraph Node Functions (LangGraph Send pattern)
+# -------------------------------------------------------
+def summary_plan_modules_node(state: SummaryGenerationState) -> dict:
+    """
+    Plan node: Count modules and update state.
+    The actual Send dispatch happens in the routing function.
+    """
+    print(f"📝 Generating section summaries for {len(state.course_state.modules)} modules in parallel...")
+    return {"total_modules": len(state.course_state.modules)}
+
+
+def summary_continue_to_modules(state: SummaryGenerationState) -> list[Send]:
+    """
+    Routing function: Create Send tasks for each module to process in parallel.
+    Called by conditional edge after plan node.
+    """
+    sends = []
+    for idx, module in enumerate(state.course_state.modules):
+        # Collect all sections from all submodules (same logic as original)
+        sections_list_parts = []
+        for submodule in module.submodules:
+            for section in submodule.sections:
+                sections_list_parts.append(
+                    f"- Title: \"{section.title}\"\n  Description: {section.description}"
+                )
+        sections_list = "\n".join(sections_list_parts)
+        
+        task = ModuleSummaryTask(
+            course_title=state.course_state.title,
+            module_idx=idx,
+            module_title=module.title,
+            module_description=module.description,
+            sections_list=sections_list,
+            language=state.language,
+            provider=state.provider,
+        )
+        sends.append(Send("generate_module_summary", task))
+    
+    return sends
+
+
+def summary_generate_module_node(state: ModuleSummaryTask) -> dict:
+    """
+    Generate node: Process one module's summaries.
+    EXACT logic from generate_module_summaries() function.
+    """
+    # Create LLM (same as original)
+    model_name = resolve_text_model_name(state.provider)
+    llm_kwargs = {"temperature": 0.2}  # Slight creativity for varied summaries
+    if model_name:
+        llm_kwargs["model_name"] = model_name
+    llm = create_text_llm(provider=state.provider, **llm_kwargs)
+    
+    # Generate summaries (same chain as original)
+    chain = summary_generation_prompt | llm | StrOutputParser()
+    
+    raw_output = chain.invoke({
+        "course_title": state.course_title,
+        "module_title": state.module_title,
+        "module_description": state.module_description,
+        "language": state.language,
+        "sections_list": state.sections_list,
+    })
+    
+    # Parse JSON output (same logic as original)
+    try:
+        clean_output = raw_output.strip()
+        if clean_output.startswith("```"):
+            clean_output = clean_output.split("```")[1]
+            if clean_output.startswith("json"):
+                clean_output = clean_output[4:]
+        summaries = json.loads(clean_output)
+        if not isinstance(summaries, dict):
+            raise ValueError("Expected a dictionary")
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning(f"Failed to parse summaries for module '{state.module_title}': {e}")
+        summaries = {}
+    
+    print(f"   ✓ Generated summaries for module: {state.module_title}")
+    
+    return {
+        "completed_summaries": [{
+            "module_idx": state.module_idx,
+            "module_title": state.module_title,
+            "summaries": summaries,
+        }]
+    }
+
+
+def summary_reduce_node(state: SummaryGenerationState) -> dict:
+    """
+    Reduce node: Apply all summaries to course_state sections.
+    EXACT logic from generate_all_summaries() apply section.
+    """
+    # Build module_summaries dict from completed_summaries
+    module_summaries = {}
+    for result in state.completed_summaries:
+        module_summaries[result["module_title"]] = result["summaries"]
+    
+    # Apply summaries to sections (same logic as original)
+    sections_updated = 0
+    for module in state.course_state.modules:
+        summaries = module_summaries.get(module.title, {})
+        for submodule in module.submodules:
+            for section in submodule.sections:
+                if section.title in summaries:
+                    section.summary = summaries[section.title]
+                    sections_updated += 1
+    
+    print(f"   ✅ Updated {sections_updated} section summaries")
+    
+    return {"course_state": state.course_state}
+
+
+def build_summary_graph(max_concurrency: int = 5):
+    """
+    Build the summary generation subgraph with Send pattern.
+    Processes modules in parallel via Send, then reduces results.
+    """
+    graph = StateGraph(SummaryGenerationState)
+    
+    # Add nodes
+    graph.add_node("plan_modules", summary_plan_modules_node)
+    graph.add_node("generate_module_summary", summary_generate_module_node)
+    graph.add_node("reduce_summaries", summary_reduce_node)
+    
+    # Edges: START -> plan -> (conditional Send) -> generate_module_summary -> reduce -> END
+    graph.add_edge(START, "plan_modules")
+    graph.add_conditional_edges("plan_modules", summary_continue_to_modules, ["generate_module_summary"])
+    graph.add_edge("generate_module_summary", "reduce_summaries")
+    graph.add_edge("reduce_summaries", END)
+    
+    return graph.compile()
+
+
+# -------------------------------------------------------
 # Chain: Generate course index/state with retry-on-parse-failure
 # -------------------------------------------------------
 def generate_course_state(
@@ -798,38 +1164,42 @@ def generate_course_state(
     n_modules, n_submodules, n_sections = compute_layout(total_pages)
     print(f"🏗️ Target structure: {n_modules} modules × {n_submodules} submodules × {n_sections} sections")
 
-    # Step 3: Hierarchical Title Generation (3 steps)
-    # Step 1: Module titles → Step 2: Add submodules → Step 3: Add sections
-    print("🏗️ Generating course structure (hierarchical)...")
-    titles_course = generate_titles_phase(
+    # Step 3: Generate skeleton via LangGraph subgraph (4 sequential steps with RetryPolicy)
+    print("🏗️ Generating course structure (hierarchical via LangGraph)...")
+    skeleton_graph = build_skeleton_graph(max_retries=max_retries)
+    
+    skeleton_initial_state = SkeletonGenerationState(
         title=title,
+        language=language,
+        research=research,
         n_modules=n_modules,
         n_submodules=n_submodules,
         n_sections=n_sections,
-        language=language,
         provider=provider,
-        max_retries=max_retries,
-        research=research,
     )
     
-    # Step 4: Expand with descriptions
-    print("🏗️ Adding descriptions...")
-    skeleton_course = expand_descriptions_phase(
-        titles_course=titles_course,
-        language=language,
-        provider=provider,
-        max_retries=max_retries,
-    )
+    skeleton_result = skeleton_graph.invoke(skeleton_initial_state)
+    skeleton_course = skeleton_result["skeleton_course"]
 
-    # Step 5: Convert skeleton to full CourseState with research
+    # Step 4: Convert skeleton to full CourseState with research
     course_state = convert_skeleton_to_course_state(skeleton_course, research=research)
     
-    # Step 6: Generate section summaries for all modules in parallel
-    generate_all_summaries(
+    # Step 5: Generate section summaries via LangGraph subgraph (Send pattern)
+    summary_graph = build_summary_graph(max_concurrency=min(len(course_state.modules), 5))
+    
+    summary_initial_state = SummaryGenerationState(
         course_state=course_state,
         language=language,
         provider=provider,
+        total_modules=len(course_state.modules),
     )
+    
+    summary_result = summary_graph.invoke(
+        summary_initial_state,
+        config={"max_concurrency": min(len(course_state.modules), 5)}
+    )
+    # The course_state is mutated in-place during reduce, but also returned
+    course_state = summary_result["course_state"]
     
     print("✅ Course structure generated successfully!")
     return course_state
