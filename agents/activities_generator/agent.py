@@ -3,6 +3,7 @@ import random
 from operator import add
 from pydantic import BaseModel, Field
 from main.state import CourseState, GlossaryTerm, Activity, FinalActivity, MetaElements, ActivitiesSection
+from main.audience_profiles import build_audience_guidelines
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
 from langgraph.graph import StateGraph, START, END
@@ -160,6 +161,12 @@ def generate_section_activities(state: SectionActivitiesTask) -> dict:
     activity_desc = ", ".join(state.activity_types)
     final_desc = ", ".join(state.final_activity_types)
     
+    # Build audience guidelines block
+    audience_guidelines = build_audience_guidelines(
+        state.course_state.config.target_audience,
+        context="activities"
+    )
+    
     raw = chain.invoke({
         "theory": state.theory,
         "section_title": state.section_title,
@@ -167,6 +174,7 @@ def generate_section_activities(state: SectionActivitiesTask) -> dict:
         "activity_types": activity_desc,
         "final_activity_types": final_desc,
         "format_instructions": parser.get_format_instructions(),
+        "audience_guidelines": audience_guidelines,
     })
     
     # Try to parse, with fallback to retry parser

@@ -9,6 +9,7 @@ from langgraph.types import Send, RetryPolicy
 # Configure logger for this module
 logger = logging.getLogger(__name__)
 from main.state import CourseState, CourseConfig, Module, Submodule, Section, CourseResearch
+from main.audience_profiles import build_audience_guidelines, AudienceType
 
 
 # Helper for state accumulation
@@ -30,9 +31,26 @@ from .prompts import (
     query_generation_prompt, 
     research_synthesis_prompt,
     gen_with_research_prompt,
-    summary_generation_prompt
+    summary_generation_prompt,
+    correction_prompt
 )
 from .utils import compute_layout
+
+
+# -------------------------------------------------------
+# Helper Functions
+# -------------------------------------------------------
+def strip_markdown_fences(text: str) -> str:
+    """Remove markdown code fences from LLM output."""
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.split("\n")
+        lines = lines[1:]  # Remove opening fence (```json or ```)
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]  # Remove closing fence
+        return "\n".join(lines)
+    return text
+
 
 # -------------------------------------------------------
 # Simplified Skeleton Models (for LLM output parsing)
@@ -136,6 +154,7 @@ class SkeletonGenerationState(BaseModel):
     n_submodules: int
     n_sections: int
     provider: str
+    target_audience: AudienceType = None  # Target audience for content adaptation
     
     # Progressive outputs (each step populates the next)
     modules_course: Optional[ModulesOnlyCourse] = None
@@ -156,6 +175,7 @@ class ModuleSummaryTask(BaseModel):
     sections_list: str  # Pre-formatted section list for prompt
     language: str
     provider: str
+    target_audience: AudienceType = None
 
 
 class SummaryGenerationState(BaseModel):
@@ -467,6 +487,9 @@ def skeleton_generate_modules_node(state: SkeletonGenerationState) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=state.provider, **llm_kwargs)
     
+    # Build audience guidelines block
+    audience_guidelines = build_audience_guidelines(state.target_audience, context="index")
+    
     # Choose prompt based on research availability
     if state.research is not None:
         chain = modules_only_with_research_prompt | llm | StrOutputParser()
@@ -477,6 +500,7 @@ def skeleton_generate_modules_node(state: SkeletonGenerationState) -> dict:
             "learning_objectives": "\n".join(f"- {obj}" for obj in state.research.learning_objectives),
             "n_modules": state.n_modules,
             "format_instructions": modules_only_parser.get_format_instructions(),
+            "audience_guidelines": audience_guidelines,
         }
     else:
         chain = modules_only_prompt | llm | StrOutputParser()
@@ -485,12 +509,28 @@ def skeleton_generate_modules_node(state: SkeletonGenerationState) -> dict:
             "language": state.language,
             "n_modules": state.n_modules,
             "format_instructions": modules_only_parser.get_format_instructions(),
+            "audience_guidelines": audience_guidelines,
         }
     
     raw = chain.invoke(invoke_params)
+    raw = strip_markdown_fences(raw)  # Pre-process to remove markdown fences
     
-    # Parse - raises exception on failure (RetryPolicy will retry)
-    modules_course = modules_only_parser.parse(raw)
+    # Try to parse, with fallback to retry parser
+    try:
+        modules_course = modules_only_parser.parse(raw)
+    except Exception as e:
+        print(f"   ⚠ Parse failed, attempting correction...")
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm, parser=modules_only_parser, max_retries=3
+        )
+        modules_course = fix_parser.parse_with_prompt(
+            completion=raw,
+            prompt_value=correction_prompt.format_prompt(
+                error=str(e),
+                completion=raw,
+                format_instructions=modules_only_parser.get_format_instructions()
+            )
+        )
     
     # Validate module count
     actual_modules = len(modules_course.modules)
@@ -524,9 +564,24 @@ def skeleton_generate_submodules_node(state: SkeletonGenerationState) -> dict:
         "n_submodules": state.n_submodules,
         "format_instructions": modules_with_submodules_parser.get_format_instructions(),
     })
+    raw = strip_markdown_fences(raw)  # Pre-process to remove markdown fences
     
-    # Parse - raises exception on failure (RetryPolicy will retry)
-    result = modules_with_submodules_parser.parse(raw)
+    # Try to parse, with fallback to retry parser
+    try:
+        result = modules_with_submodules_parser.parse(raw)
+    except Exception as e:
+        print(f"   ⚠ Parse failed, attempting correction...")
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm, parser=modules_with_submodules_parser, max_retries=3
+        )
+        result = fix_parser.parse_with_prompt(
+            completion=raw,
+            prompt_value=correction_prompt.format_prompt(
+                error=str(e),
+                completion=raw,
+                format_instructions=modules_with_submodules_parser.get_format_instructions()
+            )
+        )
     
     print(f"   ✓ Step 2 complete: {state.n_submodules} submodules per module")
     return {"course_with_submodules": result}
@@ -555,9 +610,24 @@ def skeleton_generate_sections_node(state: SkeletonGenerationState) -> dict:
         "n_sections": state.n_sections,
         "format_instructions": titles_only_parser.get_format_instructions(),
     })
+    raw = strip_markdown_fences(raw)  # Pre-process to remove markdown fences
     
-    # Parse - raises exception on failure (RetryPolicy will retry)
-    result = titles_only_parser.parse(raw)
+    # Try to parse, with fallback to retry parser
+    try:
+        result = titles_only_parser.parse(raw)
+    except Exception as e:
+        print(f"   ⚠ Parse failed, attempting correction...")
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm, parser=titles_only_parser, max_retries=3
+        )
+        result = fix_parser.parse_with_prompt(
+            completion=raw,
+            prompt_value=correction_prompt.format_prompt(
+                error=str(e),
+                completion=raw,
+                format_instructions=titles_only_parser.get_format_instructions()
+            )
+        )
     
     print(f"   ✓ Step 3 complete: {state.n_sections} sections per submodule")
     return {"titles_course": result}
@@ -576,6 +646,7 @@ def skeleton_generate_descriptions_node(state: SkeletonGenerationState) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=state.provider, **llm_kwargs)
     
+    audience_guidelines = build_audience_guidelines(state.target_audience, context="index")
     titles_json = state.titles_course.model_dump_json(indent=2)
     chain = expand_descriptions_prompt | llm | StrOutputParser()
     
@@ -584,10 +655,26 @@ def skeleton_generate_descriptions_node(state: SkeletonGenerationState) -> dict:
         "language": state.language,
         "titles_structure": titles_json,
         "format_instructions": skeleton_parser.get_format_instructions(),
+        "audience_guidelines": audience_guidelines,
     })
+    raw = strip_markdown_fences(raw)  # Pre-process to remove markdown fences
     
-    # Parse - raises exception on failure (RetryPolicy will retry)
-    skeleton_course = skeleton_parser.parse(raw)
+    # Try to parse, with fallback to retry parser
+    try:
+        skeleton_course = skeleton_parser.parse(raw)
+    except Exception as e:
+        print(f"   ⚠ Parse failed, attempting correction...")
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm, parser=skeleton_parser, max_retries=3
+        )
+        skeleton_course = fix_parser.parse_with_prompt(
+            completion=raw,
+            prompt_value=correction_prompt.format_prompt(
+                error=str(e),
+                completion=raw,
+                format_instructions=skeleton_parser.get_format_instructions()
+            )
+        )
     
     print(f"   ✓ Step 4 complete: Descriptions added")
     return {"skeleton_course": skeleton_course}
@@ -850,6 +937,7 @@ def generate_module_summaries(
     course_title: str,
     language: str,
     provider: str = "mistral",
+    target_audience: AudienceType = None,
 ) -> dict[str, str]:
     """
     Generate 3-line summaries for all sections in a module.
@@ -862,6 +950,7 @@ def generate_module_summaries(
         course_title: Title of the course for context
         language: Target language for summaries
         provider: LLM provider
+        target_audience: Target audience for content adaptation
     
     Returns:
         Dictionary mapping section titles to their 3-line summaries
@@ -883,6 +972,9 @@ def generate_module_summaries(
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=provider, **llm_kwargs)
     
+    # Build audience guidelines
+    audience_guidelines = build_audience_guidelines(target_audience, context="index")
+    
     # Generate summaries
     chain = summary_generation_prompt | llm | StrOutputParser()
     
@@ -892,6 +984,7 @@ def generate_module_summaries(
         "module_description": module.description,
         "language": language,
         "sections_list": sections_list,
+        "audience_guidelines": audience_guidelines,
     })
     
     # Parse JSON output
@@ -937,6 +1030,7 @@ def generate_all_summaries(
             course_title=course_state.title,
             language=language,
             provider=provider,
+            target_audience=course_state.config.target_audience if course_state.config else None,
         )
         return module.title, summaries
     
@@ -1003,6 +1097,7 @@ def summary_continue_to_modules(state: SummaryGenerationState) -> list[Send]:
             sections_list=sections_list,
             language=state.language,
             provider=state.provider,
+            target_audience=state.course_state.config.target_audience if state.course_state.config else None,
         )
         sends.append(Send("generate_module_summary", task))
     
@@ -1021,6 +1116,9 @@ def summary_generate_module_node(state: ModuleSummaryTask) -> dict:
         llm_kwargs["model_name"] = model_name
     llm = create_text_llm(provider=state.provider, **llm_kwargs)
     
+    # Build audience guidelines
+    audience_guidelines = build_audience_guidelines(state.target_audience, context="index")
+    
     # Generate summaries (same chain as original)
     chain = summary_generation_prompt | llm | StrOutputParser()
     
@@ -1030,6 +1128,7 @@ def summary_generate_module_node(state: ModuleSummaryTask) -> dict:
         "module_description": state.module_description,
         "language": state.language,
         "sections_list": state.sections_list,
+        "audience_guidelines": audience_guidelines,
     })
     
     # Parse JSON output (same logic as original)
@@ -1120,6 +1219,8 @@ def generate_course_state(
     research_max_queries: int = 5,
     research_max_results_per_query: int = 3,
     research: Optional[CourseResearch] = None,
+    # Audience configuration
+    target_audience: AudienceType = None,
 ) -> CourseState:
     """
     Generate course skeleton and return CourseState with embedded config.
@@ -1176,6 +1277,7 @@ def generate_course_state(
         n_submodules=n_submodules,
         n_sections=n_sections,
         provider=provider,
+        target_audience=target_audience,
     )
     
     skeleton_result = skeleton_graph.invoke(skeleton_initial_state)

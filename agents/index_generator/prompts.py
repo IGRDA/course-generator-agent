@@ -142,6 +142,8 @@ COURSE INFORMATION
 - Optional description/context: "{course_description}"
 - Target language: {language}
 
+{audience_guidelines}
+
 =====================================
 STRUCTURE CONSTRAINTS (EXACT)
 =====================================
@@ -199,7 +201,7 @@ gen_prompt = PromptTemplate(
     input_variables=[
         "course_title", "course_description", "language",
         "n_modules", "n_submodules", "n_sections", "n_words",
-        "format_instructions"
+        "format_instructions", "audience_guidelines"
     ],
     partial_variables={
         "curriculum_role": CURRICULUM_ARCHITECT_ROLE,
@@ -251,6 +253,8 @@ COURSE INFORMATION
 - Course title: "{course_title}"
 - Target language: {language}
 
+{audience_guidelines}
+
 =====================================
 EXACT REQUIREMENT
 =====================================
@@ -276,7 +280,7 @@ No code fences, no commentary.
 
 modules_only_prompt = PromptTemplate(
     template=MODULES_ONLY_TEMPLATE,
-    input_variables=["course_title", "language", "n_modules", "format_instructions"]
+    input_variables=["course_title", "language", "n_modules", "format_instructions", "audience_guidelines"]
 )
 
 # Step 1 with research context
@@ -289,6 +293,8 @@ COURSE INFORMATION
 =====================================
 - Course title: "{course_title}"
 - Target language: {language}
+
+{audience_guidelines}
 
 =====================================
 RESEARCH CONTEXT
@@ -348,7 +354,7 @@ No code fences, no commentary.
 
 modules_only_with_research_prompt = PromptTemplate(
     template=MODULES_ONLY_WITH_RESEARCH_TEMPLATE,
-    input_variables=["course_title", "language", "key_topics", "learning_objectives", "n_modules", "format_instructions"],
+    input_variables=["course_title", "language", "key_topics", "learning_objectives", "n_modules", "format_instructions", "audience_guidelines"],
     partial_variables={
         "textbook_principles": TEXTBOOK_STRUCTURE_PRINCIPLES
     }
@@ -455,6 +461,8 @@ COURSE INFORMATION
 - Course title: "{course_title}"
 - Target language: {language}
 
+{audience_guidelines}
+
 =====================================
 EXISTING STRUCTURE (TITLES ONLY)
 =====================================
@@ -470,6 +478,7 @@ Description guidelines:
 - Module descriptions: 2-3 sentences explaining the module's learning goals
 - Submodule descriptions: 1-2 sentences about the submodule's focus
 - Section descriptions: 1-2 sentences about specific content covered
+- Adapt the language and complexity to match the target audience
 
 =====================================
 OUTPUT FORMAT
@@ -484,7 +493,7 @@ expand_descriptions_prompt = PromptTemplate(
     template=EXPAND_DESCRIPTIONS_TEMPLATE,
     input_variables=[
         "course_title", "language", "titles_structure",
-        "format_instructions"
+        "format_instructions", "audience_guidelines"
     ]
 )
 
@@ -631,6 +640,8 @@ COURSE INFORMATION
 - Optional description/context: "{course_description}"
 - Target language: {language}
 
+{audience_guidelines}
+
 =====================================
 RESEARCH-BASED GUIDANCE
 =====================================
@@ -717,7 +728,7 @@ gen_with_research_prompt = PromptTemplate(
         "course_summary", "learning_objectives", "assumed_prerequisites",
         "out_of_scope", "key_topics",
         "n_modules", "n_submodules", "n_sections", "n_words",
-        "format_instructions"
+        "format_instructions", "audience_guidelines"
     ],
     partial_variables={
         "curriculum_role": CURRICULUM_ARCHITECT_ROLE,
@@ -741,6 +752,8 @@ MODULE CONTEXT
 - Module Description: "{module_description}"
 - Target Language: {language}
 
+{audience_guidelines}
+
 =====================================
 SECTIONS IN THIS MODULE
 =====================================
@@ -759,17 +772,13 @@ CRITICAL REQUIREMENTS:
 3. Summaries should be SPECIFIC about what will be taught (not vague)
 4. Each summary should complement the others - together they form a complete module
 5. Write all summaries in {language}
+6. Adapt language complexity and style to match the target audience
 
 ANTI-PATTERNS TO AVOID:
 - Generic phrases like "This section covers..." or "Students will learn..."
 - Overlapping content between sections
 - Vague descriptions that could apply to multiple sections
 - Repeating the section title as the summary
-
-GOOD SUMMARY EXAMPLE:
-"Explores the mathematical foundations of wave-particle duality through de Broglie's hypothesis.
-Derives the wavelength-momentum relationship and its experimental verification.
-Connects quantum behavior to classical limits through the correspondence principle."
 
 =====================================
 OUTPUT FORMAT
@@ -793,6 +802,28 @@ summary_generation_prompt = PromptTemplate(
     template=SUMMARY_GENERATION_TEMPLATE,
     input_variables=[
         "course_title", "module_title", "module_description",
-        "language", "sections_list"
+        "language", "sections_list", "audience_guidelines"
     ]
 )
+
+
+# ============================================================================
+# CORRECTION PROMPT FOR JSON RETRY
+# ============================================================================
+
+correction_prompt = PromptTemplate.from_template("""The previous JSON output had errors.
+
+ERROR:
+{error}
+
+ORIGINAL OUTPUT:
+{completion}
+
+Fix the JSON errors and return ONLY valid JSON:
+{format_instructions}
+
+Common issues:
+1. Missing commas between fields
+2. Unescaped quotes inside strings (use \\" not ")
+3. No markdown fences (no ```json)
+""")

@@ -1,7 +1,8 @@
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 from operator import add
 from pydantic import BaseModel, Field
 from main.state import CourseState
+from main.audience_profiles import build_audience_guidelines
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
 from langgraph.graph import StateGraph, START, END
@@ -218,7 +219,8 @@ def reflect_and_improve(
     n_words: int,
     num_queries: int,
     provider: str,
-    web_search_provider: str
+    web_search_provider: str,
+    target_audience: Optional[str] = None
 ) -> str:
     """
     Apply reflection pattern: generate queries → parallel search → reflect → regenerate if needed
@@ -234,6 +236,7 @@ def reflect_and_improve(
         num_queries: Number of verification queries to generate
         provider: LLM provider name
         web_search_provider: Web search provider name
+        target_audience: Target audience for content adaptation
     """
     try:
         # Create LLM with specified provider
@@ -284,6 +287,7 @@ def reflect_and_improve(
         
         # Step 4: Regenerate if needed
         if reflection_result.needs_revision:
+            audience_guidelines = build_audience_guidelines(target_audience, context="theory")
             regeneration_chain = regeneration_prompt | llm | StrOutputParser()
             improved_theory = regeneration_chain.invoke({
                 "theory": theory,
@@ -294,7 +298,8 @@ def reflect_and_improve(
                 "reflection": reflection_result.critique,
                 "search_results": all_search_results,
                 "language": language,
-                "n_words": n_words
+                "n_words": n_words,
+                "audience_guidelines": audience_guidelines
             }).strip()
             
             print(f"  ↻ Reflection suggested improvements, regenerated content")
@@ -358,6 +363,12 @@ def generate_section(state: SectionTask) -> dict:
         state.submodule_idx
     )
     
+    # Build audience guidelines block
+    audience_guidelines = build_audience_guidelines(
+        state.course_state.config.target_audience, 
+        context="theory"
+    )
+    
     # Generate initial content using LCEL chain (retry handled by LangGraph)
     section_chain = section_theory_prompt | llm | StrOutputParser()
     theory = section_chain.invoke({
@@ -370,7 +381,8 @@ def generate_section(state: SectionTask) -> dict:
         "style_guidelines": style_guidelines,
         "sibling_summaries": sibling_summaries,
         "course_outline": course_outline,
-        "same_module_sections": same_module_sections
+        "same_module_sections": same_module_sections,
+        "audience_guidelines": audience_guidelines
     }).strip()
     
     print(f"✓ Generated theory for Module {state.module_idx+1}, "
@@ -388,7 +400,8 @@ def generate_section(state: SectionTask) -> dict:
             n_words=n_words,
             num_queries=state.num_queries,
             provider=provider,
-            web_search_provider=state.course_state.config.web_search_provider
+            web_search_provider=state.course_state.config.web_search_provider,
+            target_audience=state.course_state.config.target_audience
         )
     
     # Return the completed section info

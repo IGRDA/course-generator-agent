@@ -181,6 +181,10 @@ class CourseConfig(BaseModel):
     words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")
     language: str = Field(default="English", description="Language for the content generation")
+    target_audience: Optional[Literal["kids", "general", "advanced"]] = Field(
+        default=None, 
+        description="Target audience for content adaptation (None = no adaptation, kids = ages 8-12, general = no prerequisites, advanced = technical/professional)"
+    )
     pdf_syllabus_path: str = Field(default="", description="Path to PDF syllabus file")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
