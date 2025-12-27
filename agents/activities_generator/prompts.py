@@ -95,6 +95,8 @@ activities_generation_prompt = ChatPromptTemplate.from_messages([
 
 {ACTIVITY_QUALITY_STANDARDS}
 
+{{audience_guidelines}}
+
 You must generate activities that:
 - Are aligned with the theory content
 - Test understanding at different cognitive levels (recall, comprehension, application)

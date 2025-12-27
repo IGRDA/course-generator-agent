@@ -156,6 +156,8 @@ COURSE CONTEXT
 - Section: {section_title}
 - Target Language: {language}
 
+{audience_guidelines}
+
 =====================================
 SIBLING SECTIONS (DO NOT OVERLAP)
 =====================================
@@ -215,7 +217,7 @@ def get_section_theory_prompt():
         input_variables=[
             "course_title", "module_title", "submodule_title", "section_title",
             "language", "sibling_summaries", "style_guidelines", "n_words",
-            "course_outline", "same_module_sections"
+            "course_outline", "same_module_sections", "audience_guidelines"
         ],
         partial_variables={
             "expert_role": EXPERT_ROLE,
@@ -231,7 +233,7 @@ section_theory_prompt = PromptTemplate(
     input_variables=[
         "course_title", "module_title", "submodule_title", "section_title",
         "language", "sibling_summaries", "style_guidelines", "n_words",
-        "course_outline", "same_module_sections"
+        "course_outline", "same_module_sections", "audience_guidelines"
     ],
     partial_variables={
         "expert_role": EXPERT_ROLE,
@@ -330,6 +332,8 @@ Your task is to improve the section content by incorporating the feedback and co
 
 {QUALITY_STANDARDS}
 
+{{audience_guidelines}}
+
 =====================================
 REVISION REQUIREMENTS
 =====================================
@@ -344,6 +348,7 @@ REVISION REQUIREMENTS
 - Ensure all formulas, laws, dates, and facts are accurate
 - Keep the engaging, educational tone
 - Preserve what was already good
+- Adapt content to match the target audience
 - Write in plain text ONLY - NO HTML tags (<b>, <i>, <u>, etc.)
 - NEVER use markdown syntax (no #, *, -, `, etc.)
 - NEVER use alphanumeric list prefixes (no "a)", "1.", "2)", "-", etc.)
@@ -358,7 +363,8 @@ Before outputting, verify that your improved content:
 ✓ Addresses all issues from the reflection
 ✓ Maintains high information density with zero filler
 ✓ Is factually accurate and current
-✓ Follows the target language requirement"""),
+✓ Follows the target language requirement
+✓ Matches the target audience level"""),
     ("user", """Course Section Context:
 Title: {section_title}
 Module: {module_title}
