@@ -241,7 +241,7 @@ if __name__ == "__main__":
     # Create initial CourseState with config and minimal content
     course_config = CourseConfig(
         title="Quantum Theory",
-        text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
+        text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai | deepseek
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=args.total_pages,  # Total pages for the course
         words_per_page=400,  # Target words per page

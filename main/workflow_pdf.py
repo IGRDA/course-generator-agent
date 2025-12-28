@@ -250,7 +250,7 @@ if __name__ == "__main__":
     # Note: title will be extracted from the PDF
     config = CourseConfig(
         pdf_syllabus_path="test.pdf",  # Path to your PDF syllabus
-        text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
+        text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai | deepseek
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=200,  # Total pages for the course
         words_per_page=400,  # Target words per page
