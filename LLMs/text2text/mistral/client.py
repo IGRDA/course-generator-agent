@@ -15,7 +15,7 @@ class ChatMistral(ChatMistralAI):
     def _generate(self, *args, **kwargs):
         @retry(
             stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=8, min=8, max=500),
+            wait=wait_exponential(multiplier=10, min=10, max=500),
             reraise=True,
             before_sleep=_log_retry
         )
@@ -26,7 +26,7 @@ class ChatMistral(ChatMistralAI):
     async def _agenerate(self, *args, **kwargs):
         @retry(
             stop=stop_after_attempt(10),
-            wait=wait_exponential(multiplier=8, min=8, max=500),
+            wait=wait_exponential(multiplier=10, min=10, max=500),
             reraise=True,
             before_sleep=_log_retry
         )

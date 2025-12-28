@@ -240,7 +240,7 @@ if __name__ == "__main__":
     
     # Create initial CourseState with config and minimal content
     course_config = CourseConfig(
-        title="Agentes de IA y MCPs: entiende cómo trabajan las inteligencias artificiales",
+        title="Quantum Theory",
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=args.total_pages,  # Total pages for the course
@@ -274,7 +274,7 @@ if __name__ == "__main__":
         image_concurrency=10,  # Number of image blocks to process in parallel
         imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel for image scoring
         vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking calls
-        target_audience="kids",  # Target audience: None | "kids" | "general" | "university"
+        target_audience=None,  # Target audience: None | "kids" | "general" | "advanced"
     )
     
     initial_state = CourseState(
