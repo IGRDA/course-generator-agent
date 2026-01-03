@@ -10,5 +10,5 @@ __all__ = [
     "create_image_search",
     "available_image_search_providers",
     "create_video_search",
-    "available_video_search_providers"
+    "available_video_search_providers",
 ]
