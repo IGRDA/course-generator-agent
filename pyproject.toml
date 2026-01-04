@@ -27,7 +27,10 @@ dependencies = [
     "easyocr>=1.7.0",  # PDF to Markdown conversion
     "playwright>=1.55.0",  # Required for Freepik and Google image search
     "playwright-stealth==2.0.0", #playwright>=1.40.0
-    "edge-tts>=6.1.0"
+    "transformers==4.39.3",
+    "TTS>=0.22.0",  # Coqui TTS for podcast generation
+    "pydub>=0.25.1",  # Audio manipulation for podcast merging
+    "mutagen>=1.47.0",  # MP3 metadata tagging
 ]
 
 [project.optional-dependencies]
