@@ -50,7 +50,7 @@ LANGUAGE_MAP = {
 def convert_pdf_to_markdown(
     pdf_path: str | Path, 
     return_string: bool = False,
-    ocr_engine: str = "ocrmac",
+    ocr_engine: str = "auto",  # Auto-detect best engine for platform
     language: str = "es",
     images_scale: float = 2.0,
     extract_tables: bool = True,
@@ -197,14 +197,18 @@ def _get_ocr_options(ocr_engine: str, language: str = "es", force_ocr: bool = Tr
         OCR options object configured for the specified engine, or None for auto
     """
     if ocr_engine == "auto":
-        # Let docling choose the best engine for the platform
-        # Note: auto mode doesn't support custom language or force_ocr settings
-        logger.warning("Using 'auto' OCR engine - language and force_ocr settings will be ignored")
-        return None
+        # Auto-detect the best OCR engine for the current platform
+        recommended = get_recommended_ocr_engine()
+        logger.info(f"Auto-detected OCR engine: {recommended}")
+        return _get_ocr_options(recommended, language, force_ocr)
     
     elif ocr_engine == "ocrmac":
         # macOS native OCR - fastest and most efficient on Mac
-        # Best choice for macOS systems
+        # Best choice for macOS systems, NOT available on Linux/Windows
+        if platform.system() != "Darwin":
+            logger.warning("ocrmac requested but not on macOS - falling back to easyocr")
+            return _get_ocr_options("easyocr", language, force_ocr)
+        
         lang_codes = LANGUAGE_MAP["ocrmac"].get(language, [f"{language}-{language.upper()}"])
         ocr_options = OcrMacOptions(
             force_full_page_ocr=force_ocr,
@@ -257,7 +261,7 @@ if __name__ == "__main__":
     print("\n=== Spanish PDF conversion with optimized settings ===")
     result_path = convert_pdf_to_markdown(
         "/Users/inaki/Documents/Personal/course-generator-agent/test.pdf",
-        ocr_engine="ocrmac",      # Fast macOS native OCR
+        ocr_engine="auto",        # Auto-detect best OCR for platform
         language="es",            # Spanish language
         force_ocr=True,           # Bypass corrupted PDF text layer
         images_scale=2.0,         # Good quality
