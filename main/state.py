@@ -12,6 +12,50 @@ class CourseResearch(BaseModel):
     key_topics: List[str] = Field(default_factory=list, description="Canonical domain topics to cover")
     raw_research: str = Field(default="", description="Concatenated raw search results for reference")
 
+
+# ---- Bibliography Models ----
+class BookReference(BaseModel):
+    """Single book reference with APA 7 citation."""
+    title: str = Field(..., description="Book title")
+    authors: List[str] = Field(default_factory=list, description="Authors in APA format: ['Last, F. M.', 'Last2, F. M.']")
+    year: Optional[Union[int, str]] = Field(default=None, description="Publication year or 'n.d.' if unknown")
+    publisher: Optional[str] = Field(default=None, description="Publisher name")
+    isbn: Optional[str] = Field(default=None, description="ISBN-10 identifier")
+    isbn_13: Optional[str] = Field(default=None, description="ISBN-13 identifier")
+    doi: Optional[str] = Field(default=None, description="Digital Object Identifier")
+    url: Optional[str] = Field(default=None, description="Open Library or Google Books URL")
+    edition: Optional[str] = Field(default=None, description="Edition (e.g., '2nd ed.')")
+    apa_citation: str = Field(default="", description="Pre-formatted APA 7 citation string")
+    
+    def get_dedup_key(self) -> str:
+        """Generate a key for deduplication based on ISBN or title+author."""
+        if self.isbn_13:
+            return f"isbn13:{self.isbn_13}"
+        if self.isbn:
+            return f"isbn:{self.isbn}"
+        # Fallback to title + first author
+        author_key = self.authors[0].lower() if self.authors else "unknown"
+        title_key = self.title.lower().strip()
+        return f"title:{title_key}|author:{author_key}"
+
+
+class ModuleBibliography(BaseModel):
+    """Bibliography for a single module."""
+    module_index: int = Field(..., description="Module index (1-based)")
+    module_title: str = Field(..., description="Module title")
+    books: List[BookReference] = Field(default_factory=list, description="Books recommended for this module")
+
+
+class CourseBibliography(BaseModel):
+    """Course-level bibliography with per-module breakdowns and deduplication."""
+    modules: List[ModuleBibliography] = Field(default_factory=list, description="Per-module bibliographies")
+    all_books: List[BookReference] = Field(default_factory=list, description="Deduplicated master list of all books")
+    
+    def get_all_dedup_keys(self) -> set[str]:
+        """Get all deduplication keys from the master list."""
+        return {book.get_dedup_key() for book in self.all_books}
+
+
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
     term: str = Field(..., description="Glossary term")
@@ -225,6 +269,11 @@ class CourseConfig(BaseModel):
         default=None, 
         description="Custom speaker mapping for podcast voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})"
     )
+    
+    # Bibliography configuration
+    generate_bibliography: bool = Field(default=False, description="Generate book bibliography for the course")
+    bibliography_books_per_module: int = Field(default=5, description="Number of books to recommend per module")
+    book_search_provider: str = Field(default="openlibrary", description="Book search provider for validation (openlibrary)")
 
 # ---- Course State ----
 class CourseState(BaseModel):
@@ -242,6 +291,12 @@ class CourseState(BaseModel):
     title: str = Field(..., description="Title of the course (initialized from config, can be refined by agents)")
     modules: List[Module] = Field(
         default_factory=list, description="Full course structure with all modules"
+    )
+    
+    # Bibliography output (populated by bibliography generator)
+    bibliography: Optional[CourseBibliography] = Field(
+        default=None,
+        description="Course bibliography with per-module book recommendations"
     )
     
     @property
