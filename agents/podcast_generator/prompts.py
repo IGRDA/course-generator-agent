@@ -51,6 +51,20 @@ Your task is to write a natural conversation between a HOST and a GUEST discussi
    - Natural back-and-forth, not monologues
    - Include moments of curiosity and discovery
 
+7. **Avoid filler interjections**
+   - NEVER start a response with single-word affirmations like "Exacto", "Genial", "Claro", "Sí", "Perfecto", "Exactly", "Great", "Sure", "Yes", "Right"
+   - Instead, jump directly into the substantive response or use a transitional phrase that adds content
+   - Bad: "¡Exacto! Y no es solo falta de información..."
+   - Good: "Y no es solo falta de información..." or "Ese es precisamente el punto clave, porque no es solo falta de información..."
+
+8. **Natural HOST questions**
+   - Keep questions SHORT and focused on ONE thing at a time
+   - NEVER chain multiple questions with "y" / "and" - split them into separate turns
+   - Bad: "¿Podrías explicarnos en qué consiste y cómo nos ayuda a estructurar mejor el pensamiento?"
+   - Good: "¿Podrías explicarnos en qué consiste?" (then after guest answers: "¿Y cómo nos ayuda a estructurar mejor el pensamiento?")
+   - Avoid compound questions - ask one clear question, let the guest answer, then follow up
+   - Questions should sound like natural curiosity, not interview interrogations
+
 ## Output Format
 
 Generate a JSON array of message objects. Each message has:
@@ -91,4 +105,3 @@ conversation_prompt = ChatPromptTemplate.from_messages([
     ("system", CONVERSATION_SYSTEM_PROMPT),
     ("user", CONVERSATION_USER_PROMPT),
 ])
-

@@ -217,6 +217,14 @@ class CourseConfig(BaseModel):
     enable_research: bool = Field(default=True, description="Enable research phase before index generation")
     research_max_queries: int = Field(default=5, description="Maximum number of search queries to generate")
     research_max_results_per_query: int = Field(default=3, description="Maximum results per search query")
+    
+    # Podcast configuration
+    podcast_target_words: int = Field(default=600, description="Target word count per module podcast")
+    podcast_tts_engine: Literal["edge", "coqui"] = Field(default="edge", description="TTS engine for podcast generation")
+    podcast_speaker_map: Optional[Dict[str, str]] = Field(
+        default=None, 
+        description="Custom speaker mapping for podcast voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})"
+    )
 
 # ---- Course State ----
 class CourseState(BaseModel):

@@ -31,6 +31,7 @@ dependencies = [
     "TTS>=0.22.0",  # Coqui TTS for podcast generation
     "pydub>=0.25.1",  # Audio manipulation for podcast merging
     "mutagen>=1.47.0",  # MP3 metadata tagging
+    "edge-tts>=6.1.0",  # Microsoft Edge TTS
 ]
 
 [project.optional-dependencies]

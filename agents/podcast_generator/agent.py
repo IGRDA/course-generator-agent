@@ -2,15 +2,19 @@
 Podcast Generator Agent.
 
 Generates two-speaker educational dialogue conversations from course module content.
+Supports both Coqui TTS (offline) and Edge TTS.
 """
 
 import json
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
 
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import conversation_prompt
 
+
+# TTS Engine types
+TTSEngineType = Literal["edge", "coqui"]
 
 # Language mapping from course language to TTS language code
 LANGUAGE_MAP = {
@@ -88,13 +92,13 @@ def extract_module_context(course_data: dict, module_idx: int) -> dict:
 
 
 def clean_conversation(conversation: list[dict]) -> list[dict]:
-    """Remove all asterisks from conversation messages.
+    """Clean conversation messages.
     
     Args:
         conversation: List of message dicts with 'role' and 'content' keys
         
     Returns:
-        Cleaned conversation with asterisks removed from content
+        Cleaned conversation
     """
     return [
         {"role": msg["role"], "content": msg["content"].replace("*", "")}
@@ -172,7 +176,7 @@ def generate_conversation(
         "num_messages": num_messages,
     })
     
-    # Convert to list of dicts and clean asterisks
+    # Convert to list of dicts and clean
     conversation = [{"role": m.role, "content": m.content} for m in result.messages]
     return clean_conversation(conversation)
 
@@ -184,6 +188,8 @@ def generate_module_podcast(
     provider: Optional[str] = None,
     target_words: int = 600,
     skip_tts: bool = False,
+    tts_engine: TTSEngineType = "edge",
+    speaker_map: Optional[dict[str, str]] = None,
 ) -> dict:
     """Generate podcast conversation and optionally synthesize audio.
     
@@ -194,6 +200,8 @@ def generate_module_podcast(
         provider: LLM provider override
         target_words: Target word count
         skip_tts: If True, only generate conversation JSON
+        tts_engine: TTS engine to use ("edge" or "coqui")
+        speaker_map: Custom speaker mapping for voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})
         
     Returns:
         Dict with conversation_path, audio_path (if not skipped), metadata
@@ -213,7 +221,9 @@ def generate_module_podcast(
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Generate conversation
-    print(f"🎙️ Generating podcast conversation for module {module_idx + 1}...")
+    engine_name = "Edge TTS" if tts_engine == "edge" else "Coqui TTS"
+    print(f"🎙️ Generating podcast conversation for module {module_idx + 1} ({engine_name})...")
+    
     conversation = generate_conversation(
         course_data=course_data,
         module_idx=module_idx,
@@ -238,39 +248,61 @@ def generate_module_podcast(
         "module_title": context["module_title"],
         "course_title": context["course_title"],
         "language": tts_language,
+        "tts_engine": tts_engine,
     }
     
     # Generate audio if not skipped
     if not skip_tts:
-        from tools.podcast.tts_engine import generate_podcast
-        
         audio_filename = f"module_{module_idx + 1}.mp3"
         audio_path = output_path / audio_filename
         
-        print(f"🔊 Synthesizing audio with TTS (language={tts_language})...")
+        print(f"🔊 Synthesizing audio with {engine_name} (language={tts_language})...")
         
         # Get the path to background music (relative to project root)
         import os
         project_root = Path(__file__).parent.parent.parent
         music_path = project_root / "tools" / "podcast" / "background_music.mp3"
         
-        generate_podcast(
-            conversation=conversation,
-            output_path=str(audio_path),
-            language=tts_language,
-            title=f"Module {module_idx + 1}: {context['module_title']}",
-            artist="Adinhub",
-            album=context["course_title"],
-            track_number=module_idx + 1,
-            # Background music settings
-            music_path=str(music_path) if music_path.exists() else None,
-            intro_duration_ms=10000,
-            outro_duration_ms=10000,
-            intro_fade_ms=5000,
-            outro_fade_ms=5000,
-        )
+        if tts_engine == "edge":
+            from tools.podcast.tts_engine import generate_podcast_edge
+            
+            generate_podcast_edge(
+                conversation=conversation,
+                output_path=str(audio_path),
+                language=tts_language,
+                speaker_map=speaker_map,
+                title=f"Module {module_idx + 1}: {context['module_title']}",
+                artist="Adinhub",
+                album=context["course_title"],
+                track_number=module_idx + 1,
+                # Background music settings
+                music_path=str(music_path) if music_path.exists() else None,
+                intro_duration_ms=10000,
+                outro_duration_ms=10000,
+                intro_fade_ms=5000,
+                outro_fade_ms=5000,
+            )
+        else:
+            from tools.podcast.tts_engine import generate_podcast
+            
+            generate_podcast(
+                conversation=conversation,
+                output_path=str(audio_path),
+                language=tts_language,
+                speaker_map=speaker_map,
+                title=f"Module {module_idx + 1}: {context['module_title']}",
+                artist="Adinhub",
+                album=context["course_title"],
+                track_number=module_idx + 1,
+                # Background music settings
+                music_path=str(music_path) if music_path.exists() else None,
+                intro_duration_ms=10000,
+                outro_duration_ms=10000,
+                intro_fade_ms=5000,
+                outro_fade_ms=5000,
+            )
+        
         print(f"✅ Audio saved to: {audio_path}")
         result["audio_path"] = str(audio_path)
     
     return result
-

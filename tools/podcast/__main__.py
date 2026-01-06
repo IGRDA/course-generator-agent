@@ -2,16 +2,17 @@
 """
 Podcast TTS Tool - Command Line Interface
 
-Minimal example demonstrating 2-voice podcast generation using Coqui TTS.
+Supports both Coqui TTS (offline) and Edge TTS.
 
 Usage:
-    python -m tools.podcast                           # Run with default English voices
+    python -m tools.podcast                           # Run with Edge TTS (default)
+    python -m tools.podcast --engine coqui            # Use Coqui TTS (offline)
     python -m tools.podcast --language es             # Spanish
-    python -m tools.podcast --language multilingual   # Multilingual XTTS model
     python -m tools.podcast --output my_podcast.mp3   # Custom output path
-    python -m tools.podcast --list-speakers en        # List available speakers
+    python -m tools.podcast --list-voices en          # List available voices
+    python -m tools.podcast --list-engines            # List available TTS engines
     python -m tools.podcast --music                   # Add background music (intro/outro)
-    python -m tools.podcast --title "Episode 1"      # Set metadata
+    python -m tools.podcast --title "Episode 1"       # Set metadata
 """
 
 import argparse
@@ -70,30 +71,39 @@ SAMPLE_CONVERSATION_ES = [
 def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
-        description="Generate a podcast using Coqui TTS with multiple speakers",
+        description="Generate a podcast using TTS with multiple speakers. Supports Edge TTS and Coqui TTS (offline).",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python -m tools.podcast
-    python -m tools.podcast --language multilingual --output podcast.mp3
-    python -m tools.podcast --list-speakers en
-    python -m tools.podcast --device cuda  # Use GPU acceleration
+    python -m tools.podcast                           # Edge TTS (default)
+    python -m tools.podcast --engine coqui            # Coqui TTS (offline)
+    python -m tools.podcast --language es             # Spanish
+    python -m tools.podcast --list-voices en          # List Edge voices
+    python -m tools.podcast --list-engines            # Show engine info
         """
+    )
+    
+    # Engine selection
+    parser.add_argument(
+        "--engine", "-e",
+        type=str,
+        default="edge",
+        choices=["edge", "coqui"],
+        help="TTS engine to use. 'edge' (default) is fast and online, 'coqui' works offline."
     )
     
     parser.add_argument(
         "--language", "-l",
         type=str,
         default="en",
-        choices=["en", "es", "multilingual", "en_fast"],
-        help="TTS language/model to use (default: en). Use 'en_fast' for faster but less natural VCTK model."
+        help="Language code (default: en). For Edge: en, es, fr, de, it, pt, zh, ja, ko. For Coqui: en, es, multilingual."
     )
     
     parser.add_argument(
         "--language-code",
         type=str,
         default=None,
-        help="Language code for multilingual model (e.g., 'es', 'en', 'fr'). Only used with multilingual model."
+        help="Language code for Coqui multilingual model (e.g., 'es', 'en', 'fr'). Only used with Coqui."
     )
     
     parser.add_argument(
@@ -108,7 +118,7 @@ Examples:
         type=str,
         default="cpu",
         choices=["cpu", "cuda"],
-        help="Device to run TTS on (default: cpu)"
+        help="Device for Coqui TTS (default: cpu). Ignored for Edge TTS."
     )
     
     parser.add_argument(
@@ -119,30 +129,36 @@ Examples:
     )
     
     parser.add_argument(
-        "--list-speakers",
+        "--list-voices",
         type=str,
         metavar="LANGUAGE",
-        help="List available speakers for a language and exit"
+        help="List available voices for a language and exit"
+    )
+    
+    parser.add_argument(
+        "--list-engines",
+        action="store_true",
+        help="List available TTS engines and exit"
     )
     
     parser.add_argument(
         "--list-languages",
         action="store_true",
-        help="List available languages and exit"
+        help="List available languages for selected engine and exit"
     )
     
     parser.add_argument(
-        "--host-speaker",
+        "--host-voice",
         type=str,
         default=None,
-        help="Speaker ID for the host role"
+        help="Voice/speaker ID for the host role"
     )
     
     parser.add_argument(
-        "--guest-speaker",
+        "--guest-voice",
         type=str,
         default=None,
-        help="Speaker ID for the guest role"
+        help="Voice/speaker ID for the guest role"
     )
     
     # Metadata arguments
@@ -226,50 +242,71 @@ def main():
     """Main entry point."""
     args = parse_args()
     
-    # Import here to avoid loading TTS when just showing help
-    from .tts_engine import generate_podcast, list_available_languages, list_speakers
-    from .models import get_language_config
+    # Handle list engines command first (doesn't need imports)
+    if args.list_engines:
+        from .factory import list_engines
+        print("Available TTS Engines:\n")
+        for engine_info in list_engines():
+            print(f"  {engine_info['engine']}: {engine_info['name']}")
+            print(f"    {engine_info['description']}")
+            print(f"    Requires Internet: {'Yes' if engine_info['requires_internet'] else 'No'}")
+            print(f"    Languages: {', '.join(engine_info['languages'])}")
+            print()
+        return 0
+    
+    # Handle list voices command
+    if args.list_voices:
+        if args.engine == "edge":
+            from .edge_engine import EdgeTTSEngine, EDGE_VOICE_MAP
+            voices = EdgeTTSEngine.list_available_voices(args.list_voices)
+            default_map = EDGE_VOICE_MAP.get(args.list_voices, {})
+            print(f"Available Edge TTS voices for '{args.list_voices}':")
+            for voice in voices:
+                role = ""
+                if default_map.get("host") == voice:
+                    role = " (default host)"
+                elif default_map.get("guest") == voice:
+                    role = " (default guest)"
+                print(f"  - {voice}{role}")
+        else:
+            from .tts_engine import list_speakers
+            from .models import get_language_config
+            try:
+                speakers = list_speakers(args.list_voices)
+                config = get_language_config(args.list_voices)
+                print(f"Available Coqui speakers for '{args.list_voices}' ({config.model_name}):")
+                for speaker in speakers:
+                    print(f"  - {speaker}")
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+        return 0
+    
+    # Handle list languages
+    if args.list_languages:
+        from .factory import get_engine_info
+        info = get_engine_info(args.engine)
+        print(f"Available languages for {info['name']}:")
+        for lang in info['languages']:
+            print(f"  - {lang}")
+        return 0
+    
+    # Import generation functions
+    from .tts_engine import generate_podcast, generate_podcast_edge
     from .audio_utils import get_default_music_path
     
-    # Handle list commands
-    if args.list_languages:
-        print("Available languages:")
-        for lang in list_available_languages():
-            config = get_language_config(lang)
-            print(f"  {lang}: {config.model_name}")
-        return 0
-    
-    if args.list_speakers:
-        try:
-            speakers = list_speakers(args.list_speakers)
-            config = get_language_config(args.list_speakers)
-            print(f"Available speakers for {args.list_speakers} ({config.model_name}):")
-            for speaker in speakers:
-                print(f"  - {speaker}")
-        except ValueError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            return 1
-        return 0
-    
     # Select sample conversation based on language
-    if args.language == "es" or (args.language == "multilingual" and args.language_code == "es"):
-        conversation = SAMPLE_CONVERSATION_ES
-    else:
-        conversation = SAMPLE_CONVERSATION_EN
+    is_spanish = args.language == "es" or (args.language == "multilingual" and args.language_code == "es")
+    conversation = SAMPLE_CONVERSATION_ES if is_spanish else SAMPLE_CONVERSATION_EN
     
-    # Build speaker map if custom speakers specified
+    # Build voice/speaker map if custom voices specified
     speaker_map = None
-    if args.host_speaker or args.guest_speaker:
-        config = get_language_config(args.language)
-        speaker_map = config.default_speaker_map.copy()
-        if args.host_speaker:
-            speaker_map["host"] = args.host_speaker
-        if args.guest_speaker:
-            speaker_map["guest"] = args.guest_speaker
-    
-    # Determine language code (for multilingual/XTTS models)
-    # The config already has a default language_code, but CLI arg can override it
-    language_code = args.language_code  # Will be None if not specified, engine uses config default
+    if args.host_voice or args.guest_voice:
+        speaker_map = {}
+        if args.host_voice:
+            speaker_map["host"] = args.host_voice
+        if args.guest_voice:
+            speaker_map["guest"] = args.guest_voice
     
     # Resolve music path
     music_path = None
@@ -284,12 +321,16 @@ def main():
                 print(f"❌ Music file not found: {music_path}", file=sys.stderr)
                 return 1
     
+    # Print configuration
+    engine_name = "Edge TTS" if args.engine == "edge" else "Coqui TTS"
     print(f"🎙️  Podcast TTS Generator")
+    print(f"   Engine: {engine_name}")
     print(f"   Language: {args.language}")
-    if language_code:
-        print(f"   Language code: {language_code}")
+    if args.engine == "coqui" and args.language_code:
+        print(f"   Language code: {args.language_code}")
     print(f"   Output: {args.output}")
-    print(f"   Device: {args.device}")
+    if args.engine == "coqui":
+        print(f"   Device: {args.device}")
     print(f"   Messages: {len(conversation)}")
     print(f"   Metadata: {args.title} by {args.artist} ({args.album})")
     if music_path:
@@ -302,28 +343,50 @@ def main():
         print(f"   Synthesizing message {current}/{total}...", flush=True)
     
     try:
-        output_path = generate_podcast(
-            conversation=conversation,
-            output_path=args.output,
-            language=args.language,
-            speaker_map=speaker_map,
-            language_code=language_code,
-            silence_duration_ms=args.silence,
-            device=args.device,
-            progress_callback=progress_callback,
-            # Metadata
-            title=args.title,
-            artist=args.artist,
-            album=args.album,
-            track_number=args.track_number,
-            # Background music
-            music_path=music_path,
-            intro_duration_ms=args.intro_duration,
-            outro_duration_ms=args.outro_duration,
-            intro_fade_ms=args.intro_fade,
-            outro_fade_ms=args.outro_fade,
-            music_volume_db=args.music_volume,
-        )
+        if args.engine == "edge":
+            output_path = generate_podcast_edge(
+                conversation=conversation,
+                output_path=args.output,
+                language=args.language,
+                speaker_map=speaker_map,
+                silence_duration_ms=args.silence,
+                progress_callback=progress_callback,
+                # Metadata
+                title=args.title,
+                artist=args.artist,
+                album=args.album,
+                track_number=args.track_number,
+                # Background music
+                music_path=music_path,
+                intro_duration_ms=args.intro_duration,
+                outro_duration_ms=args.outro_duration,
+                intro_fade_ms=args.intro_fade,
+                outro_fade_ms=args.outro_fade,
+                music_volume_db=args.music_volume,
+            )
+        else:
+            output_path = generate_podcast(
+                conversation=conversation,
+                output_path=args.output,
+                language=args.language,
+                speaker_map=speaker_map,
+                language_code=args.language_code,
+                silence_duration_ms=args.silence,
+                device=args.device,
+                progress_callback=progress_callback,
+                # Metadata
+                title=args.title,
+                artist=args.artist,
+                album=args.album,
+                track_number=args.track_number,
+                # Background music
+                music_path=music_path,
+                intro_duration_ms=args.intro_duration,
+                outro_duration_ms=args.outro_duration,
+                intro_fade_ms=args.intro_fade,
+                outro_fade_ms=args.outro_fade,
+                music_volume_db=args.music_volume,
+            )
         
         print()
         print(f"✅ Podcast generated successfully: {output_path}")
@@ -351,4 +414,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
