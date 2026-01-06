@@ -8,36 +8,57 @@ version = "0.1.0"
 description = "AI-powered course content generator"
 authors = [{name = "Your Name", email = "your.email@example.com"}]
 dependencies = [
-    "langchain-deepseek",
-    "langchain-groq",
-    "langchain-mistralai",
+    # LangChain ecosystem
     "langchain==0.3.27",
-    "langchain-openai==0.3.35",
+    "langchain-core==0.3.81",
     "langchain-community==0.3.30",
-    "langchain-google-genai",
-    "langchain-tavily",
-    "pydantic",
+    "langchain-openai==0.3.35",
+    "langchain-deepseek==0.1.4",
+    "langchain-groq==0.3.8",
+    "langchain-mistralai==0.2.12",
+    "langchain-google-genai==2.0.4",
+    "langchain-tavily==0.2.13",
     "langgraph==0.6.7",
-    "ddgs",
-    "requests",
-    "beautifulsoup4",
     "langsmith==0.4.31",
-    "wikipedia",
-    "docling",
-    "easyocr>=1.7.0",  # PDF to Markdown conversion
-    "playwright>=1.55.0",  # Required for Freepik and Google image search
-    "playwright-stealth==2.0.0", #playwright>=1.40.0
-    "transformers==4.39.3",
-    "TTS>=0.22.0",  # Coqui TTS for podcast generation
-    "pydub>=0.25.1",  # Audio manipulation for podcast merging
-    "mutagen>=1.47.0",  # MP3 metadata tagging
-    "edge-tts>=6.1.0",  # Microsoft Edge TTS
+    # Core
+    "pydantic==2.11.9",
+    "requests==2.32.5",
+    "beautifulsoup4==4.13.5",
+    # Web search
+    "ddgs==9.6.0",
+    "wikipedia==1.4.0",
+    # PDF to Markdown conversion (requires pandas>=2.1.4)
+    "docling==2.63.0",
+    "easyocr==1.7.2",
+    "ocrmac==1.0.0",
+    # Image search / browser automation
+    "playwright==1.55.0",
+    "playwright-stealth==2.0.0",
+    # ML / Transformers
+    "transformers>=4.38.0",
+    "tokenizers>=0.19.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    # TTS for podcast generation (Edge TTS - default, no pandas conflict)
+    "edge-tts>=7.0.0",
+    # Audio manipulation
+    "pydub>=0.25.1",
+    "mutagen>=1.47.0",
+    # Data (pandas 2.x required by docling)
+    "pandas>=2.1.4",
+    "jsonlines>=4.0.0",
 ]
 
 [project.optional-dependencies]
+# Coqui TTS - INCOMPATIBLE with docling (requires pandas<2.0)
+# Install separately if needed: pip install TTS==0.22.0
+# Note: This will downgrade pandas and break docling
+coqui-tts = [
+    "TTS==0.22.0",
+]
 # Optional dependencies for alternative rendering methods
 rendering = [
-    "pyppeteer",  # Alternative to playwright
+    "pyppeteer",
 ]
 # Optional dependencies for evaluation
 evaluation = [
@@ -46,5 +67,6 @@ evaluation = [
     "nltk==3.9.2",
     "sentence-transformers==5.1.2",
 ]
+
 [tool.setuptools.packages.find]
 include = ["agents*", "main*", "tools*", "evaluators*", "evaluation*"]
