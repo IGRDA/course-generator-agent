@@ -30,7 +30,7 @@ dependencies = [
     # PDF to Markdown conversion (requires pandas>=2.1.4)
     "docling==2.63.0",
     "easyocr==1.7.2",
-    "ocrmac==1.0.0",
+    # Note: ocrmac is macOS-only, moved to optional dependencies
     # Image search / browser automation
     "playwright==1.55.0",
     "playwright-stealth==2.0.0",
@@ -50,6 +50,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# macOS-only: Native OCR using Apple Vision framework
+# Install on macOS: pip install -e ".[macos-ocr]"
+macos-ocr = [
+    "ocrmac==1.0.0",  # Only works on macOS, requires pyobjc
+]
 # Coqui TTS - INCOMPATIBLE with docling (requires pandas<2.0)
 # Install separately if needed: pip install TTS==0.22.0
 # Note: This will downgrade pandas and break docling
