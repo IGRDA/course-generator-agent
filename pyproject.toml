@@ -44,6 +44,8 @@ dependencies = [
     # Audio manipulation
     "pydub>=0.25.1",
     "mutagen>=1.47.0",
+    # PDF book generation (image processing)
+    "Pillow>=10.0.0",
     # Data (pandas 2.x required by docling)
     "pandas>=2.1.4",
     "jsonlines>=4.0.0",
@@ -55,6 +57,16 @@ dependencies = [
 macos-ocr = [
     "ocrmac==1.0.0",  # Only works on macOS, requires pyobjc
 ]
+
+# =============================================================================
+# SYSTEM DEPENDENCIES (not Python packages)
+# =============================================================================
+# PDF Book Generation requires LaTeX:
+#   macOS:   brew install --cask basictex  (or mactex for full install)
+#   Ubuntu:  sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-latex-extra biber
+#   Windows: Install MiKTeX from https://miktex.org/download
+# After install, run: eval "$(/usr/libexec/path_helper)" or restart terminal
+# =============================================================================
 # Coqui TTS - INCOMPATIBLE with docling (requires pandas<2.0)
 # Install separately if needed: pip install TTS==0.22.0
 # Note: This will downgrade pandas and break docling
