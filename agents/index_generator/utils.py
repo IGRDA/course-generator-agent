@@ -7,8 +7,8 @@ def get_module_count(total_pages: int) -> int:
         raise ValueError("total_pages must be a positive integer")
 
     log_pages = math.log10(total_pages)
-    n_modules = 1 + (log_pages * 0.8)
-    return max(2, min(5, round(n_modules)))
+    n_modules = 2 + (log_pages * 2)
+    return max(2, min(12, round(n_modules)))
 
 
 def compute_layout(total_pages: int) -> tuple[int, int, int]:
@@ -19,19 +19,14 @@ def compute_layout(total_pages: int) -> tuple[int, int, int]:
     if total_pages <= 0:
         raise ValueError("total_pages must be a positive integer")
 
-    log_pages = math.log10(total_pages)
     n_modules = get_module_count(total_pages)
 
     pages_per_module = total_pages / n_modules
     submodule_scale = math.log10(max(pages_per_module, 1))
-    n_submodules = 3 + (submodule_scale * 2.5)
-    n_submodules = max(3, min(12, round(n_submodules)))
-
-    target_pages_per_section = 0.7 + (log_pages * 0.25)
-    target_pages_per_section = max(0.7, min(3, target_pages_per_section))
+    n_submodules = 2 + (submodule_scale * 1.8)
+    n_submodules = max(2, min(8, round(n_submodules)))
 
     pages_per_submodule = pages_per_module / n_submodules
-    raw_sections = pages_per_submodule / target_pages_per_section
-    n_sections = max(1, round(raw_sections))
+    n_sections = max(2, round(pages_per_submodule / 2))
 
     return n_modules, n_submodules, n_sections

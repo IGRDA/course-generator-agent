@@ -1,22 +1,61 @@
-"""Web search using DuckDuckGo."""
+"""
+Web search using DuckDuckGo (region-aware).
+"""
 
-from langchain_community.tools import DuckDuckGoSearchRun
+import logging
+from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 
-def web_search(query: str, max_results: int = 5) -> str:
+def web_search(
+    query: str,
+    max_results: int = 5,
+    region: str = "us-en",
+) -> str:
     """
-    Search the web using DuckDuckGo.
-    
+    Search the web using DuckDuckGo with region and language bias.
+
     Args:
         query: Search query string
-        max_results: Maximum number of results (default: 5)
-        
+        max_results: Maximum number of results
+        region: DuckDuckGo region (e.g. 'us-en', 'es-es', 'uk-en')
+
     Returns:
         String containing search results
     """
     try:
-        search_tool = DuckDuckGoSearchRun(max_results=max_results)
-        return search_tool.run(query)
+        search = DuckDuckGoSearchAPIWrapper(
+            region=region,
+            safesearch="moderate",
+            max_results=max_results,
+        )
+
+        return search.run(query)
+
     except Exception as e:
+        logger.error(
+            "DuckDuckGo search failed for query '%s' (region=%s): %s",
+            query,
+            region,
+            str(e),
+        )
         return f"Search failed: {str(e)}"
 
+
+if __name__ == "__main__":
+    query = "artificial intelligence"
+    max_results = 10
+    region = "us-en"  # change to "es-es" for Spain
+
+    print(f"🔍 Searching DuckDuckGo for: '{query}' (region={region})")
+    print("-" * 80)
+
+    result = web_search(query, max_results=max_results, region=region)
+
+    print("\n🦆 DuckDuckGo Results:\n")
+    if result.startswith("Search failed"):
+        print(f"❌ {result}")
+    else:
+        print(result)

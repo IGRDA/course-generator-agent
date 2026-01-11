@@ -3,6 +3,7 @@ from typing import Callable, Dict
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
+from .deepseek.client import build_deepseek_chat_model
 from .gemini.client import build_gemini_chat_model
 from .groq.client import build_groq_chat_model
 from .mistral.client import build_mistral_chat_model
@@ -11,6 +12,7 @@ from .openai.client import build_openai_chat_model
 Builder = Callable[..., BaseChatModel]
 
 BUILDERS: Dict[str, Builder] = {
+    "deepseek": build_deepseek_chat_model,
     "gemini": build_gemini_chat_model,
     "groq": build_groq_chat_model,
     "mistral": build_mistral_chat_model,
@@ -18,6 +20,7 @@ BUILDERS: Dict[str, Builder] = {
 }
 
 MODEL_ENV_VARS = {
+    "deepseek": "DEEPSEEK_MODEL_NAME",
     "gemini": "GEMINI_MODEL_NAME",
     "groq": "GROQ_MODEL_NAME",
     "mistral": "MISTRAL_MODEL_NAME",
@@ -43,7 +46,7 @@ def create_text_llm(provider: str, **kwargs) -> BaseChatModel:
     """
     if not provider:
         raise ValueError(
-            "Provider is required. Must be one of: mistral, gemini, groq, openai"
+            "Provider is required. Must be one of: deepseek, mistral, gemini, groq, openai"
         )
 
     key = provider.lower()

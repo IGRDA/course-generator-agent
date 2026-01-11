@@ -111,12 +111,12 @@ class HtmlEvaluator(BaseEvaluator):
         """Evaluate HTML for a single section."""
         result = {"section_id": section_id, "section_title": section.title, "element_counts": {}}
         
-        if not section.html or not section.html.theory:
+        if not section.html:
             result.update(formatting_score=None, formatting_reasoning="No HTML structure found", has_html=False)
             return result
         
         result["has_html"] = True
-        elements = section.html.theory
+        elements = section.html
         element_counts = {elem.type: 0 for elem in elements}
         for elem in elements:
             element_counts[elem.type] += 1
@@ -153,14 +153,14 @@ class HtmlEvaluator(BaseEvaluator):
             result.update(info_preservation_score=None, info_preservation_reasoning="No original theory content to compare")
             return result
         
-        if not section.html or not section.html.theory:
+        if not section.html:
             result.update(info_preservation_score=None, info_preservation_reasoning="No HTML content to compare")
             return result
         
         # Extract text from HTML elements for comparison
         html_content = "\n".join(
             f"<{e.type}>: {str(e.content)}" 
-            for e in section.html.theory
+            for e in section.html
         )
         
         llm_score = self.evaluate_with_rubric(
@@ -184,9 +184,9 @@ class HtmlEvaluator(BaseEvaluator):
         invalid_types = set()
         
         for _, _, _, section in self.iter_sections(course_state):
-            if section.html and section.html.theory:
+            if section.html:
                 sections_with_html += 1
-                for elem in section.html.theory:
+                for elem in section.html:
                     if elem.type not in VALID_ELEMENT_TYPES:
                         invalid_types.add(elem.type)
         

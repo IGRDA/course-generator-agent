@@ -57,10 +57,10 @@ class ActivitiesEvaluator(BaseEvaluator):
         final_activity_type_usage: Dict[str, int] = {}
         
         for section_id, _, _, section in self.iter_sections(course_state):
-            if section.other_elements:
-                for act in section.other_elements.activities:
+            if section.activities:
+                for act in section.activities.quiz:
                     activity_type_usage[act.type] = activity_type_usage.get(act.type, 0) + 1
-                for final_act in section.other_elements.final_activities:
+                for final_act in section.activities.application:
                     final_activity_type_usage[final_act.type] = final_activity_type_usage.get(final_act.type, 0) + 1
         
         # Build and run the evaluation graph
@@ -116,12 +116,11 @@ class ActivitiesEvaluator(BaseEvaluator):
         """Evaluate activities for a single section."""
         result = {"section_id": section_id, "section_title": section.title}
         
-        if not section.other_elements:
+        if not section.activities:
             result.update(quality_score=None, quality_reasoning="No activities found", has_activities=False)
             return result
         
-        other = section.other_elements
-        activities_text = self._build_activities_text(other.activities)
+        activities_text = self._build_activities_text(section.activities.quiz)
         
         if not activities_text:
             result.update(quality_score=None, quality_reasoning="No activities to evaluate", has_activities=False)
@@ -129,9 +128,14 @@ class ActivitiesEvaluator(BaseEvaluator):
         
         result.update(
             has_activities=True,
-            num_activities=len(other.activities),
-            num_final_activities=len(other.final_activities)
+            num_activities=len(section.activities.quiz),
+            num_final_activities=len(section.activities.application)
         )
+        
+        # Get glossary and key_concept from meta_elements if available
+        meta = section.meta_elements
+        glossary_terms = ", ".join(g.term for g in meta.glossary) if meta and meta.glossary else "None"
+        key_concept = meta.key_concept if meta and meta.key_concept else "None"
         
         llm_score = self.evaluate_with_rubric(
             prompt=ACTIVITIES_EVALUATION_PROMPT,
@@ -140,8 +144,8 @@ class ActivitiesEvaluator(BaseEvaluator):
                 "section_title": section.title,
                 "theory_summary": (section.theory[:500] if section.theory else "No theory content"),
                 "activities_text": activities_text,
-                "glossary_terms": ", ".join(g.term for g in other.glossary) if other.glossary else "None",
-                "key_concept": other.key_concept or "None",
+                "glossary_terms": glossary_terms,
+                "key_concept": key_concept,
             },
             correction_prompt=CORRECTION_PROMPT
         )
@@ -163,12 +167,13 @@ class ActivitiesEvaluator(BaseEvaluator):
         sections_with_activities = sections_with_glossary = sections_with_key_concept = 0
         
         for _, _, _, section in self.iter_sections(course_state):
-            if section.other_elements:
-                if section.other_elements.activities:
+            if section.activities:
+                if section.activities.quiz:
                     sections_with_activities += 1
-                if section.other_elements.glossary:
+            if section.meta_elements:
+                if section.meta_elements.glossary:
                     sections_with_glossary += 1
-                if section.other_elements.key_concept:
+                if section.meta_elements.key_concept:
                     sections_with_key_concept += 1
         
         total = self.count_sections(course_state)

@@ -1,7 +1,11 @@
 """Wikipedia search using LangChain."""
 
+import logging
 from langchain_community.tools import WikipediaQueryRun
 from langchain_community.utilities import WikipediaAPIWrapper
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 
 def web_search(query: str, max_results: int = 5) -> str:
@@ -25,5 +29,25 @@ def web_search(query: str, max_results: int = 5) -> str:
         result = search_tool.run(query)
         return result
     except Exception as e:
+        logger.error(
+            "Wikipedia search failed for query '%s': %s",
+            query,
+            str(e)
+        )
         return f"Wikipedia search failed: {str(e)}"
 
+
+if __name__ == "__main__":
+    query = "artificial inteligence"
+    max_results = 10
+    
+    print(f"🔍 Searching Wikipedia for: '{query}'")
+    print("-" * 80)
+    
+    result = web_search(query, max_results)
+    
+    print(f"\n📚 Wikipedia Results:\n")
+    if result.startswith("Wikipedia search failed"):
+        print(f"❌ {result}")
+    else:
+        print(result)

@@ -7,6 +7,29 @@ import json
 import re
 
 
+# License filter options for Bing image search
+# --------------------------------------------------
+# all                                      - No license filter (all images)
+# free_to_share_and_use                    - View, download, share (no modification, no commercial)
+# free_to_modify_share_and_use             - Modify + share (no commercial use)
+# free_to_share_and_use_commercial         - Commercial use allowed (no modification)
+# free_to_modify_share_and_use_commercial  - Modify + share + commercial (most permissive CC)
+# public_domain                            - Anything allowed, no attribution required (least restrictive)
+# --------------------------------------------------
+
+LICENSE_FILTERS = {
+    "all": "",
+    "free_to_share_and_use": "+filterui:license-L2_L3_L4",
+    "free_to_modify_share_and_use": "+filterui:license-L2_L3",
+    "free_to_share_and_use_commercial": "+filterui:license-L2_L3_L4_L5_L6_L7",
+    "free_to_modify_share_and_use_commercial": "+filterui:license-L2_L3_L5_L6",
+    "public_domain": "+filterui:license-L1",
+}
+
+# Default license filter (change this to use a different license)
+LICENSE_FILTER = "all"
+
+
 def search_images(query: str, max_results: int = 5) -> List[dict]:
     """
     Search for images on Bing.
@@ -25,7 +48,8 @@ def search_images(query: str, max_results: int = 5) -> List[dict]:
             "q": query,
             "form": "HDRSC2",
             "first": 1,
-            "tsc": "ImageHoverTitle"
+            "tsc": "ImageHoverTitle",
+            "qft": LICENSE_FILTERS.get(LICENSE_FILTER, "")
         }
         
         headers = {

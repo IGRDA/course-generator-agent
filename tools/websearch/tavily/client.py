@@ -1,7 +1,11 @@
 """Web search using Tavily."""
 
 import os
+import logging
 from langchain_tavily import TavilySearch
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
 
 
 def web_search(query: str, max_results: int = 5) -> str:
@@ -20,11 +24,19 @@ def web_search(query: str, max_results: int = 5) -> str:
     """
     try:
         if not os.environ.get("TAVILY_API_KEY"):
+            logger.warning(
+                "TAVILY_API_KEY environment variable is not set. "
+                "Set it with: export TAVILY_API_KEY=your_key"
+            )
             return "Error: TAVILY_API_KEY environment variable is not set."
         
         search_tool = TavilySearch(max_results=max_results, topic="general")
         result = search_tool.invoke({"query": query})
         return result
     except Exception as e:
+        logger.error(
+            "Tavily search failed for query '%s': %s", 
+            query, 
+            str(e)
+        )
         return f"Search failed: {str(e)}"
-

@@ -1,6 +1,61 @@
 from typing import List, Optional, Union, Literal, Dict, Any
 from pydantic import BaseModel, Field, model_validator
 
+
+# ---- Research Models ----
+class CourseResearch(BaseModel):
+    """Research output from the topic research phase"""
+    course_summary: str = Field(default="", description="Comprehensive summary of the course topic")
+    learning_objectives: List[str] = Field(default_factory=list, description="What students will achieve")
+    assumed_prerequisites: List[str] = Field(default_factory=list, description="Required prior knowledge")
+    out_of_scope: List[str] = Field(default_factory=list, description="Topics explicitly excluded from the course")
+    key_topics: List[str] = Field(default_factory=list, description="Canonical domain topics to cover")
+    raw_research: str = Field(default="", description="Concatenated raw search results for reference")
+
+
+# ---- Bibliography Models ----
+class BookReference(BaseModel):
+    """Single book reference with APA 7 citation."""
+    title: str = Field(..., description="Book title")
+    authors: List[str] = Field(default_factory=list, description="Authors in APA format: ['Last, F. M.', 'Last2, F. M.']")
+    year: Optional[Union[int, str]] = Field(default=None, description="Publication year or 'n.d.' if unknown")
+    publisher: Optional[str] = Field(default=None, description="Publisher name")
+    isbn: Optional[str] = Field(default=None, description="ISBN-10 identifier")
+    isbn_13: Optional[str] = Field(default=None, description="ISBN-13 identifier")
+    doi: Optional[str] = Field(default=None, description="Digital Object Identifier")
+    url: Optional[str] = Field(default=None, description="Open Library or Google Books URL")
+    edition: Optional[str] = Field(default=None, description="Edition (e.g., '2nd ed.')")
+    apa_citation: str = Field(default="", description="Pre-formatted APA 7 citation string")
+    
+    def get_dedup_key(self) -> str:
+        """Generate a key for deduplication based on ISBN or title+author."""
+        if self.isbn_13:
+            return f"isbn13:{self.isbn_13}"
+        if self.isbn:
+            return f"isbn:{self.isbn}"
+        # Fallback to title + first author
+        author_key = self.authors[0].lower() if self.authors else "unknown"
+        title_key = self.title.lower().strip()
+        return f"title:{title_key}|author:{author_key}"
+
+
+class ModuleBibliography(BaseModel):
+    """Bibliography for a single module."""
+    module_index: int = Field(..., description="Module index (1-based)")
+    module_title: str = Field(..., description="Module title")
+    books: List[BookReference] = Field(default_factory=list, description="Books recommended for this module")
+
+
+class CourseBibliography(BaseModel):
+    """Course-level bibliography with per-module breakdowns and deduplication."""
+    modules: List[ModuleBibliography] = Field(default_factory=list, description="Per-module bibliographies")
+    all_books: List[BookReference] = Field(default_factory=list, description="Deduplicated master list of all books")
+    
+    def get_all_dedup_keys(self) -> set[str]:
+        """Get all deduplication keys from the master list."""
+        return {book.get_dedup_key() for book in self.all_books}
+
+
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
     term: str = Field(..., description="Glossary term")
@@ -114,6 +169,7 @@ class Section(BaseModel):
     title: str = Field(..., description="Title of the section")
     index: int = Field(default=0, description="Section index within submodule")
     description: str = Field(default="", description="Description of the section")
+    summary: str = Field(default="", description="3-line summary of what this section will cover")
     
     theory: str = Field(
         default="", 
@@ -169,6 +225,10 @@ class CourseConfig(BaseModel):
     words_per_page: int = Field(default=400, description="Target words per page for content estimation")
     description: str = Field(default="", description="Optional description or context for the course")
     language: str = Field(default="English", description="Language for the content generation")
+    target_audience: Optional[Literal["kids", "general", "advanced"]] = Field(
+        default=None, 
+        description="Target audience for content adaptation (None = no adaptation, kids = ages 8-12, general = no prerequisites, advanced = technical/professional)"
+    )
     pdf_syllabus_path: str = Field(default="", description="Path to PDF syllabus file")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
@@ -193,10 +253,27 @@ class CourseConfig(BaseModel):
     use_vision_ranking: bool = Field(default=False, description="Use vision LLM (Pixtral) to rank images; if False, picks first result")
     num_images_to_fetch: int = Field(default=5, description="Number of images to fetch for ranking (only used if use_vision_ranking=True)")
     vision_llm_provider: str = Field(default="pixtral", description="Vision LLM provider for image ranking (pixtral)")
-    image_sections_concurrency: int = Field(default=5, description="Number of sections to process in parallel")
-    image_blocks_concurrency: int = Field(default=3, description="Number of blocks to process in parallel within each section")
+    image_concurrency: int = Field(default=10, description="Number of image blocks to process in parallel")
     imagetext2text_concurrency: int = Field(default=5, description="Number of Pixtral vision LLM calls in parallel for image scoring")
     vision_ranking_batch_size: int = Field(default=8, description="Number of images per batch for Pixtral ranking calls")
+    
+    # Research configuration
+    enable_research: bool = Field(default=True, description="Enable research phase before index generation")
+    research_max_queries: int = Field(default=5, description="Maximum number of search queries to generate")
+    research_max_results_per_query: int = Field(default=3, description="Maximum results per search query")
+    
+    # Podcast configuration
+    podcast_target_words: int = Field(default=600, description="Target word count per module podcast")
+    podcast_tts_engine: Literal["edge", "coqui"] = Field(default="edge", description="TTS engine for podcast generation")
+    podcast_speaker_map: Optional[Dict[str, str]] = Field(
+        default=None, 
+        description="Custom speaker mapping for podcast voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})"
+    )
+    
+    # Bibliography configuration
+    generate_bibliography: bool = Field(default=False, description="Generate book bibliography for the course")
+    bibliography_books_per_module: int = Field(default=5, description="Number of books to recommend per module")
+    book_search_provider: str = Field(default="openlibrary", description="Book search provider for validation (openlibrary)")
 
 # ---- Course State ----
 class CourseState(BaseModel):
@@ -204,10 +281,22 @@ class CourseState(BaseModel):
     # Configuration (should not be modified by agents)
     config: CourseConfig = Field(..., description="Course generation configuration")
     
+    # Research output (populated by research phase)
+    research: Optional[CourseResearch] = Field(
+        default=None, 
+        description="Research output from topic analysis phase"
+    )
+    
     # Content fields (can be modified by agents)
     title: str = Field(..., description="Title of the course (initialized from config, can be refined by agents)")
     modules: List[Module] = Field(
         default_factory=list, description="Full course structure with all modules"
+    )
+    
+    # Bibliography output (populated by bibliography generator)
+    bibliography: Optional[CourseBibliography] = Field(
+        default=None,
+        description="Course bibliography with per-module book recommendations"
     )
     
     @property
