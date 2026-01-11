@@ -1,0 +1,480 @@
+% Professional Course Template - AdinHub Style
+% Clean, corporate design matching PLANES DE EVACUACIÓN format
+
+\documentclass[11pt,a4paper]{book}
+
+% ============================================
+% PACKAGES
+% ============================================
+
+% Encoding and fonts
+\usepackage{iftex}
+\ifxetex
+    \usepackage{fontspec}
+    % Clean sans-serif for modern look
+    \setmainfont{Helvetica Neue}[
+        Ligatures=TeX,
+        BoldFont=Helvetica Neue Bold,
+        ItalicFont=Helvetica Neue Italic,
+        BoldItalicFont=Helvetica Neue Bold Italic
+    ]
+    \setsansfont{Helvetica Neue}[
+        Ligatures=TeX,
+        BoldFont=Helvetica Neue Bold
+    ]
+    \setmonofont{Menlo}[Scale=0.85]
+\else
+    \usepackage[utf8]{inputenc}
+    \usepackage[T1]{fontenc}
+    \usepackage{helvet}
+    \renewcommand{\familydefault}{\sfdefault}
+\fi
+
+% Language support
+\usepackage[english,spanish]{babel}
+
+% Page geometry
+\usepackage[
+    a4paper,
+    top=2.5cm,
+    bottom=3cm,
+    left=2.5cm,
+    right=2.5cm,
+    headheight=20pt,
+    headsep=15pt,
+    footskip=35pt
+]{geometry}
+
+% TikZ for decorative elements
+\usepackage{tikz}
+\usetikzlibrary{calc}
+
+% Colors - AdinHub corporate palette
+\usepackage[dvipsnames]{xcolor}
+\definecolor{adinhubblue}{RGB}{0,82,147}      % Corporate blue
+\definecolor{adinhubdark}{RGB}{30,40,50}      % Dark text
+\definecolor{adinhuborg}{RGB}{230,120,30}     % Orange accent
+\definecolor{lightblue}{RGB}{230,240,250}     % Light background
+\definecolor{darkgray}{RGB}{60,60,65}
+\definecolor{midgray}{RGB}{120,120,125}
+\definecolor{lightgray}{RGB}{200,200,205}
+\definecolor{coverblue}{RGB}{20,50,90}
+
+% Callout box colors
+\definecolor{tipbg}{RGB}{232,245,253}         % Light blue for tips
+\definecolor{tipborder}{RGB}{33,150,243}      % Blue border
+\definecolor{warningbg}{RGB}{255,243,224}     % Light orange for warnings
+\definecolor{warningborder}{RGB}{255,152,0}   % Orange border
+\definecolor{definitionbg}{RGB}{243,243,248}  % Light gray for definitions
+\definecolor{definitionborder}{RGB}{100,100,120} % Gray border
+\definecolor{examplebg}{RGB}{232,245,233}     % Light green for examples
+\definecolor{exampleborder}{RGB}{76,175,80}   % Green border
+\definecolor{objectivesbg}{RGB}{240,248,255}  % Alice blue for objectives
+\definecolor{objectivesborder}{RGB}{0,82,147} % AdinHub blue border
+
+% Headers and footers - AdinHub style
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+
+% Header: Course title left, page number right
+\fancyhead[L]{\small\color{darkgray}\MakeUppercase{\coursetitle}}
+\fancyhead[R]{\small\color{darkgray}\thepage}
+\renewcommand{\headrulewidth}{0pt}
+
+% Footer: Copyright centered
+\fancyfoot[C]{%
+    \small\color{midgray}© \the\year\ AdinHub. Todos los derechos reservados.%
+}
+\renewcommand{\footrulewidth}{0pt}
+
+% Plain style for chapter pages
+\fancypagestyle{plain}{
+    \fancyhf{}
+    \fancyhead[L]{\small\color{darkgray}\MakeUppercase{\coursetitle}}
+    \fancyhead[R]{\small\color{darkgray}\thepage}
+    \fancyfoot[C]{\small\color{midgray}© \the\year\ AdinHub. Todos los derechos reservados.}
+    \renewcommand{\headrulewidth}{0pt}
+}
+
+% Typography
+\usepackage{microtype}
+\usepackage{setspace}
+\setstretch{1.15}
+\setlength{\parskip}{0.8em}
+\setlength{\parindent}{0pt}  % No indent, space between paragraphs
+
+% Math support
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+
+% Graphics and figures
+\usepackage{graphicx}
+\usepackage{float}
+\graphicspath{{./images/}}
+
+% Captions
+\usepackage[
+    font={small},
+    labelfont={bf},
+    format=plain,
+    justification=centering,
+    skip=8pt
+]{caption}
+
+% Tables
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{tabularx}
+\renewcommand{\arraystretch}{1.4}
+
+% Lists
+\usepackage{enumitem}
+\setlist[itemize]{
+    leftmargin=2em,
+    topsep=0.5em,
+    itemsep=0.3em,
+    parsep=0.2em,
+    label={\color{adinhubblue}$\bullet$}
+}
+\setlist[enumerate]{
+    leftmargin=2em,
+    topsep=0.5em,
+    itemsep=0.3em,
+    parsep=0.2em
+}
+
+% PDF metadata and bookmarks
+\usepackage[
+    colorlinks=true,
+    linkcolor=adinhubblue,
+    urlcolor=adinhubblue,
+    citecolor=darkgray,
+    bookmarks=true,
+    bookmarksnumbered=true,
+    bookmarksopen=true,
+    bookmarksopenlevel=2,
+    pdfstartview=FitH,
+    pdftitle={COURSE_TITLE},
+    pdfauthor={AdinHub},
+    pdfsubject={Educational Course Material},
+    pdfkeywords={education, course, learning, adinhub},
+    pdfcreator={LaTeX},
+    pdfproducer={AdinHub Course Generator}
+]{hyperref}
+
+\usepackage{bookmark}
+
+% Bibliography
+\usepackage[
+    backend=biber,
+    style=authoryear-comp,
+    sorting=nyt,
+    maxbibnames=99,
+    maxcitenames=2,
+    giveninits=true,
+    uniquename=init,
+    dashed=false
+]{biblatex}
+
+% Chapter and section styling
+\usepackage{titlesec}
+
+% Module/Chapter style - clean with blue accent
+\titleformat{\chapter}[display]
+    {\normalfont\sffamily\bfseries\Large}
+    {\color{adinhubblue}Módulo \thechapter}
+    {5pt}
+    {\huge\color{adinhubdark}}
+    [\vspace{5pt}\color{adinhubblue}\rule{\textwidth}{2pt}]
+\titlespacing*{\chapter}{0pt}{20pt}{25pt}
+
+% Section style - numbered with dot
+\titleformat{\section}
+    {\normalfont\Large\sffamily\bfseries\color{adinhubdark}}
+    {\color{adinhubblue}\thesection}
+    {0.8em}
+    {}
+\titlespacing*{\section}{0pt}{20pt}{10pt}
+
+% Subsection style
+\titleformat{\subsection}
+    {\normalfont\large\sffamily\bfseries\color{darkgray}}
+    {\color{adinhubblue}\thesubsection}
+    {0.8em}
+    {}
+\titlespacing*{\subsection}{0pt}{15pt}{8pt}
+
+% Subsubsection style
+\titleformat{\subsubsection}
+    {\normalfont\normalsize\sffamily\bfseries\color{darkgray}}
+    {\color{midgray}\thesubsubsection}
+    {0.8em}
+    {}
+\titlespacing*{\subsubsection}{0pt}{12pt}{5pt}
+
+% Quotes
+\usepackage{csquotes}
+
+% Prevent widows and orphans
+\widowpenalty=10000
+\clubpenalty=10000
+
+% Better text handling
+\tolerance=1000
+\emergencystretch=2em
+\hyphenpenalty=500
+
+% ============================================
+% CUSTOM COMMANDS
+% ============================================
+
+\newcommand{\coursetitle}{COURSE_TITLE}
+\newcommand{\coursedescription}{COURSE_DESCRIPTION}
+\newcommand{\courselanguage}{COURSE_LANGUAGE}
+
+% Section separator
+\newcommand{\sectionrule}{%
+    \vspace{0.5em}
+    {\color{lightgray}\rule{\textwidth}{0.5pt}}
+    \vspace{0.5em}
+}
+
+% ============================================
+% CALLOUT BOX ENVIRONMENTS
+% ============================================
+
+% Generic callout box command
+\newcommand{\calloutbox}[4]{%
+    % #1 = background color, #2 = border color, #3 = title, #4 = content
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=#1,
+            draw=#2,
+            line width=0.5pt,
+            rounded corners=3pt,
+            inner sep=12pt,
+            text width=\textwidth-30pt
+        ] (box) {%
+            \textbf{\color{#2}#3}\\[4pt]
+            \color{adinhubdark}#4
+        };
+        \fill[#2] (box.north west) rectangle ([xshift=4pt]box.south west);
+    \end{tikzpicture}
+    \vspace{0.8em}
+}
+
+% Tip box - for helpful hints and best practices
+\newenvironment{tipbox}[1][Tip]{%
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=tipbg,
+            draw=tipborder,
+            line width=0.5pt,
+            rounded corners=3pt,
+            inner sep=12pt,
+            text width=\textwidth-30pt
+        ] (box) \bgroup
+            \textbf{\color{tipborder}$\triangleright$ #1}\\[4pt]
+            \color{adinhubdark}
+}{%
+        \egroup;
+        \fill[tipborder] (box.north west) rectangle ([xshift=4pt]box.south west);
+    \end{tikzpicture}
+    \vspace{0.8em}
+}
+
+% Warning box - for important cautions
+\newenvironment{warningbox}[1][Warning]{%
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=warningbg,
+            draw=warningborder,
+            line width=0.5pt,
+            rounded corners=3pt,
+            inner sep=12pt,
+            text width=\textwidth-30pt
+        ] (box) \bgroup
+            \textbf{\color{warningborder}! #1}\\[4pt]
+            \color{adinhubdark}
+}{%
+        \egroup;
+        \fill[warningborder] (box.north west) rectangle ([xshift=4pt]box.south west);
+    \end{tikzpicture}
+    \vspace{0.8em}
+}
+
+% Definition box - for key terms
+\newenvironment{definitionbox}[1][Definition]{%
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=definitionbg,
+            draw=definitionborder,
+            line width=0.5pt,
+            rounded corners=3pt,
+            inner sep=12pt,
+            text width=\textwidth-30pt
+        ] (box) \bgroup
+            \textbf{\color{definitionborder}$\bullet$ #1}\\[4pt]
+            \color{adinhubdark}
+}{%
+        \egroup;
+        \fill[definitionborder] (box.north west) rectangle ([xshift=4pt]box.south west);
+    \end{tikzpicture}
+    \vspace{0.8em}
+}
+
+% Example box - for worked examples
+\newenvironment{examplebox}[1][Example]{%
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=examplebg,
+            draw=exampleborder,
+            line width=0.5pt,
+            rounded corners=3pt,
+            inner sep=12pt,
+            text width=\textwidth-30pt
+        ] (box) \bgroup
+            \textbf{\color{exampleborder}$\diamond$ #1}\\[4pt]
+            \color{adinhubdark}
+}{%
+        \egroup;
+        \fill[exampleborder] (box.north west) rectangle ([xshift=4pt]box.south west);
+    \end{tikzpicture}
+    \vspace{0.8em}
+}
+
+% Learning objectives box - for chapter intros
+\newenvironment{objectivesbox}[1][Learning Objectives]{%
+    \vspace{0.8em}
+    \noindent
+    \begin{tikzpicture}
+        \node[
+            rectangle,
+            fill=objectivesbg,
+            draw=objectivesborder,
+            line width=1pt,
+            rounded corners=4pt,
+            inner sep=14pt,
+            text width=\textwidth-34pt
+        ] (box) \bgroup
+            \textbf{\large\color{objectivesborder}$\blacktriangleright$ #1}\\[8pt]
+            \color{adinhubdark}
+}{%
+        \egroup;
+        \fill[objectivesborder] (box.north west) rectangle ([xshift=5pt]box.south west);
+    \end{tikzpicture}
+    \vspace{1em}
+}
+
+% ============================================
+% DOCUMENT
+% ============================================
+
+\begin{document}
+
+% Set language
+\selectlanguage{\courselanguage}
+
+% ============================================
+% FRONT MATTER
+% ============================================
+\frontmatter
+\pagestyle{empty}
+
+% Cover page - AdinHub style
+\begin{titlepage}
+    \begin{tikzpicture}[remember picture, overlay]
+        % Background image
+        \node[anchor=center, inner sep=0] at (current page.center) {%
+            \includegraphics[width=\paperwidth, height=\paperheight, keepaspectratio=false]{COVER_IMAGE}%
+        };
+        
+        % Dark blue overlay
+        \fill[coverblue, opacity=0.88] 
+            (current page.north west) rectangle (current page.south east);
+        
+        % Top accent bar
+        \fill[adinhuborg] 
+            (current page.north west) rectangle ([yshift=-8pt]current page.north east);
+        
+        % Bottom section with copyright
+        \fill[black, opacity=0.5]
+            ([yshift=3.5cm]current page.south west) rectangle (current page.south east);
+        
+        % Bottom accent line
+        \fill[adinhuborg]
+            ([yshift=3.5cm]current page.south west) rectangle ([yshift=3.58cm]current page.south east);
+    \end{tikzpicture}
+    
+    % Title content
+    \begin{center}
+        \vspace*{0.22\paperheight}
+        
+        % Main title - large and bold
+        {\fontsize{36}{44}\selectfont\sffamily\bfseries\color{white}\MakeUppercase{\coursetitle}\par}
+        
+        \vfill
+        
+        % Footer with branding
+        \begin{tikzpicture}
+            \node[anchor=center] at (0,0) {%
+                \begin{minipage}{0.9\textwidth}
+                    \centering
+                    \color{white!90}
+                    {\Large\sffamily\bfseries AdinHub}\\[15pt]
+                    {\small © \the\year\ AdinHub. Todos los derechos reservados.}
+                \end{minipage}
+            };
+        \end{tikzpicture}
+        
+        \vspace{2cm}
+    \end{center}
+\end{titlepage}
+
+\cleardoublepage
+
+% Table of contents
+\pagestyle{fancy}
+
+% ToC title styling
+\renewcommand{\contentsname}{Índice}
+\pdfbookmark[0]{\contentsname}{toc}
+
+\tableofcontents
+\cleardoublepage
+
+% ============================================
+% MAIN MATTER
+% ============================================
+\mainmatter
+
+% CONTENT_PLACEHOLDER - Will be replaced by generator
+
+% ============================================
+% BACK MATTER
+% ============================================
+\backmatter
+
+% Bibliography
+\nocite{*}
+\printbibliography[heading=bibintoc,title={Referencias}]
+
+\end{document}

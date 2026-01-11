@@ -167,20 +167,17 @@ def convert_pdf_to_markdown(
         raise
 
     # Step 3: Get markdown content
+    markdown_content = result.document.export_to_markdown()
+    logger.info(f"✓ Markdown extracted ({len(markdown_content)} characters)")
+    
+    # Always save to disk for caching
+    markdown_path = output_base / f"{doc_name}.md"
+    markdown_path.write_text(markdown_content, encoding="utf-8")
+    logger.info(f"✓ Markdown cached to: {markdown_path}")
+    
     if return_string:
-        # Export markdown to string
-        markdown_content = result.document.export_to_markdown()
-        logger.info(f"✓ Markdown extracted ({len(markdown_content)} characters)")
         return markdown_content
     else:
-        # Step 4: Export markdown to file
-        markdown_path = output_base / f"{doc_name}.md"
-        result.document.save_as_markdown(
-            markdown_path,
-            image_mode=ImageRefMode.EMBEDDED
-        )
-        
-        logger.info(f"✓ Markdown saved to: {markdown_path}")
         return str(markdown_path)
 
 

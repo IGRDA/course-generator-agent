@@ -8,6 +8,7 @@ from agents.section_theory_generator.agent import generate_all_section_theories
 from agents.activities_generator.agent import generate_all_section_activities
 from agents.html_formatter.agent import generate_all_section_html
 from agents.image_generator.agent import generate_all_section_images
+from agents.bibliography_generator.agent import generate_course_bibliography
 from langgraph.graph import StateGraph, START, END
 
 
@@ -200,6 +201,27 @@ def generate_images_node(state: CourseState, config: Optional[RunnableConfig] = 
     return updated_state
 
 
+def generate_bibliography_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Generate book bibliography for the course (optional, controlled by config)"""
+    if not state.config.generate_bibliography:
+        print("📚 Bibliography generation disabled, skipping...")
+        return state
+    
+    print("📚 Generating course bibliography...")
+    
+    bibliography = generate_course_bibliography(state)
+    state.bibliography = bibliography
+    
+    print("Bibliography generation completed!")
+    
+    # Save step snapshot if OutputManager is available
+    output_mgr = _get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("bibliography", state)
+    
+    return state
+
+
 # Build the graph
 def build_course_generation_graph():
     """Build and return the course generation graph"""
@@ -212,6 +234,7 @@ def build_course_generation_graph():
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
     graph.add_node("generate_images", generate_images_node)
+    graph.add_node("generate_bibliography", generate_bibliography_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index")
@@ -220,7 +243,8 @@ def build_course_generation_graph():
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
     graph.add_edge("generate_html", "generate_images")
-    graph.add_edge("generate_images", END)
+    graph.add_edge("generate_images", "generate_bibliography")
+    graph.add_edge("generate_bibliography", END)
     
     return graph.compile()
 
@@ -253,7 +277,7 @@ if __name__ == "__main__":
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Research configuration
         enable_research=True,  # Enable research phase before index generation
-        research_max_queries= 10,  # Number of search queries to generate
+        research_max_queries= 7,  # Number of search queries to generate
         research_max_results_per_query=5,  # Results per search query
         # Activities configuration
         activities_concurrency=30,  # Number of concurrent activity generations

@@ -166,10 +166,13 @@ def _generate_latex_document(
         latex = latex.replace('COVER_IMAGE', cover_image)
     else:
         # Use a TikZ-generated gradient if no cover image available
-        # Remove the includegraphics line that would fail without an image
+        # Remove the entire background image node that would fail without an image
         latex = latex.replace(
-            r'\includegraphics[width=\paperwidth, height=\paperheight, keepaspectratio=false]{COVER_IMAGE}%',
-            r'% No cover image available'
+            r'''        % Background image
+        \node[anchor=center, inner sep=0] at (current page.center) {%
+            \includegraphics[width=\paperwidth, height=\paperheight, keepaspectratio=false]{COVER_IMAGE}%
+        };''',
+            r'        % No cover image - using gradient background'
         )
         # Replace the overlay with a solid gradient (no image behind it)
         latex = latex.replace(
