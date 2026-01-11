@@ -198,48 +198,7 @@ if __name__ == "__main__":
         total_pages=args.total_pages,
         words_per_page=400,
         language="Español",
-        description="""
-
-Formalize problems as Markov Decision Processes 
-
-Understand basic exploration methods and the exploration / exploitation tradeoff
-
-Understand value functions, as a general-purpose tool for optimal decision-making
-
-Know how to implement dynamic programming as an efficient solution approach to an industrial control problem
-
-For the first week of this course, you will learn how to understand the exploration-exploitation trade-off in sequential decision-making, implement incremental algorithms for estimating action-values, and compare the strengths and weaknesses to different algorithms for exploration. For this week’s graded assessment, you will implement and test an epsilon-greedy agent.
-What's included
-
-8 videos
-3 readings
-1 assignment
-1 programming assignment
-1 discussion prompt
-
-2 plugins
-
-When you’re presented with a problem in industry, the first and most important step is to translate that problem into a Markov Decision Process (MDP). The quality of your solution depends heavily on how well you do this translation. This week, you will learn the definition of MDPs, you will understand goal-directed behavior and how this can be obtained from maximizing scalar rewards, and you will also understand the difference between episodic and continuing tasks. For this week’s graded assessment, you will create three example tasks of your own that fit into the MDP framework.
-What's included
-
-7 videos
-2 readings
-1 assignment
-1 peer review
-
-1 discussion prompt
-
-Once the problem is formulated as an MDP, finding the optimal policy is more efficient when using value functions. This week, you will learn the definition of policies and value functions, as well as Bellman equations, which is the key technology that all of our algorithms will use.
-What's included
-
-9 videos
-3 readings
-2 assignments
-
-1 discussion prompt
-
-This week, you will learn how to compute value functions and optimal policies, assuming you have the MDP model. You will implement dynamic programming to compute value functions and optimal policies and understand the utility of dynamic programming for industrial applications and problems. Further, you will learn about Generalized Policy Iteration as a common template for constructing algorithms that maximize reward. For this week’s graded assessment, you will implement an efficient dynamic programming agent in a simulated industrial control problem.
- """,
+        description="""""",
         max_retries=8,
         concurrency=10,
         use_reflection=True,
