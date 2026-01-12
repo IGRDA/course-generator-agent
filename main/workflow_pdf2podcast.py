@@ -11,144 +11,18 @@ Pipeline:
 4. Generate podcasts for all modules
 """
 
-import json
 from pathlib import Path
-from typing import Optional
 
-from langchain_core.runnables import RunnableConfig
 from langgraph.graph import StateGraph, START, END
 
 from main.state import CourseState, CourseConfig
 from main.output_manager import OutputManager
-from main.workflow_pdf import (
+from main.nodes import (
     generate_index_from_pdf_node,
     generate_theories_node,
     calculate_metadata_node,
-    _get_output_manager,
+    generate_podcasts_node,
 )
-from agents.podcast_generator.agent import (
-    generate_conversation,
-    get_tts_language,
-    TTSEngineType,
-)
-
-
-def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate podcasts for all modules in the course.
-    
-    This node:
-    1. Converts the CourseState to course_data dict format
-    2. Iterates through all modules
-    3. Generates conversation for each module using LLM
-    4. Synthesizes audio using configured TTS engine (Edge TTS by default)
-    5. Saves conversation JSON and MP3 files to output folder
-    """
-    print("Generating podcasts for all modules...")
-    
-    # Get output manager for saving files
-    output_mgr = _get_output_manager(config)
-    if not output_mgr:
-        print("⚠️ Warning: No OutputManager found, skipping podcast generation")
-        return state
-    
-    # Convert state to course_data dict format expected by podcast generator
-    course_data = state.model_dump()
-    
-    # Get podcast configuration
-    tts_engine: TTSEngineType = state.config.podcast_tts_engine
-    target_words = state.config.podcast_target_words
-    speaker_map = state.config.podcast_speaker_map
-    provider = state.config.text_llm_provider
-    
-    # Get TTS language from course language
-    tts_language = get_tts_language(state.config.language)
-    
-    # Setup podcast output directory
-    podcast_dir = Path(output_mgr.get_run_folder()) / "podcast"
-    podcast_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Get the path to background music
-    project_root = Path(__file__).parent.parent
-    music_path = project_root / "tools" / "podcast" / "background_music.mp3"
-    music_path_str = str(music_path) if music_path.exists() else None
-    
-    num_modules = len(state.modules)
-    print(f"   Found {num_modules} modules to process")
-    print(f"   TTS Engine: {tts_engine}")
-    print(f"   Language: {tts_language}")
-    print(f"   Target words per podcast: {target_words}")
-    
-    # Generate podcast for each module
-    for module_idx in range(num_modules):
-        module = state.modules[module_idx]
-        print(f"\n🎙️ Generating podcast for Module {module_idx + 1}: {module.title}")
-        
-        # Generate conversation
-        print(f"   Generating conversation...")
-        conversation = generate_conversation(
-            course_data=course_data,
-            module_idx=module_idx,
-            provider=provider,
-            target_words=target_words,
-        )
-        
-        # Save conversation JSON
-        conv_filename = f"module_{module_idx + 1}_conversation.json"
-        conv_path = podcast_dir / conv_filename
-        with open(conv_path, "w", encoding="utf-8") as f:
-            json.dump(conversation, f, indent=2, ensure_ascii=False)
-        print(f"   ✅ Conversation saved: {conv_path.name}")
-        
-        # Generate audio
-        audio_filename = f"module_{module_idx + 1}.mp3"
-        audio_path = podcast_dir / audio_filename
-        
-        print(f"   🔊 Synthesizing audio with {tts_engine.upper()} TTS...")
-        
-        if tts_engine == "edge":
-            from tools.podcast.tts_engine import generate_podcast_edge
-            
-            generate_podcast_edge(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {module.title}",
-                artist="Adinhub",
-                album=state.title,
-                track_number=module_idx + 1,
-                music_path=music_path_str,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
-        else:
-            from tools.podcast.tts_engine import generate_podcast
-            
-            generate_podcast(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                language_code=tts_language,
-                title=f"Module {module_idx + 1}: {module.title}",
-                artist="Adinhub",
-                album=state.title,
-                track_number=module_idx + 1,
-                music_path=music_path_str,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
-        
-        print(f"   ✅ Audio saved: {audio_path.name}")
-    
-    print(f"\n✅ All {num_modules} podcasts generated successfully!")
-    print(f"   Output folder: {podcast_dir}")
-    
-    return state
 
 
 def build_pdf2podcast_graph():
@@ -268,4 +142,3 @@ if __name__ == "__main__":
     print(f"   TTS Engine: {final_state.config.podcast_tts_engine}")
     print(f"   Source PDF: {final_state.config.pdf_syllabus_path}")
     print(f"\n✅ All outputs saved to: {output_mgr.get_run_folder()}")
-

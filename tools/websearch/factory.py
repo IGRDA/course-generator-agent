@@ -1,4 +1,11 @@
-from typing import Callable, Dict
+"""
+Factory for creating web search client instances.
+
+This module provides a unified interface for web search across
+different providers (DuckDuckGo, Tavily, Wikipedia).
+"""
+
+from typing import Callable
 
 from .ddg.client import web_search as ddg_web_search
 from .tavily.client import web_search as tavily_web_search
@@ -6,7 +13,7 @@ from .wikipedia.client import web_search as wikipedia_web_search
 
 WebSearchFunc = Callable[[str, int], str]
 
-SEARCH_PROVIDERS: Dict[str, WebSearchFunc] = {
+SEARCH_PROVIDERS: dict[str, WebSearchFunc] = {
     "ddg": ddg_web_search,
     "tavily": tavily_web_search,
     "wikipedia": wikipedia_web_search,
@@ -27,6 +34,9 @@ def create_web_search(provider: str) -> WebSearchFunc:
         
     Returns:
         A web search function that accepts (query: str, max_results: int).
+        
+    Raises:
+        ValueError: If provider is empty or not supported.
     """
     if not provider:
         raise ValueError("Provider is required. Must be one of: ddg, tavily, wikipedia")
@@ -40,4 +50,3 @@ def create_web_search(provider: str) -> WebSearchFunc:
             f"Unsupported web search provider '{provider}'. "
             f"Available providers: {available}"
         ) from exc
-
