@@ -70,6 +70,16 @@ class SectionTask(BaseModel):
     def section_title(self) -> str:
         """Get the section title."""
         return self.section.title
+    
+    @property
+    def config(self):
+        """Get the course config."""
+        return self.course_state.config
+    
+    @property
+    def language(self) -> str:
+        """Get the course language."""
+        return self.course_state.language
 
 
 class SectionProcessorState(BaseModel):

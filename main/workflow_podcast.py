@@ -82,7 +82,14 @@ if __name__ == "__main__":
         # Podcast configuration
         podcast_target_words=args.target_words,
         podcast_tts_engine=args.tts_engine,
-        podcast_speaker_map={'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'},
+        # Speaker map differs by TTS engine:
+        # - Edge TTS: 'es-ES-AlvaroNeural', 'es-ES-XimenaNeural'
+        # - Coqui TTS (XTTS): Spanish-sounding speakers for natural Spanish audio
+        podcast_speaker_map=(
+            {'host': 'Luis Moray', 'guest': 'Alma María'}
+            if args.tts_engine == 'coqui'
+            else {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'}
+        ),
         target_audience=None,
     )
     

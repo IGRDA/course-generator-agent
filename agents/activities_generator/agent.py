@@ -1,13 +1,20 @@
-from typing import Annotated, List, Optional
+"""
+Activities generator agent using the base SectionProcessor pattern.
+
+This agent generates quiz activities, meta elements (glossary, key concepts),
+and application activities for each section.
+"""
+
 import random
-from operator import add
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field
-from main.state import CourseState, GlossaryTerm, Activity, FinalActivity, MetaElements, ActivitiesSection
-from main.audience_profiles import build_audience_guidelines
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, RetryPolicy
+
+from main.state import CourseState, Section, GlossaryTerm, Activity, FinalActivity, MetaElements, ActivitiesSection
+from main.audience_profiles import build_audience_guidelines
+from agents.base import SectionProcessor, SectionTask
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import activities_generation_prompt, correction_prompt
 
@@ -62,216 +69,128 @@ class ActivitiesOutput(BaseModel):
         populate_by_name = True
 
 
-# ---- State for individual section task ----
-class SectionActivitiesTask(BaseModel):
-    """State for processing a single section's activities"""
-    course_state: CourseState
-    module_idx: int
-    submodule_idx: int
-    section_idx: int
-    section_title: str
-    theory: str
-    activity_types: List[str]
-    final_activity_types: List[str]
-
-
-# ---- State for aggregating results ----
-class ActivitiesGenerationState(BaseModel):
-    """State for the activities generation subgraph"""
-    course_state: CourseState
-    completed_activities: Annotated[list[dict], add] = Field(default_factory=list)
-    total_sections: int = 0
-
-
-def plan_activities(state: ActivitiesGenerationState) -> dict:
-    """Update the total_sections count in the state."""
-    section_count = 0
+# ---- Activities Processor using SectionProcessor pattern ----
+class ActivitiesProcessor(SectionProcessor):
+    """Processor for generating activities for sections."""
     
-    for module in state.course_state.modules:
-        for submodule in module.submodules:
-            section_count += len(submodule.sections)
+    def __init__(self):
+        super().__init__(name="activities_generator")
+        self._global_section_idx = 0  # Track global section index for activity type cycling
     
-    print(f"📋 Planning {section_count} sections for activities generation")
+    def create_task_data(
+        self,
+        course_state: CourseState,
+        module_idx: int,
+        submodule_idx: int,
+        section_idx: int,
+        section: Section,
+    ) -> dict[str, Any]:
+        """Create task-specific data for activities generation."""
+        # Get activity selection settings from config
+        mode = course_state.config.activity_selection_mode
+        num = course_state.config.num_activities_per_section
+        
+        # Select activity types using global section index for proper cycling
+        quiz_types, final_types = select_activity_types(mode, num, self._global_section_idx)
+        self._global_section_idx += 1
+        
+        return {
+            "section_title": section.title,
+            "theory": section.theory,
+            "activity_types": quiz_types,
+            "final_activity_types": final_types,
+        }
     
-    return {"total_sections": section_count}
-
-
-def continue_to_activities(state: ActivitiesGenerationState) -> list[Send]:
-    """Fan-out: Create a Send for each section to process in parallel."""
-    sends = []
-    
-    mode = state.course_state.config.activity_selection_mode
-    num = state.course_state.config.num_activities_per_section
-    global_section_idx = 0
-    
-    for m_idx, module in enumerate(state.course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                # Select activity types for this section
-                quiz_types, final_types = select_activity_types(mode, num, global_section_idx)
-                
-                # Create a task for each section
-                task = SectionActivitiesTask(
-                    course_state=state.course_state,
-                    module_idx=m_idx,
-                    submodule_idx=sm_idx,
-                    section_idx=s_idx,
-                    section_title=section.title,
-                    theory=section.theory,
-                    activity_types=quiz_types,
-                    final_activity_types=final_types
-                )
-                # Send to the generate_section_activities node
-                sends.append(Send("generate_section_activities", task))
-                global_section_idx += 1
-    
-    return sends
-
-
-def generate_section_activities(state: SectionActivitiesTask) -> dict:
-    """
-    Generate activities for a single section.
-    Uses structured output with RetryWithErrorOutputParser for validation.
-    """
-    # Extract context
-    provider = state.course_state.config.text_llm_provider
-    max_retries = state.course_state.config.max_retries
-    
-    # Create LLM
-    model_name = resolve_text_model_name(provider)
-    llm_kwargs = {"temperature": 0.5}  # Slightly higher temp for creative activities
-    if model_name:
-        llm_kwargs["model_name"] = model_name
-    llm = create_text_llm(provider=provider, **llm_kwargs)
-    
-    # Create parser
-    parser = PydanticOutputParser(pydantic_object=ActivitiesOutput)
-    
-    # Create fix parser for retry
-    fix_parser = RetryWithErrorOutputParser.from_llm(
-        llm=llm,
-        parser=parser,
-        max_retries=max_retries,
-    )
-    
-    # Generate using LCEL chain
-    chain = activities_generation_prompt | llm | StrOutputParser()
-    
-    # Build activity types description
-    activity_desc = ", ".join(state.activity_types)
-    final_desc = ", ".join(state.final_activity_types)
-    
-    # Build audience guidelines block
-    audience_guidelines = build_audience_guidelines(
-        state.course_state.config.target_audience,
-        context="activities"
-    )
-    
-    raw = chain.invoke({
-        "theory": state.theory,
-        "section_title": state.section_title,
-        "language": state.course_state.language,
-        "activity_types": activity_desc,
-        "final_activity_types": final_desc,
-        "format_instructions": parser.get_format_instructions(),
-        "audience_guidelines": audience_guidelines,
-    })
-    
-    # Try to parse, with fallback to retry parser
-    try:
-        result = parser.parse(raw)
-    except Exception as e:
-        print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting correction...")
-        result = fix_parser.parse_with_prompt(
-            completion=raw,
-            prompt_value=correction_prompt.format_prompt(
-                error=str(e),
-                completion=raw,
-                format_instructions=parser.get_format_instructions(),
-            ),
+    def process_section(self, task: SectionTask) -> dict[str, Any]:
+        """Generate activities for a single section."""
+        # Extract context
+        provider = task.config.text_llm_provider
+        max_retries = task.config.max_retries
+        
+        # Get task-specific data
+        section_title = task.extra_data["section_title"]
+        theory = task.extra_data["theory"]
+        activity_types = task.extra_data["activity_types"]
+        final_activity_types = task.extra_data["final_activity_types"]
+        
+        # Create LLM
+        model_name = resolve_text_model_name(provider)
+        llm_kwargs = {"temperature": 0.5}  # Slightly higher temp for creative activities
+        if model_name:
+            llm_kwargs["model_name"] = model_name
+        llm = create_text_llm(provider=provider, **llm_kwargs)
+        
+        # Create parser
+        parser = PydanticOutputParser(pydantic_object=ActivitiesOutput)
+        
+        # Create fix parser for retry
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm,
+            parser=parser,
+            max_retries=max_retries,
         )
-    
-    print(f"✓ Generated activities for Module {state.module_idx+1}, "
-          f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
-    
-    # Return the completed section info
-    return {
-        "completed_activities": [{
-            "module_idx": state.module_idx,
-            "submodule_idx": state.submodule_idx,
-            "section_idx": state.section_idx,
+        
+        # Generate using LCEL chain
+        chain = activities_generation_prompt | llm | StrOutputParser()
+        
+        # Build activity types description
+        activity_desc = ", ".join(activity_types)
+        final_desc = ", ".join(final_activity_types)
+        
+        # Build audience guidelines block
+        audience_guidelines = build_audience_guidelines(
+            task.config.target_audience,
+            context="activities"
+        )
+        
+        raw = chain.invoke({
+            "theory": theory,
+            "section_title": section_title,
+            "language": task.language,
+            "activity_types": activity_desc,
+            "final_activity_types": final_desc,
+            "format_instructions": parser.get_format_instructions(),
+            "audience_guidelines": audience_guidelines,
+        })
+        
+        # Try to parse, with fallback to retry parser
+        try:
+            result = parser.parse(raw)
+        except Exception as e:
+            print(f"  ⚠ Initial parse failed for section {task.section_idx}, attempting correction...")
+            result = fix_parser.parse_with_prompt(
+                completion=raw,
+                prompt_value=correction_prompt.format_prompt(
+                    error=str(e),
+                    completion=raw,
+                    format_instructions=parser.get_format_instructions(),
+                ),
+            )
+        
+        return {
             "glossary": result.glossary,
             "key_concept": result.key_concept,
             "interesting_fact": result.interesting_fact,
             "quote": result.quote,
             "activities": result.activities,
-            "final_activities": result.final_activities
-        }]
-    }
-
-
-def reduce_activities(state: ActivitiesGenerationState) -> dict:
-    """Fan-in: Aggregate all generated activities back into the course state."""
-    print(f"📦 Reducing {len(state.completed_activities)} completed activities")
+            "final_activities": result.final_activities,
+        }
     
-    # Update course state with all generated activities
-    for activity_info in state.completed_activities:
-        m_idx = activity_info["module_idx"]
-        sm_idx = activity_info["submodule_idx"]
-        s_idx = activity_info["section_idx"]
-        
-        section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
-        
+    def reduce_result(self, section: Section, result: dict[str, Any]) -> None:
+        """Apply activities result to section."""
         # Create MetaElements with glossary and metadata
         section.meta_elements = MetaElements(
-            glossary=activity_info["glossary"],
-            key_concept=activity_info["key_concept"],
-            interesting_fact=activity_info.get("interesting_fact", ""),
-            quote=activity_info.get("quote")
+            glossary=result["glossary"],
+            key_concept=result["key_concept"],
+            interesting_fact=result.get("interesting_fact", ""),
+            quote=result.get("quote")
         )
         
         # Create ActivitiesSection with quiz and application activities
         section.activities = ActivitiesSection(
-            quiz=activity_info["activities"],
-            application=activity_info["final_activities"]
+            quiz=result["activities"],
+            application=result["final_activities"]
         )
-    
-    print(f"✅ All {state.total_sections} section activities generated successfully!")
-    
-    return {"course_state": state.course_state}
-
-
-def build_activities_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
-    """
-    Build the activities generation subgraph using Send for dynamic parallelization.
-    
-    Args:
-        max_retries: Number of retries for each section generation
-        initial_delay: Initial delay in seconds before first retry
-        backoff_factor: Multiplier for exponential backoff
-    """
-    graph = StateGraph(ActivitiesGenerationState)
-    
-    # Configure retry policy with exponential backoff
-    retry_policy = RetryPolicy(
-        max_attempts=max_retries,
-        initial_interval=initial_delay,
-        backoff_factor=backoff_factor,
-        max_interval=60.0
-    )
-    
-    # Add nodes
-    graph.add_node("plan_activities", plan_activities)
-    graph.add_node("generate_section_activities", generate_section_activities, retry=retry_policy)
-    graph.add_node("reduce_activities", reduce_activities)
-    
-    # Add edges
-    graph.add_edge(START, "plan_activities")
-    graph.add_conditional_edges("plan_activities", continue_to_activities, ["generate_section_activities"])
-    graph.add_edge("generate_section_activities", "reduce_activities")
-    graph.add_edge("reduce_activities", END)
-    
-    return graph.compile()
 
 
 def generate_all_section_activities(
@@ -297,17 +216,11 @@ def generate_all_section_activities(
     print(f"🚀 Starting parallel activities generation with max_retries={max_retries}, "
           f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
     
-    # Build the graph with retry configuration
-    graph = build_activities_generation_graph(
+    processor = ActivitiesProcessor()
+    return processor.process_all(
+        course_state=course_state,
+        concurrency=concurrency,
         max_retries=max_retries,
         initial_delay=initial_delay,
-        backoff_factor=backoff_factor
+        backoff_factor=backoff_factor,
     )
-    
-    # Initialize state
-    initial_state = ActivitiesGenerationState(course_state=course_state)
-    
-    # Execute the graph with concurrency limit
-    result = graph.invoke(initial_state, config={"max_concurrency": concurrency})
-    
-    return result["course_state"]
