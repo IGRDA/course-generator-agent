@@ -29,6 +29,8 @@ class OutputManager:
         "metadata": 4,
         "html": 5,
         "images": 6,
+        "bibliography": 7,
+        "pdf_book": 8,
     }
     
     def __init__(self, title: str, output_dir: str = "output"):

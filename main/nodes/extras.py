@@ -1,5 +1,5 @@
 """
-Extra nodes for bibliography and podcast generation.
+Extra nodes for bibliography, podcast, and PDF book generation.
 """
 
 import json
@@ -171,6 +171,61 @@ def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] 
     
     print(f"\n✅ All {num_modules} podcasts generated successfully!")
     print(f"   Output folder: {podcast_dir}")
+    
+    return state
+
+
+def generate_pdf_book_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Generate PDF book from course content using LaTeX.
+    
+    This node:
+    1. Saves course.json first (PDF tool reads from disk)
+    2. Generates a PDF book via LaTeX compilation
+    3. Downloads images and includes them in the PDF
+    4. Includes bibliography if available
+    
+    Args:
+        state: CourseState with populated section theories and images.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Unchanged CourseState (PDF is saved as a file).
+    """
+    print("📗 Generating PDF book...")
+    
+    # Get output manager for saving files
+    output_mgr = get_output_manager(config)
+    if not output_mgr:
+        print("⚠️ Warning: No OutputManager found, skipping PDF book generation")
+        return state
+    
+    # Save course.json first (PDF tool reads from disk)
+    # Note: save_final returns (json_path, html_path)
+    json_path, _ = output_mgr.save_final(state)
+    
+    # Also save bibliography.json if available
+    if state.bibliography:
+        bibliography_path = Path(output_mgr.get_run_folder()) / "bibliography.json"
+        with open(bibliography_path, "w", encoding="utf-8") as f:
+            f.write(state.bibliography.model_dump_json(indent=2))
+        print(f"   💾 Bibliography saved: bibliography.json")
+    
+    # Generate PDF book
+    from tools.pdf_book import generate_pdf_book
+    
+    try:
+        pdf_path = generate_pdf_book(
+            course_json_path=json_path,
+            template="academic",
+            download_images=True,
+            cleanup=True,
+        )
+        print(f"   ✅ PDF book generated: {pdf_path.name}")
+    except FileNotFoundError as e:
+        print(f"   ❌ PDF generation failed: {e}")
+        print("   Hint: Make sure TeX Live or MiKTeX is installed (xelatex or pdflatex)")
+    except RuntimeError as e:
+        print(f"   ❌ PDF compilation error: {e}")
     
     return state
 

@@ -4,6 +4,7 @@ import threading
 import re
 import os
 import json
+from urllib.parse import urlparse
 from pydantic import BaseModel, Field
 from main.state import CourseState, HtmlElement, ParagraphBlock
 from langchain_core.output_parsers import StrOutputParser
@@ -21,6 +22,25 @@ from .prompts import (
     create_image_ranking_prompt,
     FALLBACK_PARSE_PROMPT,
 )
+
+
+# Domains that block automated image downloads (403 Forbidden)
+# These are filtered out at search time so we select alternate images instead
+BLOCKED_IMAGE_DOMAINS = [
+    'researchgate.net',
+    'rgstatic.net',  # ResearchGate's CDN
+]
+
+
+def _filter_blocked_domains(urls: list[str]) -> list[str]:
+    """Filter out URLs from domains known to block automated downloads."""
+    filtered = []
+    for url in urls:
+        domain = urlparse(url).netloc.lower()
+        is_blocked = any(blocked in domain for blocked in BLOCKED_IMAGE_DOMAINS)
+        if not is_blocked:
+            filtered.append(url)
+    return filtered
 
 
 # ---- Global concurrency control ----
@@ -337,8 +357,9 @@ def continue_to_blocks(state: ImageGenerationState) -> list[Send]:
     config = state.course_state.config
     interactive_formats = ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]
     
-    # Determine k_images based on vision ranking setting
-    k_images = config.num_images_to_fetch if config.use_vision_ranking else 1
+    # Always fetch multiple images to have fallbacks after filtering blocked domains
+    # (even when vision ranking is disabled, we need alternatives if first result is blocked)
+    k_images = config.num_images_to_fetch
     
     for m_idx, module in enumerate(state.course_state.modules):
         for sm_idx, submodule in enumerate(module.submodules):
@@ -440,6 +461,11 @@ def generate_block_image(state: BlockImageTask) -> dict:
         
         # Extract image URLs
         image_urls = [r["url"] for r in valid_results]
+        
+        # Filter out domains that block automated downloads (e.g., ResearchGate)
+        image_urls = _filter_blocked_domains(image_urls)
+        if not image_urls:
+            raise Exception(f"All image results were from blocked domains for query '{query}'")
         
         # Select image based on config
         if state.use_vision_ranking and len(image_urls) > 1:
