@@ -101,6 +101,7 @@ DESCRIPTION_PROMPT = ChatPromptTemplate.from_messages([
     ("system", """You are a biographical writer. Create a 2-3 sentence description of a person.
 
 Requirements:
+- Do NOT start with or repeat the person's name (it is already shown separately)
 - Include life years (birth-death or birth- if alive)
 - Include nationality
 - Mention their most important achievements or contributions
@@ -108,6 +109,7 @@ Requirements:
 - Write directly in {language}
 - Target 30-50 words (not less than 30)
 - Use only facts from the provided Wikipedia extract
+- Use plain text only - NO markdown formatting (no ** or other markup)
 
 Output ONLY the description, nothing else."""),
     ("human", """Person: {name}
@@ -115,7 +117,7 @@ Output ONLY the description, nothing else."""),
 Wikipedia extract:
 {wiki_extract}
 
-Write a biographical description in {language} (30-50 words).""")
+Write a biographical description in {language} (30-50 words). Do NOT include the person's name at the start.""")
 ])
 
 
