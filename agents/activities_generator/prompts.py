@@ -151,6 +151,7 @@ REQUIRED OUTPUTS
    - **order_list**: Sequence ordering activity
      Format: {{"question": "...", "solution": ["item1", "item2", "item3", ...]}}
      Requirements: At least 2 items, items should be distinct steps or elements
+     IMPORTANT: Do NOT include explicit years or dates in the items - this makes ordering trivial. Focus on conceptual progression.
    
    - **fill_gaps**: Gap-fill completion activity
      Format: {{"question": "Text with *gap* placeholders", "solution": ["word1", "word2", ...]}}
