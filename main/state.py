@@ -169,7 +169,7 @@ class OrderListContent(BaseModel):
     solution: list[str] = Field(..., min_length=2, description="Ordered list of items")
 
 class FillGapsContent(BaseModel):
-    question: str = Field(..., description="Question with *blanquito* placeholders")
+    question: str = Field(..., description="Question with *gap* placeholders")
     solution: list[str] = Field(..., min_length=2, description="List of words to fill gaps")
 
 class SwipperContent(BaseModel):

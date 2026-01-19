@@ -152,8 +152,8 @@ REQUIRED OUTPUTS
      Requirements: At least 2 items, items should be distinct steps or elements
    
    - **fill_gaps**: Gap-fill completion activity
-     Format: {{"question": "Text with *blanquito* placeholders", "solution": ["word1", "word2", ...]}}
-     Requirements: Number of *blanquito* must equal number of solutions, at least 2 blanks
+     Format: {{"question": "Text with *gap* placeholders", "solution": ["word1", "word2", ...]}}
+     Requirements: Number of *gap* must equal number of solutions, at least 2 blanks
    
    - **swipper**: True/false categorization activity
      Format: {{"question": "Context or instruction", "solution": {{"true": ["stmt1", ...], "false": ["stmt2", ...]}}}}
