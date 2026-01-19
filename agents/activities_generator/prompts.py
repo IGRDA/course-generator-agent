@@ -135,6 +135,7 @@ REQUIRED OUTPUTS
    - Provide an interesting, relevant fact related to the section content
    - Should be engaging, memorable, and enhance understanding
    - Ensure it is accurate and verifiable
+   - Use plain text only - NO markdown formatting (no ** or other markup)
 
 4. QUOTE:
    - Provide a relevant quote from an IDENTIFIABLE, REAL person or entity
