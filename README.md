@@ -170,10 +170,10 @@ Extract essential fields for video generation:
 
 ```bash
 # Save simplified JSON
-python3 -m agents.video_html output/MyCourseName/module_0.json
+python3 -m agents.video_html_generator output/MyCourseName/module_0.json
 
 # Preview without saving
-python3 -m agents.video_html output/MyCourseName/module_0.json --preview
+python3 -m agents.video_html_generator output/MyCourseName/module_0.json --preview
 ```
 
 ## 📊 Evaluation Framework
@@ -225,7 +225,7 @@ output/CourseName_YYYYMMDD_HHMMSS/
 │   └── module_0_conversation.json
 ├── book/                # PDF book output
 │   └── course.pdf
-└── video_html/          # Simplified JSONs for video
+└── video_html_generator/  # Simplified JSONs for video
     └── module_0_simplified.json
 ```
 
@@ -237,12 +237,12 @@ course-generator-agent/
 │   ├── activities_generator/  # Quiz and activity generation
 │   ├── bibliography_generator/# Book recommendations
 │   ├── html_formatter/        # Interactive HTML elements
-│   ├── image_generator/       # Image search and selection
+│   ├── image_search/          # Image search and selection
 │   ├── index_generator/       # Course structure generation
 │   ├── pdf_index_generator/   # PDF syllabus extraction
 │   ├── podcast_generator/     # Dialogue and TTS synthesis
 │   ├── section_theory_generator/  # Content generation
-│   └── video_html/            # JSON simplification for video
+│   └── video_html_generator/  # JSON simplification for video
 ├── main/                      # Workflow orchestration
 │   ├── workflow.py            # Topic-based generation
 │   ├── workflow_pdf.py        # PDF-based generation

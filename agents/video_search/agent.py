@@ -1,7 +1,7 @@
 """
-Video Generator Agent.
+Video Search Agent.
 
-Generates video recommendations for course modules using:
+Searches for video recommendations for course modules using:
 1. LLM generates an optimal YouTube search query based on module content
 2. YouTube search via yt-dlp retrieves video metadata
 3. Results are stored per module in CourseVideos structure

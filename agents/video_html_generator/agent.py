@@ -1,4 +1,4 @@
-"""Video HTML Simplifier Agent.
+"""Video HTML Generator Agent.
 
 Deterministic agent that simplifies module JSON files by extracting only:
 - title, id, index, description, duration, type at module level
@@ -116,12 +116,12 @@ def simplify_module_from_path(
     output_dir: str | Path | None = None,
 ) -> Path:
     """
-    Load a module JSON file, simplify it, and save to video_html subfolder.
+    Load a module JSON file, simplify it, and save to video_html_generator subfolder.
     
     Args:
         input_path: Path to the input module JSON file
         output_dir: Optional custom output directory. If None, uses 
-                   video_html/ subfolder in the same parent directory.
+                   video_html_generator/ subfolder in the same parent directory.
                    
     Returns:
         Path to the saved simplified JSON file
@@ -140,8 +140,8 @@ def simplify_module_from_path(
     
     # Determine output path
     if output_dir is None:
-        # Default: video_html/ subfolder in same parent directory
-        output_dir = input_path.parent / "video_html"
+        # Default: video_html_generator/ subfolder in same parent directory
+        output_dir = input_path.parent / "video_html_generator"
     else:
         output_dir = Path(output_dir)
     

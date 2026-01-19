@@ -703,7 +703,7 @@ if __name__ == "__main__":
     VISION_RANKING_BATCH_SIZE = 8
     
     print("="*60)
-    print("Image Generator - Standalone Mode")
+    print("Image Search - Standalone Mode")
     print("="*60)
     print(f"Reading from: {INPUT_FILE}")
     

@@ -1,11 +1,11 @@
-"""CLI entry point for the Video HTML Simplifier Agent.
+"""CLI entry point for the Video HTML Generator Agent.
 
 Usage:
-    python -m agents.video_html <input_json_path> [--output-dir <path>]
+    python -m agents.video_html_generator <input_json_path> [--output-dir <path>]
 
 Examples:
-    python -m agents.video_html output/PDF_Course_20251226_204841/module_0.json
-    python -m agents.video_html output/Quantum_Theory_20251228_091909/module_0.json --output-dir ./custom_output
+    python -m agents.video_html_generator output/PDF_Course_20251226_204841/module_0.json
+    python -m agents.video_html_generator output/Quantum_Theory_20251228_091909/module_0.json --output-dir ./custom_output
 """
 
 import argparse
@@ -23,8 +23,8 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python -m agents.video_html output/PDF_Course_20251226_204841/module_0.json
-    python -m agents.video_html module.json --output-dir ./video_html
+    python -m agents.video_html_generator output/PDF_Course_20251226_204841/module_0.json
+    python -m agents.video_html_generator module.json --output-dir ./video_html_generator
         """,
     )
     parser.add_argument(
@@ -36,7 +36,7 @@ Examples:
         "--output-dir",
         type=str,
         default=None,
-        help="Custom output directory (default: video_html/ in same folder as input)",
+        help="Custom output directory (default: video_html_generator/ in same folder as input)",
     )
     parser.add_argument(
         "--preview",

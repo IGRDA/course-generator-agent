@@ -1,7 +1,7 @@
 """
-People Generator Agent.
+People Search Agent.
 
-Generates relevant people for course modules using:
+Searches for relevant people for course modules using:
 1. LLM suggests notable people based on module content
 2. Wikipedia validates people and fetches images
 3. Results are embedded directly in each Module

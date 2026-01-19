@@ -1,4 +1,4 @@
-"""Video generator agent for course modules."""
+"""Video search agent for course modules."""
 
 from .agent import (
     generate_module_videos,

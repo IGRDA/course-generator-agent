@@ -7,7 +7,7 @@ from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
 from agents.html_formatter.agent import generate_all_section_html
-from agents.image_generator.agent import generate_all_section_images
+from agents.image_search.agent import generate_all_section_images
 from .utils import get_output_manager
 
 

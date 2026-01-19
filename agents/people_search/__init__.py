@@ -1,7 +1,7 @@
 """
-People Generator Agent.
+People Search Agent.
 
-Generates relevant people for course modules using Wikipedia validation.
+Searches for relevant people for course modules using Wikipedia validation.
 """
 
 from .agent import (

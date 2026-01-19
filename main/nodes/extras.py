@@ -10,8 +10,8 @@ from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
 from agents.bibliography_generator.agent import generate_course_bibliography
-from agents.video_generator.agent import generate_course_videos
-from agents.people_generator.agent import generate_course_people
+from agents.video_search.agent import generate_course_videos
+from agents.people_search.agent import generate_course_people
 from agents.podcast_generator.agent import (
     generate_conversation,
     get_tts_language,
