@@ -27,6 +27,7 @@ from main.nodes import (
     generate_videos_node,
     generate_bibliography_node,
     generate_people_node,
+    generate_mindmap_node,
 )
 
 
@@ -44,6 +45,7 @@ def build_course_generation_graph_from_pdf():
     graph.add_node("generate_videos", generate_videos_node)
     graph.add_node("generate_bibliography", generate_bibliography_node)
     graph.add_node("generate_people", generate_people_node)
+    graph.add_node("generate_mindmap", generate_mindmap_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index_from_pdf")
@@ -55,7 +57,8 @@ def build_course_generation_graph_from_pdf():
     graph.add_edge("generate_images", "generate_videos")
     graph.add_edge("generate_videos", "generate_bibliography")
     graph.add_edge("generate_bibliography", "generate_people")
-    graph.add_edge("generate_people", END)
+    graph.add_edge("generate_people", "generate_mindmap")
+    graph.add_edge("generate_mindmap", END)
     
     return graph.compile()
 
@@ -107,6 +110,9 @@ if __name__ == "__main__":
         # People generation configuration
         generate_people=True,  # Enable relevant people
         people_per_module=3,   # Number of people per module
+        # Mind map generation configuration
+        generate_mindmap=True,  # Enable mind map generation
+        mindmap_max_nodes=20,   # Maximum nodes per mind map
     )
     
     initial_state = CourseState(

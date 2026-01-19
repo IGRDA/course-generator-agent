@@ -32,7 +32,8 @@ class OutputManager:
         "videos": 7,
         "bibliography": 8,
         "people": 9,
-        "pdf_book": 10,
+        "mindmap": 10,
+        "pdf_book": 11,
     }
     
     def __init__(self, title: str, output_dir: str = "output"):

@@ -125,6 +125,40 @@ class PersonReference(BaseModel):
     image: str = Field(default="", description="Wikipedia image URL")
 
 
+# ---- Mind Map Models ----
+class MindmapNodeData(BaseModel):
+    """Data for a mind map node."""
+    label: str = Field(..., description="Concept name (short, noun-based)")
+
+
+class MindmapNode(BaseModel):
+    """A node in the mind map."""
+    id: str = Field(..., description="Unique node ID (e.g., 'root', 'n1', 'n2')")
+    level: int = Field(..., description="Hierarchy level (0 for root, 1+ for children)")
+    data: MindmapNodeData = Field(..., description="Node data with label")
+
+
+class MindmapRelationData(BaseModel):
+    """Data for a mind map relation."""
+    label: str = Field(..., description="Linking phrase/connector (verb or short phrase)")
+
+
+class MindmapRelation(BaseModel):
+    """A relation between two nodes in the mind map."""
+    id: str = Field(..., description="Unique relation ID (e.g., 'r1', 'r2')")
+    source: str = Field(..., description="Source node ID")
+    target: str = Field(..., description="Target node ID")
+    data: MindmapRelationData = Field(..., description="Relation data with linking phrase")
+
+
+class ModuleMindmap(BaseModel):
+    """Mind map for a module (Novak's concept map methodology)."""
+    moduleIdx: int = Field(..., description="Module index (1-based)")
+    title: str = Field(..., description="Module title")
+    nodes: list[MindmapNode] = Field(..., description="List of concept nodes")
+    relations: list[MindmapRelation] = Field(..., description="List of relations between nodes")
+
+
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
     term: str = Field(..., description="Glossary term")
@@ -297,6 +331,10 @@ class Module(BaseModel):
     relevant_people: list[PersonReference] | None = Field(
         default=None,
         description="Relevant people for this module's topic"
+    )
+    mindmap: ModuleMindmap | None = Field(
+        default=None,
+        description="Concept mind map for this module"
     )
 
 # ---- Course State ----

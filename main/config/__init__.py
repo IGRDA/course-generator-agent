@@ -13,6 +13,7 @@ from .podcast import PodcastConfig
 from .bibliography import BibliographyConfig
 from .video import VideoConfig
 from .people import PeopleConfig
+from .mindmap import MindmapConfig
 from .base import CourseConfig
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     "BibliographyConfig",
     "VideoConfig",
     "PeopleConfig",
+    "MindmapConfig",
     "CourseConfig",
 ]
 

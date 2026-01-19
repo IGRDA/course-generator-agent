@@ -12,6 +12,7 @@ from main.state import CourseState
 from agents.bibliography_generator.agent import generate_course_bibliography
 from agents.video_search.agent import generate_course_videos
 from agents.people_search.agent import generate_course_people
+from agents.mind_map_generator.agent import generate_course_mindmaps
 from agents.podcast_generator.agent import (
     generate_conversation,
     get_tts_language,
@@ -113,6 +114,38 @@ def generate_people_node(state: CourseState, config: Optional[RunnableConfig] = 
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("people", state)
+    
+    return state
+
+
+def generate_mindmap_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Generate mind maps for each module (optional, controlled by config).
+    
+    This node creates hierarchical concept maps for each module using
+    LLM-powered generation following Novak's concept map methodology.
+    Only runs if generate_mindmap is enabled in config.
+    
+    Args:
+        state: CourseState with populated course structure.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Updated CourseState with mind maps embedded in modules if enabled, unchanged otherwise.
+    """
+    if not state.config.generate_mindmap:
+        print("🧠 Mind map generation disabled, skipping...")
+        return state
+    
+    print("🧠 Generating mind maps...")
+    
+    state = generate_course_mindmaps(state)
+    
+    print("Mind map generation completed!")
+    
+    # Save step snapshot if OutputManager is available
+    output_mgr = get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("mindmap", state)
     
     return state
 

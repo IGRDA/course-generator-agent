@@ -17,6 +17,7 @@ from .podcast import PodcastConfig
 from .bibliography import BibliographyConfig
 from .video import VideoConfig
 from .people import PeopleConfig
+from .mindmap import MindmapConfig
 
 
 # Mapping of flat field names to (nested_config_name, nested_field_name)
@@ -63,6 +64,10 @@ _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     "people_per_module": ("people", "people_per_module"),
     "people_llm_provider": ("people", "llm_provider"),
     "people_concurrency": ("people", "concurrency"),
+    # Mindmap
+    "generate_mindmap": ("mindmap", "enabled"),
+    "mindmap_max_nodes": ("mindmap", "max_nodes"),
+    "mindmap_llm_provider": ("mindmap", "llm_provider"),
 }
 
 
@@ -113,6 +118,7 @@ class CourseConfig(BaseModel):
     bibliography: BibliographyConfig = Field(default_factory=BibliographyConfig)
     video: VideoConfig = Field(default_factory=VideoConfig)
     people: PeopleConfig = Field(default_factory=PeopleConfig)
+    mindmap: MindmapConfig = Field(default_factory=MindmapConfig)
     
     @model_validator(mode="before")
     @classmethod
@@ -305,4 +311,17 @@ class CourseConfig(BaseModel):
     @property
     def people_concurrency(self) -> int:
         return self.people.concurrency
+    
+    # ---- Mindmap aliases ----
+    @property
+    def generate_mindmap(self) -> bool:
+        return self.mindmap.enabled
+    
+    @property
+    def mindmap_max_nodes(self) -> int:
+        return self.mindmap.max_nodes
+    
+    @property
+    def mindmap_llm_provider(self) -> str:
+        return self.mindmap.llm_provider
 

@@ -10,7 +10,7 @@ from .index import generate_index_node, generate_index_from_pdf_node
 from .content import generate_theories_node, generate_activities_node
 from .formatting import generate_html_node, generate_images_node
 from .metadata import calculate_metadata_node
-from .extras import generate_bibliography_node, generate_videos_node, generate_podcasts_node, generate_pdf_book_node, generate_people_node
+from .extras import generate_bibliography_node, generate_videos_node, generate_podcasts_node, generate_pdf_book_node, generate_people_node, generate_mindmap_node
 
 __all__ = [
     # Utils
@@ -30,6 +30,7 @@ __all__ = [
     "generate_bibliography_node",
     "generate_videos_node",
     "generate_people_node",
+    "generate_mindmap_node",
     "generate_podcasts_node",
     "generate_pdf_book_node",
 ]
