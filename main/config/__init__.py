@@ -11,6 +11,8 @@ from .html import HtmlConfig
 from .image import ImageConfig
 from .podcast import PodcastConfig
 from .bibliography import BibliographyConfig
+from .video import VideoConfig
+from .people import PeopleConfig
 from .base import CourseConfig
 
 __all__ = [
@@ -20,6 +22,8 @@ __all__ = [
     "ImageConfig",
     "PodcastConfig",
     "BibliographyConfig",
+    "VideoConfig",
+    "PeopleConfig",
     "CourseConfig",
 ]
 

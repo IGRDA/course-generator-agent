@@ -2,18 +2,22 @@
 Factory for creating book search client instances.
 
 This module provides a unified interface for book search across
-different providers (currently Open Library).
+different providers (Open Library, Google Books).
 """
 
 from typing import Callable
 
 from .openlibrary.client import search_books as openlibrary_search
 from .openlibrary.client import BookResult
+from .googlebooks.client import search_books as googlebooks_search
+from .googlebooks.client import search_book_by_title as googlebooks_search_by_title
+from .googlebooks.client import GoogleBookResult
 
 BookSearchFunc = Callable[[str, int], list[BookResult]]
 
 BOOK_SEARCH_PROVIDERS: dict[str, BookSearchFunc] = {
     "openlibrary": openlibrary_search,
+    "googlebooks": googlebooks_search,
 }
 
 

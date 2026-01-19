@@ -1,5 +1,5 @@
 """
-Extra nodes for bibliography, podcast, and PDF book generation.
+Extra nodes for bibliography, video, people, podcast, and PDF book generation.
 """
 
 import json
@@ -10,6 +10,8 @@ from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
 from agents.bibliography_generator.agent import generate_course_bibliography
+from agents.video_generator.agent import generate_course_videos
+from agents.people_generator.agent import generate_course_people
 from agents.podcast_generator.agent import (
     generate_conversation,
     get_tts_language,
@@ -46,6 +48,71 @@ def generate_bibliography_node(state: CourseState, config: Optional[RunnableConf
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("bibliography", state)
+    
+    return state
+
+
+def generate_videos_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Generate video recommendations for each module (optional, controlled by config).
+    
+    This node searches YouTube for relevant educational videos for each module
+    using LLM-generated search queries.
+    Only runs if generate_videos is enabled in config.
+    
+    Args:
+        state: CourseState with populated course structure.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Updated CourseState with videos if enabled, unchanged otherwise.
+    """
+    if not state.config.generate_videos:
+        print("🎬 Video generation disabled, skipping...")
+        return state
+    
+    print("🎬 Generating video recommendations...")
+    
+    course_videos = generate_course_videos(state)
+    state.videos = course_videos
+    
+    print("Video generation completed!")
+    
+    # Save step snapshot if OutputManager is available
+    output_mgr = get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("videos", state)
+    
+    return state
+
+
+def generate_people_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Generate relevant people for each module (optional, controlled by config).
+    
+    This node searches for notable people relevant to each module's topic
+    using LLM + Wikipedia validation.
+    Only runs if generate_people is enabled in config.
+    
+    Args:
+        state: CourseState with populated course structure.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Updated CourseState with people embedded in modules if enabled, unchanged otherwise.
+    """
+    if not state.config.generate_people:
+        print("👥 People generation disabled, skipping...")
+        return state
+    
+    print("👥 Generating relevant people...")
+    
+    state = generate_course_people(state)
+    
+    print("People generation completed!")
+    
+    # Save step snapshot if OutputManager is available
+    output_mgr = get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("people", state)
     
     return state
 

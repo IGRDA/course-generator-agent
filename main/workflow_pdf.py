@@ -8,7 +8,9 @@ Generates a complete course from a PDF syllabus using:
 4. Activities generation
 5. HTML formatting
 6. Image generation
-7. Bibliography generation (optional)
+7. Video recommendations (optional)
+8. Bibliography generation (optional)
+9. Relevant people generation (optional)
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -22,7 +24,9 @@ from main.nodes import (
     calculate_metadata_node,
     generate_html_node,
     generate_images_node,
+    generate_videos_node,
     generate_bibliography_node,
+    generate_people_node,
 )
 
 
@@ -37,7 +41,9 @@ def build_course_generation_graph_from_pdf():
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
     graph.add_node("generate_images", generate_images_node)
+    graph.add_node("generate_videos", generate_videos_node)
     graph.add_node("generate_bibliography", generate_bibliography_node)
+    graph.add_node("generate_people", generate_people_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index_from_pdf")
@@ -46,8 +52,10 @@ def build_course_generation_graph_from_pdf():
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
     graph.add_edge("generate_html", "generate_images")
-    graph.add_edge("generate_images", "generate_bibliography")
-    graph.add_edge("generate_bibliography", END)
+    graph.add_edge("generate_images", "generate_videos")
+    graph.add_edge("generate_videos", "generate_bibliography")
+    graph.add_edge("generate_bibliography", "generate_people")
+    graph.add_edge("generate_people", END)
     
     return graph.compile()
 
@@ -89,6 +97,16 @@ if __name__ == "__main__":
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider
         image_concurrency=10,  # Number of image blocks to process in parallel
+        # Video generation configuration
+        generate_videos=True,  # Enable video recommendations
+        videos_per_module=3,   # Number of videos per module
+        # Bibliography generation configuration
+        generate_bibliography=True,  # Enable book bibliography
+        bibliography_books_per_module=5,  # Number of books per module
+        bibliography_articles_per_module=5,  # Number of articles per module
+        # People generation configuration
+        generate_people=True,  # Enable relevant people
+        people_per_module=3,   # Number of people per module
     )
     
     initial_state = CourseState(

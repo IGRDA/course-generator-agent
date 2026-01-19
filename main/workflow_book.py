@@ -166,6 +166,7 @@ Examples:
         # Bibliography configuration (enabled by default for books)
         generate_bibliography=not args.no_bibliography,
         bibliography_books_per_module=5,
+        bibliography_articles_per_module=5,
         target_audience=None,
     )
     

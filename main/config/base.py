@@ -15,6 +15,8 @@ from .html import HtmlConfig
 from .image import ImageConfig
 from .podcast import PodcastConfig
 from .bibliography import BibliographyConfig
+from .video import VideoConfig
+from .people import PeopleConfig
 
 
 # Mapping of flat field names to (nested_config_name, nested_field_name)
@@ -49,7 +51,18 @@ _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     # Bibliography
     "generate_bibliography": ("bibliography", "enabled"),
     "bibliography_books_per_module": ("bibliography", "books_per_module"),
+    "bibliography_articles_per_module": ("bibliography", "articles_per_module"),
     "book_search_provider": ("bibliography", "search_provider"),
+    "article_search_provider": ("bibliography", "article_search_provider"),
+    # Video
+    "generate_videos": ("video", "enabled"),
+    "videos_per_module": ("video", "videos_per_module"),
+    "video_search_provider": ("video", "search_provider"),
+    # People
+    "generate_people": ("people", "enabled"),
+    "people_per_module": ("people", "people_per_module"),
+    "people_llm_provider": ("people", "llm_provider"),
+    "people_concurrency": ("people", "concurrency"),
 }
 
 
@@ -98,6 +111,8 @@ class CourseConfig(BaseModel):
     image: ImageConfig = Field(default_factory=ImageConfig)
     podcast: PodcastConfig = Field(default_factory=PodcastConfig)
     bibliography: BibliographyConfig = Field(default_factory=BibliographyConfig)
+    video: VideoConfig = Field(default_factory=VideoConfig)
+    people: PeopleConfig = Field(default_factory=PeopleConfig)
     
     @model_validator(mode="before")
     @classmethod
@@ -250,6 +265,44 @@ class CourseConfig(BaseModel):
         return self.bibliography.books_per_module
     
     @property
+    def bibliography_articles_per_module(self) -> int:
+        return self.bibliography.articles_per_module
+    
+    @property
     def book_search_provider(self) -> str:
         return self.bibliography.search_provider
+    
+    @property
+    def article_search_provider(self) -> str:
+        return self.bibliography.article_search_provider
+    
+    # ---- Video aliases ----
+    @property
+    def generate_videos(self) -> bool:
+        return self.video.enabled
+    
+    @property
+    def videos_per_module(self) -> int:
+        return self.video.videos_per_module
+    
+    @property
+    def video_search_provider(self) -> str:
+        return self.video.search_provider
+    
+    # ---- People aliases ----
+    @property
+    def generate_people(self) -> bool:
+        return self.people.enabled
+    
+    @property
+    def people_per_module(self) -> int:
+        return self.people.people_per_module
+    
+    @property
+    def people_llm_provider(self) -> str:
+        return self.people.llm_provider
+    
+    @property
+    def people_concurrency(self) -> int:
+        return self.people.concurrency
 

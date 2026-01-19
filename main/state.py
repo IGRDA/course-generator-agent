@@ -66,6 +66,65 @@ class CourseBibliography(BaseModel):
         return {book.get_dedup_key() for book in self.all_books}
 
 
+# ---- Video Models ----
+class VideoReference(BaseModel):
+    """Single video reference with metadata from YouTube."""
+    title: str = Field(..., description="Video title")
+    url: str = Field(..., description="YouTube video URL")
+    duration: int = Field(default=0, description="Video duration in seconds")
+    published_at: int = Field(default=0, description="Publication timestamp in milliseconds")
+    thumbnail: str = Field(default="", description="Thumbnail URL")
+    channel: str = Field(default="", description="Channel name")
+    views: int = Field(default=0, description="View count")
+    likes: int = Field(default=0, description="Like count")
+
+
+class ModuleVideos(BaseModel):
+    """Videos for a single module."""
+    module_index: int = Field(..., description="Module index (1-based)")
+    module_title: str = Field(..., description="Module title")
+    query: str = Field(default="", description="Search query used to find videos")
+    videos: list[VideoReference] = Field(default_factory=list, description="Video recommendations for this module")
+
+
+class CourseVideos(BaseModel):
+    """Course-level video recommendations with per-module breakdowns."""
+    modules: list[ModuleVideos] = Field(default_factory=list, description="Per-module video recommendations")
+
+
+# ---- Module-Embedded Video Model ----
+class ModuleVideoEmbed(BaseModel):
+    """Video data embedded within a Module ."""
+    type: Literal["video"] = Field(default="video", description="Type identifier")
+    query: str = Field(default="", description="Search query used to find videos")
+    content: list[VideoReference] = Field(default_factory=list, description="Video recommendations")
+
+
+# ---- Module-Embedded Bibliography Model ----
+class BibliographyItem(BaseModel):
+    """Bibliography item for module embedding with full APA 7 citation."""
+    title: str = Field(..., description="Book/article title")
+    url: str = Field(default="", description="URL to the resource")
+    apa_citation: str = Field(default="", description="Full APA 7 citation string")
+    item_type: Literal["book", "article"] = Field(default="book", description="Type: book or article")
+
+
+class ModuleBibliographyEmbed(BaseModel):
+    """Bibliography data embedded within a Module ."""
+    type: Literal["biblio"] = Field(default="biblio", description="Type identifier")
+    query: str = Field(default="", description="Search query used")
+    content: list[BibliographyItem] = Field(default_factory=list, description="Bibliography items")
+
+
+# ---- Person Reference Model ----
+class PersonReference(BaseModel):
+    """A relevant person with Wikipedia information (for module embedding)."""
+    name: str = Field(..., description="Person's full name")
+    description: str = Field(..., description="Brief description of the person and their relevance")
+    wikiUrl: str = Field(..., description="Wikipedia page URL")
+    image: str = Field(default="", description="Wikipedia image URL")
+
+
 # ---- Activity Models ----
 class GlossaryTerm(BaseModel):
     term: str = Field(..., description="Glossary term")
@@ -225,6 +284,20 @@ class Module(BaseModel):
     submodules: list[Submodule] = Field(
         ..., description="List of submodules in this module"
     )
+    
+    # Module-embedded enrichment data
+    video: ModuleVideoEmbed | None = Field(
+        default=None,
+        description="Video recommendations embedded in module"
+    )
+    bibliography: ModuleBibliographyEmbed | None = Field(
+        default=None,
+        description="Bibliography embedded in module"
+    )
+    relevant_people: list[PersonReference] | None = Field(
+        default=None,
+        description="Relevant people for this module's topic"
+    )
 
 # ---- Course State ----
 class CourseState(BaseModel):
@@ -248,6 +321,12 @@ class CourseState(BaseModel):
     bibliography: CourseBibliography | None = Field(
         default=None,
         description="Course bibliography with per-module book recommendations"
+    )
+    
+    # Video recommendations (populated by video generator)
+    videos: CourseVideos | None = Field(
+        default=None,
+        description="Video recommendations per module"
     )
     
     @property
