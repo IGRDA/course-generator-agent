@@ -29,7 +29,7 @@ _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     # Activities
     "activities_concurrency": ("activities", "concurrency"),
     "activity_selection_mode": ("activities", "selection_mode"),
-    "num_activities_per_section": ("activities", "num_per_section"),
+    "sections_per_activity": ("activities", "sections_per_activity"),
     # HTML
     "html_concurrency": ("html", "concurrency"),
     "select_html": ("html", "select_mode"),
@@ -191,8 +191,8 @@ class CourseConfig(BaseModel):
         return self.activities.selection_mode
     
     @property
-    def num_activities_per_section(self) -> int:
-        return self.activities.num_per_section
+    def sections_per_activity(self) -> int:
+        return self.activities.sections_per_activity
     
     # ---- HTML aliases ----
     @property

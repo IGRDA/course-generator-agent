@@ -31,6 +31,8 @@ class GoogleBookResult(TypedDict):
     thumbnail_url: str | None
     language: str | None
     description: str | None
+    average_rating: float | None  # 1-5 scale
+    ratings_count: int | None
 
 
 def _format_author_name(author: str) -> str:
@@ -184,6 +186,8 @@ def search_books(
             "thumbnail_url": thumbnail_url,
             "language": volume_info.get("language"),
             "description": volume_info.get("description"),
+            "average_rating": volume_info.get("averageRating"),
+            "ratings_count": volume_info.get("ratingsCount"),
         }
         results.append(result)
     

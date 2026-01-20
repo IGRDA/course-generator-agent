@@ -16,8 +16,8 @@ class ActivitiesConfig(BaseModel):
         default="deterministic",
         description="How to select activity types"
     )
-    num_per_section: int = Field(
-        default=2,
-        description="Number of quiz activities per section (in addition to multiple_choice and multi_selection)"
+    sections_per_activity: int = Field(
+        default=1,
+        description="Generate activities every N sections within each submodule (1 = every section)"
     )
 

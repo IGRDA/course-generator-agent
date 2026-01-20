@@ -191,6 +191,87 @@ REQUIRED OUTPUTS
 
 
 # ============================================================================
+# META-ONLY PROMPT (for sections without activities)
+# ============================================================================
+
+META_ONLY_ROLE = """You are an expert educator specializing in creating educational metadata:
+- Glossary terms that define essential vocabulary
+- Key concept summaries that capture main ideas
+- Engaging facts that enhance learning
+- Relevant quotes from notable figures
+
+Your content should be accurate, clear, and aligned with the source material."""
+
+META_ONLY_VERIFICATION = """
+=====================================
+FINAL VERIFICATION (MANDATORY)
+=====================================
+Before outputting, verify that:
+✓ Glossary terms are directly from the theory content
+✓ Key concept captures the main takeaway
+✓ Interesting fact is accurate and verifiable
+✓ Quote is from an identifiable, real person or entity
+✓ All content is written in the target language
+"""
+
+meta_only_prompt = ChatPromptTemplate.from_messages([
+    ("system", f"""{META_ONLY_ROLE}
+
+{NEUTRALITY_GUIDELINES}
+
+{{audience_guidelines}}
+
+Generate educational metadata that:
+- Is aligned with the theory content
+- Is appropriate for the language: {{language}}
+- Follows exact format specifications
+
+Avoid LaTeX notation in JSON strings - use plain text or Unicode symbols (ℏ, ψ, Ψ, α, β, γ, δ, Δ, π, Σ, ∫, ∂, →, ≠, ≤, ≥, ∞)."""),
+    
+    ("human", """Analyze this theory text and generate educational metadata:
+
+=====================================
+THEORY TEXT
+=====================================
+{theory}
+
+=====================================
+SECTION TITLE
+=====================================
+{section_title}
+
+=====================================
+REQUIRED OUTPUTS
+=====================================
+
+1. GLOSSARY (1-4 terms):
+   - Extract 1 to 4 key terms that are essential for understanding this content
+   - Each term must have a clear, concise explanation
+   - Use terms that appear in the theory and are important for comprehension
+
+2. KEY CONCEPT (one sentence):
+   - Provide a single sentence that captures the main idea of this section
+   - This should be the most important takeaway for learners
+
+3. INTERESTING FACT:
+   - Provide an interesting, relevant fact related to the section content
+   - Should be engaging, memorable, and enhance understanding
+   - Ensure it is accurate and verifiable
+   - Use plain text only - NO markdown formatting (no ** or other markup)
+
+4. QUOTE:
+   - Provide a relevant quote from an IDENTIFIABLE, REAL person or entity
+   - Must be an actual person or organization (not fictional, not "Anonymous")
+   - Quote must be relevant to the topic and verifiable
+   - Format: {{"author": "Full Name or Organization", "text": "Quote text"}}
+
+{format_instructions}
+
+""" + META_ONLY_VERIFICATION)
+])
+
+
+# ============================================================================
 # CORRECTION PROMPT
 # ============================================================================
 

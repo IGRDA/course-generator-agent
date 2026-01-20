@@ -27,6 +27,9 @@ from .prompts import video_query_prompt
 
 logger = logging.getLogger(__name__)
 
+# Minimum view count threshold for quality filtering
+MIN_VIDEO_VIEWS = 5000
+
 
 def _extract_module_topics(module: Module) -> str:
     """
@@ -100,21 +103,27 @@ def generate_module_videos(
     
     print(f"      🔍 Query: {query}")
     
-    # Search for videos
+    # Search for videos (fetch 5x to account for quality filtering)
     search_videos = create_video_search(video_search_provider)
     
     try:
-        results = search_videos(query, max_results=num_videos)
+        results = search_videos(query, max_results=num_videos * 5)
     except Exception as e:
         logger.error(f"Video search failed: {e}")
         results = []
     
-    # Convert results to VideoReference objects
+    # Convert results to VideoReference objects, filtering by view count
     videos: list[VideoReference] = []
     for result in results:
         # Skip error results
         if "error" in result:
             logger.warning(f"Video search error: {result.get('error')}")
+            continue
+        
+        # Filter by minimum view count
+        views = result.get("views", 0)
+        if views < MIN_VIDEO_VIEWS:
+            logger.debug(f"Skipping video with {views} views (min: {MIN_VIDEO_VIEWS})")
             continue
         
         video = VideoReference(
@@ -124,10 +133,14 @@ def generate_module_videos(
             published_at=result.get("published_at", 0),
             thumbnail=result.get("thumbnail", ""),
             channel=result.get("channel", ""),
-            views=result.get("views", 0),
+            views=views,
             likes=result.get("likes", 0),
         )
         videos.append(video)
+        
+        # Stop once we have enough videos
+        if len(videos) >= num_videos:
+            break
     
     return ModuleVideos(
         module_index=module.index,

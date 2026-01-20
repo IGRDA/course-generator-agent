@@ -545,7 +545,10 @@ OFF_TOPIC_TITLE_KEYWORDS = [
 ]
 
 # Minimum citation count threshold for quality filtering
-MIN_CITATION_COUNT = 5
+MIN_CITATION_COUNT = 10
+
+# Minimum book rating threshold for quality filtering (Google Books 1-5 scale)
+MIN_BOOK_RATING = 4.0
 
 # URL validation settings
 URL_VALIDATION_TIMEOUT = 5  # seconds
@@ -763,8 +766,8 @@ def _is_article_relevant(
     
     # ========== CITATION QUALITY CHECK ==========
     
-    if require_citations and source != "arxiv" and citation_count < MIN_CITATION_COUNT:
-        if citation_count == 0 and source in ["semanticscholar", "openalex"]:
+    if require_citations and citation_count < MIN_CITATION_COUNT:
+        if citation_count == 0 and source in ["semanticscholar", "openalex", "arxiv"]:
             has_venue = bool(venue)
             has_abstract = bool(abstract)
             if not (has_venue and has_abstract):
@@ -1090,6 +1093,12 @@ def _search_books_by_topic_direct(
                 if len(validated_books) >= num_books:
                     break
                 
+                # Check rating (Google Books only - strict: skip unrated books)
+                rating = gb.get("average_rating")
+                if rating is None or rating < MIN_BOOK_RATING:
+                    logger.debug(f"Skipping book '{gb['title'][:50]}' - rating: {rating} (min: {MIN_BOOK_RATING})")
+                    continue
+                
                 # Check relevance BEFORE creating book reference
                 if not _is_book_relevant(gb["title"], topic_kw_set, core_keywords):
                     continue
@@ -1325,18 +1334,32 @@ def _search_books_for_module(
                 google_results = gb_search_books(search_query_en, max_results=3)
             
             if google_results:
-                # Found in Google Books - use direct link
-                gb = google_results[0]
-                book = BookReference(
-                    title=title,  # Keep original title
-                    authors=[_format_author_for_apa(a) for a in authors] if authors else gb["authors"],
-                    year=year or gb["year"],
-                    publisher=publisher or gb["publisher"],
-                    isbn=gb.get("isbn"),
-                    isbn_13=gb.get("isbn_13"),
-                    url=gb["google_books_url"],  # Direct link!
-                )
-                book.apa_citation = _format_book_apa7(book)
+                # Filter Google Books results by rating (strict: skip unrated)
+                gb = None
+                for candidate in google_results:
+                    rating = candidate.get("average_rating")
+                    if rating is not None and rating >= MIN_BOOK_RATING:
+                        gb = candidate
+                        break
+                    else:
+                        logger.debug(f"Skipping Google Books result '{candidate['title'][:50]}' - rating: {rating} (min: {MIN_BOOK_RATING})")
+                
+                if gb:
+                    # Found in Google Books with sufficient rating - use direct link
+                    book = BookReference(
+                        title=title,  # Keep original title
+                        authors=[_format_author_for_apa(a) for a in authors] if authors else gb["authors"],
+                        year=year or gb["year"],
+                        publisher=publisher or gb["publisher"],
+                        isbn=gb.get("isbn"),
+                        isbn_13=gb.get("isbn_13"),
+                        url=gb["google_books_url"],  # Direct link!
+                    )
+                    book.apa_citation = _format_book_apa7(book)
+                else:
+                    # No Google Books results with sufficient rating
+                    logger.debug(f"Skipping book '{title}' - no Google Books results with rating >= {MIN_BOOK_RATING}")
+                    continue
             else:
                 # Step 4: Skip book - no reliable direct link available
                 logger.debug(f"Skipping book '{title}' - no direct link found")
