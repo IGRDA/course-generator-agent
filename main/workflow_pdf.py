@@ -87,7 +87,7 @@ if __name__ == "__main__":
         # Activities configuration
         activities_concurrency=4,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
-        num_activities_per_section=2,  # Number of quiz activities
+        sections_per_activity=1,  # Generate activities every N sections (1 = every section)
         # HTML configuration
         html_concurrency=4,  # Number of concurrent HTML generations
         select_html="LLM",  # "LLM" | "random"

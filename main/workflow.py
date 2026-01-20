@@ -96,7 +96,7 @@ if __name__ == "__main__":
         # Activities configuration
         activities_concurrency=30,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
-        num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
+        sections_per_activity=1,  # Generate activities every N sections within each submodule (1 = every section)
         # HTML configuration
         html_concurrency=15,  # Number of concurrent HTML generations
         select_html="LLM",  # "LLM" | "random"
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing",  # Image search provider: bing | freepik | ddg | google
+        image_search_provider="freepik",  # Image search provider: bing | freepik | ddg | google
         use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
