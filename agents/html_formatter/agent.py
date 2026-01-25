@@ -173,7 +173,8 @@ class HtmlProcessor(SectionProcessor):
         # Build optional instructions
         quote_instruction = ""
         if include_quotes:
-            quote_instruction = """- Optionally include quote elements with author and quote text
+            quote_instruction = """- Optionally include quote elements for FAMOUS QUOTES ONLY
+  - Use ONLY for: famous sayings, philosophical statements, well-known phrases, memorable historical quotes
   Format: {{"type": "quote", "content": {{"author": "...", "text": "..."}}}}"""
         
         table_instruction = ""
