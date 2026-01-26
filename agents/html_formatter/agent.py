@@ -1,12 +1,19 @@
+"""
+HTML formatter agent using the base SectionProcessor pattern.
+
+This agent transforms section theories into structured HTML elements
+(paragraphs, accordions, tabs, carousels, etc.).
+"""
+
 import re
-from typing import Annotated, List
-from operator import add
-from pydantic import BaseModel, Field
-from main.state import CourseState, HtmlElement
+from typing import Any, List
+
+from pydantic import BaseModel, Field, create_model
 from langchain.output_parsers import RetryWithErrorOutputParser, PydanticOutputParser
 from langchain_core.output_parsers import StrOutputParser
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, RetryPolicy
+
+from main.state import CourseState, Section, HtmlElement
+from agents.base import SectionProcessor, SectionTask
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from .prompts import html_generation_prompt, correction_prompt
 
@@ -100,241 +107,152 @@ def select_icon(section_title: str) -> str:
     return ICON_MAPPING["default"]
 
 
-# ---- State for individual section task ----
-class SectionHtmlTask(BaseModel):
-    """State for processing a single section's HTML structure"""
-    course_state: CourseState
-    module_idx: int
-    submodule_idx: int
-    section_idx: int
-    section_title: str
-    theory: str
-    include_quotes: bool
-    include_tables: bool
-
-
-# ---- State for aggregating results ----
-class HtmlFormattingState(BaseModel):
-    """State for the HTML formatting subgraph"""
-    course_state: CourseState
-    completed_html: Annotated[list[dict], add] = Field(default_factory=list)
-    total_sections: int = 0
-
-
-def plan_html_formatting(state: HtmlFormattingState) -> dict:
-    """Update the total_sections count in the state."""
-    section_count = 0
+class HtmlProcessor(SectionProcessor):
+    """Processor for generating HTML structure for sections."""
     
-    for module in state.course_state.modules:
-        for submodule in module.submodules:
-            section_count += len(submodule.sections)
+    def __init__(self):
+        super().__init__(name="html_formatter")
     
-    print(f"📋 Planning {section_count} sections for HTML formatting")
+    def create_task_data(
+        self,
+        course_state: CourseState,
+        module_idx: int,
+        submodule_idx: int,
+        section_idx: int,
+        section: Section,
+    ) -> dict[str, Any]:
+        """Create task data with HTML generation parameters."""
+        return {
+            "theory": section.theory,
+            "section_title": section.title,
+            "include_quotes": course_state.config.include_quotes_in_html,
+            "include_tables": course_state.config.include_tables_in_html,
+            "suggested_icon": select_icon(section.title),
+        }
     
-    return {"total_sections": section_count}
-
-
-def continue_to_html(state: HtmlFormattingState) -> list[Send]:
-    """Fan-out: Create a Send for each section to process in parallel."""
-    sends = []
-    
-    include_quotes = state.course_state.config.include_quotes_in_html
-    include_tables = state.course_state.config.include_tables_in_html
-    
-    for m_idx, module in enumerate(state.course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                # Create a task for each section
-                task = SectionHtmlTask(
-                    course_state=state.course_state,
-                    module_idx=m_idx,
-                    submodule_idx=sm_idx,
-                    section_idx=s_idx,
-                    section_title=section.title,
-                    theory=section.theory,
-                    include_quotes=include_quotes,
-                    include_tables=include_tables
-                )
-                # Send to the generate_section_html node
-                sends.append(Send("generate_section_html", task))
-    
-    return sends
-
-
-def generate_section_html(state: SectionHtmlTask) -> dict:
-    """
-    Generate HTML structure for a single section as a direct array.
-    Uses structured output with RetryWithErrorOutputParser for validation.
-    """
-    # Extract context
-    provider = state.course_state.config.text_llm_provider
-    max_retries = state.course_state.config.max_retries
-    
-    # Parse allowed formats from config
-    allowed_formats = state.course_state.config.html_formats.split('|')
-    allowed_formats_str = ", ".join(f'"{fmt}"' for fmt in allowed_formats)
-    
-    # Create LLM
-    model_name = resolve_text_model_name(provider)
-    llm_kwargs = {"temperature": 0.0}
-    if model_name:
-        llm_kwargs["model_name"] = model_name
-    llm = create_text_llm(provider=provider, **llm_kwargs)
-    
-    # Create parser for List[HtmlElement]
-    from pydantic import create_model
-    HtmlElementList = create_model('HtmlElementList', elements=(List[HtmlElement], ...))
-    parser = PydanticOutputParser(pydantic_object=HtmlElementList)
-    
-    # Create fix parser for retry
-    fix_parser = RetryWithErrorOutputParser.from_llm(
-        llm=llm,
-        parser=parser,
-        max_retries=max_retries,
-    )
-    
-    # Generate using LCEL chain
-    chain = html_generation_prompt | llm | StrOutputParser()
-    
-    # Build optional instructions
-    quote_instruction = ""
-    if state.include_quotes:
-        quote_instruction = """- Optionally include quote elements with author and quote text
+    def process_section(self, task: SectionTask) -> dict[str, Any]:
+        """Generate HTML structure for a single section."""
+        # Extract task data
+        theory = task.extra_data["theory"]
+        section_title = task.extra_data["section_title"]
+        include_quotes = task.extra_data["include_quotes"]
+        include_tables = task.extra_data["include_tables"]
+        suggested_icon = task.extra_data["suggested_icon"]
+        
+        # Extract config
+        config = task.course_state.config
+        provider = config.text_llm_provider
+        max_retries = config.max_retries
+        language = task.course_state.config.language
+        
+        # Parse allowed formats
+        allowed_formats = config.html_formats.split('|')
+        allowed_formats_str = ", ".join(f'"{fmt}"' for fmt in allowed_formats)
+        
+        # Create LLM
+        model_name = resolve_text_model_name(provider)
+        llm_kwargs = {"temperature": 0.0}
+        if model_name:
+            llm_kwargs["model_name"] = model_name
+        llm = create_text_llm(provider=provider, **llm_kwargs)
+        
+        # Create parser for List[HtmlElement]
+        HtmlElementList = create_model('HtmlElementList', elements=(List[HtmlElement], ...))
+        parser = PydanticOutputParser(pydantic_object=HtmlElementList)
+        
+        # Create fix parser for retry
+        fix_parser = RetryWithErrorOutputParser.from_llm(
+            llm=llm,
+            parser=parser,
+            max_retries=max_retries,
+        )
+        
+        # Generate using LCEL chain
+        chain = html_generation_prompt | llm | StrOutputParser()
+        
+        # Build optional instructions
+        quote_instruction = ""
+        if include_quotes:
+            quote_instruction = """- Optionally include quote elements for FAMOUS QUOTES ONLY
+  - Use ONLY for: famous sayings, philosophical statements, well-known phrases, memorable historical quotes
   Format: {{"type": "quote", "content": {{"author": "...", "text": "..."}}}}"""
-    
-    table_instruction = ""
-    if state.include_tables:
-        table_instruction = """- Optionally include table elements with title, headers, and rows
+        
+        table_instruction = ""
+        if include_tables:
+            table_instruction = """- Optionally include table elements with title, headers, and rows
   Format: {{"type": "table", "content": {{"title": "...", "headers": [...], "rows": [[...], [...]]}}}}"""
-    
-    # Select icon for this section
-    suggested_icon = select_icon(state.section_title)
-    
-    raw = chain.invoke({
-        "theory": state.theory,
-        "section_title": state.section_title,
-        "language": state.course_state.language,
-        "quote_instruction": quote_instruction,
-        "table_instruction": table_instruction,
-        "suggested_icon": suggested_icon,
-        "allowed_formats": allowed_formats_str,
-        "format_instructions": parser.get_format_instructions(),
-    })
-    
-    # Try to parse, with fallback to retry parser, then LaTeX stripping as last resort
-    try:
-        result = parser.parse(raw)
-        html_array = result.elements
-    except Exception as e:
-        print(f"  ⚠ Initial parse failed for section {state.section_idx}, attempting LLM correction...")
+        
+        raw = chain.invoke({
+            "theory": theory,
+            "section_title": section_title,
+            "language": language,
+            "quote_instruction": quote_instruction,
+            "table_instruction": table_instruction,
+            "suggested_icon": suggested_icon,
+            "allowed_formats": allowed_formats_str,
+            "format_instructions": parser.get_format_instructions(),
+        })
+        
+        # Try to parse, with fallback to retry parser, then LaTeX stripping as last resort
         try:
-            # Let LLM retry with configured max_retries
-            result = fix_parser.parse_with_prompt(
-                completion=raw,
-                prompt_value=correction_prompt.format_prompt(
-                    error=str(e),
-                    completion=raw,
-                    format_instructions=parser.get_format_instructions(),
-                ),
-            )
+            result = parser.parse(raw)
             html_array = result.elements
-        except Exception as retry_error:
-            # All LLM retries exhausted - last resort: strip LaTeX and try once more
-            print(f"  ⚠ LLM retries exhausted for section {state.section_idx}, stripping LaTeX as fallback...")
-            stripped_raw = strip_latex_from_raw_json(raw)
+        except Exception as e:
+            print(f"  ⚠ Initial parse failed for section {task.section_idx}, attempting LLM correction...")
             try:
-                result = parser.parse(stripped_raw)
+                # Let LLM retry with configured max_retries
+                result = fix_parser.parse_with_prompt(
+                    completion=raw,
+                    prompt_value=correction_prompt.format_prompt(
+                        error=str(e),
+                        completion=raw,
+                        format_instructions=parser.get_format_instructions(),
+                    ),
+                )
                 html_array = result.elements
-                print(f"  ✓ Recovered section {state.section_idx} by stripping LaTeX")
-            except Exception as final_error:
-                print(f"  ✗ All recovery attempts failed for section {state.section_idx}: {final_error}")
-                raise final_error
-    
-    # Apply random format override if configured
-    if state.course_state.config.select_html == "random":
-        import random
+            except Exception as retry_error:
+                # All LLM retries exhausted - last resort: strip LaTeX and try once more
+                print(f"  ⚠ LLM retries exhausted for section {task.section_idx}, stripping LaTeX as fallback...")
+                stripped_raw = strip_latex_from_raw_json(raw)
+                try:
+                    result = parser.parse(stripped_raw)
+                    html_array = result.elements
+                    print(f"  ✓ Recovered section {task.section_idx} by stripping LaTeX")
+                except Exception as final_error:
+                    print(f"  ✗ All recovery attempts failed for section {task.section_idx}: {final_error}")
+                    raise final_error
         
-        # Deterministic seed based on global seed + section position
-        seed = (state.course_state.config.html_random_seed + 
-                state.module_idx * 1000 + 
-                state.submodule_idx * 100 + 
-                state.section_idx)
-        random.seed(seed)
+        # Apply random format override if configured
+        if config.select_html == "random":
+            import random
+            
+            # Deterministic seed based on global seed + section position
+            seed = (config.html_random_seed + 
+                    task.module_idx * 1000 + 
+                    task.submodule_idx * 100 + 
+                    task.section_idx)
+            random.seed(seed)
+            
+            # Randomly select format from allowed formats
+            selected_format = random.choice(allowed_formats)
+            
+            # Override the format type in the HTML structure
+            for element in html_array:
+                # Find the interactive format element (not p, ul, quote, table)
+                if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
+                    element.type = selected_format
+                    print(f"  🎲 Random override: {element.type} → {selected_format}")
+                    break
         
-        # Randomly select format from allowed formats
-        selected_format = random.choice(allowed_formats)
-        
-        # Override the format type in the HTML structure
-        for element in html_array:
-            # Find the interactive format element (not p, ul, quote, table)
-            if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
-                element.type = selected_format
-                print(f"  🎲 Random override: {element.type} → {selected_format}")
-                break
+        return {"html_structure": html_array}
     
-    print(f"✓ Generated HTML for Module {state.module_idx+1}, "
-          f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
-    
-    # Return the completed section info with direct array
-    return {
-        "completed_html": [{
-            "module_idx": state.module_idx,
-            "submodule_idx": state.submodule_idx,
-            "section_idx": state.section_idx,
-            "html_structure": html_array
-        }]
-    }
+    def reduce_result(self, section: Section, result: dict[str, Any]) -> None:
+        """Apply HTML structure to section."""
+        section.html = result["html_structure"]
 
 
-def reduce_html(state: HtmlFormattingState) -> dict:
-    """Fan-in: Aggregate all generated HTML structures back into the course state."""
-    print(f"📦 Reducing {len(state.completed_html)} completed HTML structures")
-    
-    # Update course state with all generated HTML structures
-    for html_info in state.completed_html:
-        m_idx = html_info["module_idx"]
-        sm_idx = html_info["submodule_idx"]
-        s_idx = html_info["section_idx"]
-        
-        section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
-        section.html = html_info["html_structure"]
-    
-    print(f"✅ All {state.total_sections} section HTML structures generated successfully!")
-    
-    return {"course_state": state.course_state}
-
-
-def build_html_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
-    """
-    Build the HTML generation subgraph using Send for dynamic parallelization.
-    
-    Args:
-        max_retries: Number of retries for each section generation
-        initial_delay: Initial delay in seconds before first retry
-        backoff_factor: Multiplier for exponential backoff
-    """
-    graph = StateGraph(HtmlFormattingState)
-    
-    # Configure retry policy with exponential backoff
-    retry_policy = RetryPolicy(
-        max_attempts=max_retries,
-        initial_interval=initial_delay,
-        backoff_factor=backoff_factor,
-        max_interval=60.0
-    )
-    
-    # Add nodes
-    graph.add_node("plan_html_formatting", plan_html_formatting)
-    graph.add_node("generate_section_html", generate_section_html, retry=retry_policy)
-    graph.add_node("reduce_html", reduce_html)
-    
-    # Add edges
-    graph.add_edge(START, "plan_html_formatting")
-    graph.add_conditional_edges("plan_html_formatting", continue_to_html, ["generate_section_html"])
-    graph.add_edge("generate_section_html", "reduce_html")
-    graph.add_edge("reduce_html", END)
-    
-    return graph.compile()
+# Module-level processor instance
+_processor = HtmlProcessor()
 
 
 def generate_all_section_html(
@@ -357,20 +275,20 @@ def generate_all_section_html(
     Returns:
         Updated CourseState with all HTML structures filled
     """
-    print(f"🚀 Starting parallel HTML generation with max_retries={max_retries}, "
-          f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
-    
-    # Build the graph with retry configuration
-    graph = build_html_generation_graph(
+    return _processor.process_all(
+        course_state,
+        concurrency=concurrency,
         max_retries=max_retries,
         initial_delay=initial_delay,
-        backoff_factor=backoff_factor
+        backoff_factor=backoff_factor,
     )
-    
-    # Initialize state
-    initial_state = HtmlFormattingState(course_state=course_state)
-    
-    # Execute the graph with concurrency limit
-    result = graph.invoke(initial_state, config={"max_concurrency": concurrency})
-    
-    return result["course_state"]
+
+
+# Keep the old function names for backward compatibility
+def build_html_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
+    """Build the HTML generation subgraph (backward compatibility wrapper)."""
+    return _processor.build_graph(
+        max_retries=max_retries,
+        initial_delay=initial_delay,
+        backoff_factor=backoff_factor,
+    )

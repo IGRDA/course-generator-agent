@@ -1,15 +1,25 @@
-from typing import List, Optional, Union, Literal, Dict, Any
+"""
+Course state and domain models.
+
+This module contains all the Pydantic models for representing course structure
+and content. The CourseConfig is imported from main.config for organization.
+"""
+
+from typing import Literal, Any
 from pydantic import BaseModel, Field, model_validator
+
+# Import CourseConfig from the new location (re-export for backward compatibility)
+from main.config import CourseConfig
 
 
 # ---- Research Models ----
 class CourseResearch(BaseModel):
     """Research output from the topic research phase"""
     course_summary: str = Field(default="", description="Comprehensive summary of the course topic")
-    learning_objectives: List[str] = Field(default_factory=list, description="What students will achieve")
-    assumed_prerequisites: List[str] = Field(default_factory=list, description="Required prior knowledge")
-    out_of_scope: List[str] = Field(default_factory=list, description="Topics explicitly excluded from the course")
-    key_topics: List[str] = Field(default_factory=list, description="Canonical domain topics to cover")
+    learning_objectives: list[str] = Field(default_factory=list, description="What students will achieve")
+    assumed_prerequisites: list[str] = Field(default_factory=list, description="Required prior knowledge")
+    out_of_scope: list[str] = Field(default_factory=list, description="Topics explicitly excluded from the course")
+    key_topics: list[str] = Field(default_factory=list, description="Canonical domain topics to cover")
     raw_research: str = Field(default="", description="Concatenated raw search results for reference")
 
 
@@ -17,14 +27,14 @@ class CourseResearch(BaseModel):
 class BookReference(BaseModel):
     """Single book reference with APA 7 citation."""
     title: str = Field(..., description="Book title")
-    authors: List[str] = Field(default_factory=list, description="Authors in APA format: ['Last, F. M.', 'Last2, F. M.']")
-    year: Optional[Union[int, str]] = Field(default=None, description="Publication year or 'n.d.' if unknown")
-    publisher: Optional[str] = Field(default=None, description="Publisher name")
-    isbn: Optional[str] = Field(default=None, description="ISBN-10 identifier")
-    isbn_13: Optional[str] = Field(default=None, description="ISBN-13 identifier")
-    doi: Optional[str] = Field(default=None, description="Digital Object Identifier")
-    url: Optional[str] = Field(default=None, description="Open Library or Google Books URL")
-    edition: Optional[str] = Field(default=None, description="Edition (e.g., '2nd ed.')")
+    authors: list[str] = Field(default_factory=list, description="Authors in APA format: ['Last, F. M.', 'Last2, F. M.']")
+    year: int | str | None = Field(default=None, description="Publication year or 'n.d.' if unknown")
+    publisher: str | None = Field(default=None, description="Publisher name")
+    isbn: str | None = Field(default=None, description="ISBN-10 identifier")
+    isbn_13: str | None = Field(default=None, description="ISBN-13 identifier")
+    doi: str | None = Field(default=None, description="Digital Object Identifier")
+    url: str | None = Field(default=None, description="Open Library or Google Books URL")
+    edition: str | None = Field(default=None, description="Edition (e.g., '2nd ed.')")
     apa_citation: str = Field(default="", description="Pre-formatted APA 7 citation string")
     
     def get_dedup_key(self) -> str:
@@ -43,17 +53,110 @@ class ModuleBibliography(BaseModel):
     """Bibliography for a single module."""
     module_index: int = Field(..., description="Module index (1-based)")
     module_title: str = Field(..., description="Module title")
-    books: List[BookReference] = Field(default_factory=list, description="Books recommended for this module")
+    books: list[BookReference] = Field(default_factory=list, description="Books recommended for this module")
 
 
 class CourseBibliography(BaseModel):
     """Course-level bibliography with per-module breakdowns and deduplication."""
-    modules: List[ModuleBibliography] = Field(default_factory=list, description="Per-module bibliographies")
-    all_books: List[BookReference] = Field(default_factory=list, description="Deduplicated master list of all books")
+    modules: list[ModuleBibliography] = Field(default_factory=list, description="Per-module bibliographies")
+    all_books: list[BookReference] = Field(default_factory=list, description="Deduplicated master list of all books")
     
     def get_all_dedup_keys(self) -> set[str]:
         """Get all deduplication keys from the master list."""
         return {book.get_dedup_key() for book in self.all_books}
+
+
+# ---- Video Models ----
+class VideoReference(BaseModel):
+    """Single video reference with metadata from YouTube."""
+    title: str = Field(..., description="Video title")
+    url: str = Field(..., description="YouTube video URL")
+    duration: int = Field(default=0, description="Video duration in seconds")
+    published_at: int = Field(default=0, description="Publication timestamp in milliseconds")
+    thumbnail: str = Field(default="", description="Thumbnail URL")
+    channel: str = Field(default="", description="Channel name")
+    views: int = Field(default=0, description="View count")
+    likes: int = Field(default=0, description="Like count")
+
+
+class ModuleVideos(BaseModel):
+    """Videos for a single module."""
+    module_index: int = Field(..., description="Module index (1-based)")
+    module_title: str = Field(..., description="Module title")
+    query: str = Field(default="", description="Search query used to find videos")
+    videos: list[VideoReference] = Field(default_factory=list, description="Video recommendations for this module")
+
+
+class CourseVideos(BaseModel):
+    """Course-level video recommendations with per-module breakdowns."""
+    modules: list[ModuleVideos] = Field(default_factory=list, description="Per-module video recommendations")
+
+
+# ---- Module-Embedded Video Model ----
+class ModuleVideoEmbed(BaseModel):
+    """Video data embedded within a Module ."""
+    type: Literal["video"] = Field(default="video", description="Type identifier")
+    query: str = Field(default="", description="Search query used to find videos")
+    content: list[VideoReference] = Field(default_factory=list, description="Video recommendations")
+
+
+# ---- Module-Embedded Bibliography Model ----
+class BibliographyItem(BaseModel):
+    """Bibliography item for module embedding with full APA 7 citation."""
+    title: str = Field(..., description="Book/article title")
+    url: str = Field(default="", description="URL to the resource")
+    apa_citation: str = Field(default="", description="Full APA 7 citation string")
+    item_type: Literal["book", "article"] = Field(default="book", description="Type: book or article")
+
+
+class ModuleBibliographyEmbed(BaseModel):
+    """Bibliography data embedded within a Module ."""
+    type: Literal["biblio"] = Field(default="biblio", description="Type identifier")
+    query: str = Field(default="", description="Search query used")
+    content: list[BibliographyItem] = Field(default_factory=list, description="Bibliography items")
+
+
+# ---- Person Reference Model ----
+class PersonReference(BaseModel):
+    """A relevant person with Wikipedia information (for module embedding)."""
+    name: str = Field(..., description="Person's full name")
+    description: str = Field(..., description="Brief description of the person and their relevance")
+    wikiUrl: str = Field(..., description="Wikipedia page URL")
+    image: str = Field(default="", description="Wikipedia image URL")
+
+
+# ---- Mind Map Models ----
+class MindmapNodeData(BaseModel):
+    """Data for a mind map node."""
+    label: str = Field(..., description="Concept name (short, noun-based)")
+
+
+class MindmapNode(BaseModel):
+    """A node in the mind map."""
+    id: str = Field(..., description="Unique node ID (e.g., 'root', 'n1', 'n2')")
+    level: int = Field(..., description="Hierarchy level (0 for root, 1+ for children)")
+    data: MindmapNodeData = Field(..., description="Node data with label")
+
+
+class MindmapRelationData(BaseModel):
+    """Data for a mind map relation."""
+    label: str = Field(..., description="Linking phrase/connector (verb or short phrase)")
+
+
+class MindmapRelation(BaseModel):
+    """A relation between two nodes in the mind map."""
+    id: str = Field(..., description="Unique relation ID (e.g., 'r1', 'r2')")
+    source: str = Field(..., description="Source node ID")
+    target: str = Field(..., description="Target node ID")
+    data: MindmapRelationData = Field(..., description="Relation data with linking phrase")
+
+
+class ModuleMindmap(BaseModel):
+    """Mind map for a module (Novak's concept map methodology)."""
+    moduleIdx: int = Field(..., description="Module index (1-based)")
+    title: str = Field(..., description="Module title")
+    nodes: list[MindmapNode] = Field(..., description="List of concept nodes")
+    relations: list[MindmapRelation] = Field(..., description="List of relations between nodes")
 
 
 # ---- Activity Models ----
@@ -63,11 +166,11 @@ class GlossaryTerm(BaseModel):
 
 class OrderListContent(BaseModel):
     question: str = Field(..., description="Question for order list activity")
-    solution: List[str] = Field(..., min_length=2, description="Ordered list of items")
+    solution: list[str] = Field(..., min_length=2, description="Ordered list of items")
 
 class FillGapsContent(BaseModel):
-    question: str = Field(..., description="Question with *blanquito* placeholders")
-    solution: List[str] = Field(..., min_length=2, description="List of words to fill gaps")
+    question: str = Field(..., description="Question with *gap* placeholders")
+    solution: list[str] = Field(..., min_length=2, description="List of words to fill gaps")
 
 class SwipperContent(BaseModel):
     question: str = Field(..., description="Question for swipper activity")
@@ -75,21 +178,21 @@ class SwipperContent(BaseModel):
 
 class LinkingTermsContent(BaseModel):
     question: str = Field(..., description="Question for linking terms")
-    solution: List[dict] = Field(..., min_length=2, description="List of concept-related pairs")
+    solution: list[dict] = Field(..., min_length=2, description="List of concept-related pairs")
 
 class MultipleChoiceContent(BaseModel):
     question: str = Field(..., description="Multiple choice question")
     solution: str = Field(..., description="Correct answer")
-    other_options: List[str] = Field(..., min_length=3, description="Incorrect options")
+    other_options: list[str] = Field(..., min_length=3, description="Incorrect options")
 
 class MultiSelectionContent(BaseModel):
     question: str = Field(..., description="Multi-selection question")
-    solution: List[str] = Field(..., min_length=1, description="Correct answers")
-    other_options: List[str] = Field(..., min_length=1, description="Incorrect options")
+    solution: list[str] = Field(..., min_length=1, description="Correct answers")
+    other_options: list[str] = Field(..., min_length=1, description="Incorrect options")
 
 class Activity(BaseModel):
     type: Literal["order_list", "fill_gaps", "swipper", "linking_terms", "multiple_choice", "multi_selection"] = Field(..., description="Type of activity")
-    content: Union[OrderListContent, FillGapsContent, SwipperContent, LinkingTermsContent, MultipleChoiceContent, MultiSelectionContent] = Field(..., description="Activity content")
+    content: OrderListContent | FillGapsContent | SwipperContent | LinkingTermsContent | MultipleChoiceContent | MultiSelectionContent = Field(..., description="Activity content")
 
 class FinalActivityContent(BaseModel):
     question: str = Field(..., description="Final activity question or task description")
@@ -100,15 +203,15 @@ class FinalActivity(BaseModel):
 
 # ---- Meta Elements ----
 class MetaElements(BaseModel):
-    glossary: List[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
+    glossary: list[GlossaryTerm] = Field(default_factory=list, description="Glossary terms for the section")
     key_concept: str = Field(default="", description="Key concept summary for the section")
     interesting_fact: str = Field(default="", description="Interesting fact related to the section")
-    quote: Optional[dict] = Field(default=None, description="Quote with author and text fields")
+    quote: dict | None = Field(default=None, description="Quote with author and text fields")
 
 # ---- Activities Section ----
 class ActivitiesSection(BaseModel):
-    quiz: List[Activity] = Field(default_factory=list, description="Quiz activities for the section")
-    application: List[FinalActivity] = Field(default_factory=list, description="Application activities for the section")
+    quiz: list[Activity] = Field(default_factory=list, description="Quiz activities for the section")
+    application: list[FinalActivity] = Field(default_factory=list, description="Application activities for the section")
 
 # ---- HTML Models ----
 class HtmlElement(BaseModel):
@@ -116,13 +219,13 @@ class HtmlElement(BaseModel):
     
     Content types by element type:
     - 'p': str (paragraph text)
-    - 'ul': List[str] (unordered list items)
-    - 'quote', 'table': Dict[str, Any] (structured data)
-    - 'paragraphs', 'accordion', 'tabs', 'carousel', 'flip', 'timeline', 'conversation': List[ParagraphBlock]
+    - 'ul': list[str] (unordered list items)
+    - 'quote', 'table': dict[str, Any] (structured data)
+    - 'paragraphs', 'accordion', 'tabs', 'carousel', 'flip', 'timeline', 'conversation': list[ParagraphBlock]
       (all interactive formats use the same block structure)
     """
     type: Literal["p", "ul", "quote", "table", "paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"] = Field(..., description="Type of HTML element")
-    content: Union[str, List[str], Dict[str, Any], List['ParagraphBlock']] = Field(..., description="Content of the element")
+    content: str | list[str] | dict[str, Any] | list['ParagraphBlock'] = Field(..., description="Content of the element")
     
     @model_validator(mode='after')
     def validate_content_type(self) -> 'HtmlElement':
@@ -155,11 +258,12 @@ class HtmlElement(BaseModel):
                     raise ValueError(f"Interactive format '{element_type}' block {idx} must be a ParagraphBlock")
         
         return self
+
 class ParagraphBlock(BaseModel):
     title: str = Field(..., description="Title of the paragraph block")
     icon: str = Field(..., description="Material Design Icon class")
-    image: Optional[dict] = Field(None, description="Image with type, query, and content URL")
-    elements: List[HtmlElement] = Field(..., description="List of HTML elements within this block")
+    image: dict | None = Field(None, description="Image with type, query, and content URL")
+    elements: list[HtmlElement] = Field(..., description="List of HTML elements within this block")
 
 # Update forward references for recursive definition
 HtmlElement.model_rebuild()
@@ -176,17 +280,17 @@ class Section(BaseModel):
         description="Theory text content for the section"
     )
     
-    html: Optional[List[HtmlElement]] = Field(
+    html: list[HtmlElement] | None = Field(
         default=None,
         description="Structured HTML format as direct array of elements"
     )
     
-    meta_elements: Optional[MetaElements] = Field(
+    meta_elements: MetaElements | None = Field(
         default=None,
         description="Metadata elements: glossary, key concepts, facts, quotes"
     )
     
-    activities: Optional[ActivitiesSection] = Field(
+    activities: ActivitiesSection | None = Field(
         default=None,
         description="Activities section with quiz and application activities"
     )
@@ -198,7 +302,7 @@ class Submodule(BaseModel):
     description: str = Field(default="", description="Description of the submodule")
     duration: float = Field(default=0.0, description="Duration in hours")
     
-    sections: List[Section] = Field(
+    sections: list[Section] = Field(
         ..., description="List of sections in this submodule"
     )
 
@@ -211,69 +315,27 @@ class Module(BaseModel):
     duration: float = Field(default=0.0, description="Duration in hours")
     type: Literal["module"] = Field(default="module", description="Type identifier")
     
-    submodules: List[Submodule] = Field(
+    submodules: list[Submodule] = Field(
         ..., description="List of submodules in this module"
     )
-
-# ---- Course Configuration ----
-class CourseConfig(BaseModel):
-    """Configuration parameters for course generation - should not be modified by agents"""
-    title: str = Field(default="", description="Initial title of the course")
-    text_llm_provider: str = Field(default="mistral", description="LLM provider for text generation (mistral | gemini | groq | openai)")
-    web_search_provider: str = Field(default="ddg", description="Web search provider (ddg | tavily)")
-    total_pages: int = Field(default=50, description="Total number of pages for the course")
-    words_per_page: int = Field(default=400, description="Target words per page for content estimation")
-    description: str = Field(default="", description="Optional description or context for the course")
-    language: str = Field(default="English", description="Language for the content generation")
-    target_audience: Optional[Literal["kids", "general", "advanced"]] = Field(
-        default=None, 
-        description="Target audience for content adaptation (None = no adaptation, kids = ages 8-12, general = no prerequisites, advanced = technical/professional)"
+    
+    # Module-embedded enrichment data
+    video: ModuleVideoEmbed | None = Field(
+        default=None,
+        description="Video recommendations embedded in module"
     )
-    pdf_syllabus_path: str = Field(default="", description="Path to PDF syllabus file")
-    max_retries: int = Field(default=3, description="Maximum number of retries for generation")
-    concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
-    use_reflection: bool = Field(default=False, description="Whether to use reflection pattern for fact verification")
-    num_reflection_queries: int = Field(default=5, description="Number of verification queries to generate during reflection")
-    
-    # Activities configuration
-    activities_concurrency: int = Field(default=8, description="Number of concurrent section activity generations")
-    activity_selection_mode: Literal["random", "deterministic"] = Field(default="deterministic", description="How to select activity types")
-    num_activities_per_section: int = Field(default=2, description="Number of quiz activities per section (in addition to multiple_choice and multi_selection)")
-    
-    # HTML configuration
-    html_concurrency: int = Field(default=8, description="Number of concurrent HTML structure generations")
-    select_html: Literal["LLM", "random"] = Field(default="LLM", description="HTML format selection mode: LLM chooses or random selection")
-    html_formats: str = Field(default="paragraphs|accordion|tabs|carousel|flip|timeline|conversation", description="Available HTML formats (pipe-separated)")
-    html_random_seed: int = Field(default=42, description="Seed for deterministic random format selection")
-    include_quotes_in_html: bool = Field(default=False, description="Whether to include quote elements in HTML structure")
-    include_tables_in_html: bool = Field(default=False, description="Whether to include table elements in HTML structure")
-    
-    # Image generation configuration
-    image_search_provider: str = Field(default="bing", description="Image search provider (bing | freepik | ddg | google)")
-    use_vision_ranking: bool = Field(default=False, description="Use vision LLM (Pixtral) to rank images; if False, picks first result")
-    num_images_to_fetch: int = Field(default=5, description="Number of images to fetch for ranking (only used if use_vision_ranking=True)")
-    vision_llm_provider: str = Field(default="pixtral", description="Vision LLM provider for image ranking (pixtral)")
-    image_concurrency: int = Field(default=10, description="Number of image blocks to process in parallel")
-    imagetext2text_concurrency: int = Field(default=5, description="Number of Pixtral vision LLM calls in parallel for image scoring")
-    vision_ranking_batch_size: int = Field(default=8, description="Number of images per batch for Pixtral ranking calls")
-    
-    # Research configuration
-    enable_research: bool = Field(default=True, description="Enable research phase before index generation")
-    research_max_queries: int = Field(default=5, description="Maximum number of search queries to generate")
-    research_max_results_per_query: int = Field(default=3, description="Maximum results per search query")
-    
-    # Podcast configuration
-    podcast_target_words: int = Field(default=600, description="Target word count per module podcast")
-    podcast_tts_engine: Literal["edge", "coqui"] = Field(default="edge", description="TTS engine for podcast generation")
-    podcast_speaker_map: Optional[Dict[str, str]] = Field(
-        default=None, 
-        description="Custom speaker mapping for podcast voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})"
+    bibliography: ModuleBibliographyEmbed | None = Field(
+        default=None,
+        description="Bibliography embedded in module"
     )
-    
-    # Bibliography configuration
-    generate_bibliography: bool = Field(default=False, description="Generate book bibliography for the course")
-    bibliography_books_per_module: int = Field(default=5, description="Number of books to recommend per module")
-    book_search_provider: str = Field(default="openlibrary", description="Book search provider for validation (openlibrary)")
+    relevant_people: list[PersonReference] | None = Field(
+        default=None,
+        description="Relevant people for this module's topic"
+    )
+    mindmap: ModuleMindmap | None = Field(
+        default=None,
+        description="Concept mind map for this module"
+    )
 
 # ---- Course State ----
 class CourseState(BaseModel):
@@ -282,21 +344,27 @@ class CourseState(BaseModel):
     config: CourseConfig = Field(..., description="Course generation configuration")
     
     # Research output (populated by research phase)
-    research: Optional[CourseResearch] = Field(
+    research: CourseResearch | None = Field(
         default=None, 
         description="Research output from topic analysis phase"
     )
     
     # Content fields (can be modified by agents)
     title: str = Field(..., description="Title of the course (initialized from config, can be refined by agents)")
-    modules: List[Module] = Field(
+    modules: list[Module] = Field(
         default_factory=list, description="Full course structure with all modules"
     )
     
     # Bibliography output (populated by bibliography generator)
-    bibliography: Optional[CourseBibliography] = Field(
+    bibliography: CourseBibliography | None = Field(
         default=None,
         description="Course bibliography with per-module book recommendations"
+    )
+    
+    # Video recommendations (populated by video generator)
+    videos: CourseVideos | None = Field(
+        default=None,
+        description="Video recommendations per module"
     )
     
     @property

@@ -49,6 +49,8 @@ dependencies = [
     # Data (pandas 2.x required by docling)
     "pandas>=2.1.4",
     "jsonlines>=4.0.0",
+    # Video search (YouTube metadata extraction)
+    "yt-dlp>=2024.1.0",
 ]
 
 [project.optional-dependencies]

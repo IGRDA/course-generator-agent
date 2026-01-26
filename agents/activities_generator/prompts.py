@@ -82,6 +82,8 @@ Before outputting, verify that your activities:
 ✓ Are written entirely in the target language
 ✓ Test genuine understanding, not trivia or tricks
 ✓ Quote is from an identifiable, real person or entity
+✓ Glossary uses plain text only - NO markdown (no *, **, _, ~)
+✓ Final activities (application): plain prose only - NO markdown, NO HTML, NO lists
 """
 
 # ============================================================================
@@ -126,15 +128,18 @@ REQUIRED OUTPUTS
    - Extract 1 to 4 key terms that are essential for understanding this content
    - Each term must have a clear, concise explanation
    - Use terms that appear in the theory and are important for comprehension
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 2. KEY CONCEPT (one sentence):
    - Provide a single sentence that captures the main idea of this section
    - This should be the most important takeaway for learners
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 3. INTERESTING FACT:
    - Provide an interesting, relevant fact related to the section content
    - Should be engaging, memorable, and enhance understanding
    - Ensure it is accurate and verifiable
+   - Use plain text only - NO markdown formatting (no ** or other markup)
 
 4. QUOTE:
    - Provide a relevant quote from an IDENTIFIABLE, REAL person or entity
@@ -145,15 +150,21 @@ REQUIRED OUTPUTS
 5. ACTIVITIES:
    You must generate activities of these types: {activity_types}
    
+   IMPORTANT: Use plain text only in ALL activity content - NO markdown formatting (no *, **, _, ~, or other markup).
+   
    Activity Format Specifications:
    
    - **order_list**: Sequence ordering activity
      Format: {{"question": "...", "solution": ["item1", "item2", "item3", ...]}}
      Requirements: At least 2 items, items should be distinct steps or elements
+     IMPORTANT: Do NOT include explicit years or dates in the items - this makes ordering trivial. Focus on conceptual progression.
    
    - **fill_gaps**: Gap-fill completion activity
-     Format: {{"question": "Text with *blanquito* placeholders", "solution": ["word1", "word2", ...]}}
-     Requirements: Number of *blanquito* must equal number of solutions, at least 2 blanks
+     Format: {{"question": "Text with *gap* placeholders", "solution": ["word1", "word2", ...]}}
+     Requirements: Number of *gap* must equal number of solutions, at least 2 blanks
+     CRITICAL: Do NOT use asterisks (*) for any other purpose in the question text. 
+     The ONLY asterisks should be around the word "gap" to mark blanks (e.g., "The formula is E = *gap*").
+     Write variables and symbols in plain text without any formatting (e.g., "E_c", "hν", "φ").
    
    - **swipper**: True/false categorization activity
      Format: {{"question": "Context or instruction", "solution": {{"true": ["stmt1", ...], "false": ["stmt2", ...]}}}}
@@ -171,7 +182,7 @@ REQUIRED OUTPUTS
      Format: {{"question": "...", "solution": ["correct1", "correct2"], "other_options": ["wrong1", "wrong2"]}}
      Requirements: No overlap between solution and other_options, at least 4 total options
 
-6. FINAL ACTIVITIES:
+6. FINAL ACTIVITIES (PROFUNDIZACIÓN):
    Generate activities of these types: {final_activity_types}
    
    - **group_activity**: Collaborative task for teams to work together
@@ -181,10 +192,95 @@ REQUIRED OUTPUTS
    
    Format: {{"question": "Task or question description"}}
    Requirements: Should encourage critical thinking and application of knowledge
+   IMPORTANT: Write as flowing prose. NO markdown (**, *), NO HTML tags (<b>, <i>), NO numbered/lettered lists (1., a., -).
 
 {format_instructions}
 
 """ + ACTIVITY_VERIFICATION)
+])
+
+
+# ============================================================================
+# META-ONLY PROMPT (for sections without activities)
+# ============================================================================
+
+META_ONLY_ROLE = """You are an expert educator specializing in creating educational metadata:
+- Glossary terms that define essential vocabulary
+- Key concept summaries that capture main ideas
+- Engaging facts that enhance learning
+- Relevant quotes from notable figures
+
+Your content should be accurate, clear, and aligned with the source material."""
+
+META_ONLY_VERIFICATION = """
+=====================================
+FINAL VERIFICATION (MANDATORY)
+=====================================
+Before outputting, verify that:
+✓ Glossary terms are directly from the theory content
+✓ Key concept captures the main takeaway
+✓ Interesting fact is accurate and verifiable
+✓ Quote is from an identifiable, real person or entity
+✓ All content is written in the target language
+✓ Glossary and key concept use PLAIN TEXT ONLY - NO markdown (no *, **, _, ~)
+"""
+
+meta_only_prompt = ChatPromptTemplate.from_messages([
+    ("system", f"""{META_ONLY_ROLE}
+
+{NEUTRALITY_GUIDELINES}
+
+{{audience_guidelines}}
+
+Generate educational metadata that:
+- Is aligned with the theory content
+- Is appropriate for the language: {{language}}
+- Follows exact format specifications
+
+Avoid LaTeX notation in JSON strings - use plain text or Unicode symbols (ℏ, ψ, Ψ, α, β, γ, δ, Δ, π, Σ, ∫, ∂, →, ≠, ≤, ≥, ∞)."""),
+    
+    ("human", """Analyze this theory text and generate educational metadata:
+
+=====================================
+THEORY TEXT
+=====================================
+{theory}
+
+=====================================
+SECTION TITLE
+=====================================
+{section_title}
+
+=====================================
+REQUIRED OUTPUTS
+=====================================
+
+1. GLOSSARY (1-4 terms):
+   - Extract 1 to 4 key terms that are essential for understanding this content
+   - Each term must have a clear, concise explanation
+   - Use terms that appear in the theory and are important for comprehension
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
+
+2. KEY CONCEPT (one sentence):
+   - Provide a single sentence that captures the main idea of this section
+   - This should be the most important takeaway for learners
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
+
+3. INTERESTING FACT:
+   - Provide an interesting, relevant fact related to the section content
+   - Should be engaging, memorable, and enhance understanding
+   - Ensure it is accurate and verifiable
+   - Use plain text only - NO markdown formatting (no ** or other markup)
+
+4. QUOTE:
+   - Provide a relevant quote from an IDENTIFIABLE, REAL person or entity
+   - Must be an actual person or organization (not fictional, not "Anonymous")
+   - Quote must be relevant to the topic and verifiable
+   - Format: {{"author": "Full Name or Organization", "text": "Quote text"}}
+
+{format_instructions}
+
+""" + META_ONLY_VERIFICATION)
 ])
 
 
@@ -220,4 +316,5 @@ Checklist for correction:
 7. Verify no overlap between solution and other_options for multi_selection
 8. Ensure quote is from an identifiable, real person or entity
 9. Avoid LaTeX notation - use plain text or Unicode symbols instead
+10. Final activities: plain prose only - NO markdown, NO HTML, NO numbered/lettered lists
 """)

@@ -19,11 +19,20 @@ import re
 
 LICENSE_FILTERS = {
     "all": "",
-    "free_to_share_and_use": "+filterui:license-L2_L3_L4",
-    "free_to_modify_share_and_use": "+filterui:license-L2_L3",
-    "free_to_share_and_use_commercial": "+filterui:license-L2_L3_L4_L5_L6_L7",
-    "free_to_modify_share_and_use_commercial": "+filterui:license-L2_L3_L5_L6",
+    # Public domain only
     "public_domain": "+filterui:license-L1",
+
+    # Free to share and use (non-commercial + commercial)
+    "free_to_share_and_use": "+filterui:license-L1_L2_L3_L4",
+
+    # Free to modify, share and use (non-commercial + commercial)
+    "free_to_modify_share_and_use": "+filterui:license-L1_L2_L3",
+
+    # Free to share and use commercially
+    "free_to_share_and_use_commercial": "+filterui:license-L1_L2_L3_L4_L5_L6_L7",
+
+    # Free to modify, share and use commercially
+    "free_to_modify_share_and_use_commercial": "+filterui:license-L1_L2_L3_L5_L6",
 }
 
 # Default license filter (change this to use a different license)

@@ -1,808 +1,556 @@
-from typing import Annotated, List, Tuple
-from operator import add
-import threading
-import re
-import os
+"""
+Image Generator Agent using Gemini Batch API.
+
+This module provides functionality to:
+1. Extract image queries from module JSON files
+2. Generate images using Gemini's Batch API
+3. Save images to a local folder
+4. Update the module JSON with base64-encoded images
+
+The Batch API offers 50% cost savings compared to the standard API.
+"""
+
+import base64
 import json
-from pydantic import BaseModel, Field
-from main.state import CourseState, HtmlElement, ParagraphBlock
-from langchain_core.output_parsers import StrOutputParser
-from langchain_core.messages import HumanMessage
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, RetryPolicy
-from LLMs.text2text import create_text_llm, resolve_text_model_name
-from LLMs.imagetext2text import create_vision_llm, resolve_vision_model_name
-from tools.imagesearch.factory import create_image_search
-from .prompts import (
-    image_query_prompt,
-    ImageRankingScore,
-    ImageRankingResult,
-    IMAGE_RANKING_SYSTEM_PROMPT,
-    create_image_ranking_prompt,
-    FALLBACK_PARSE_PROMPT,
-)
+import os
+import time
+from dataclasses import dataclass
+from pathlib import Path
+
+from google import genai
+from google.genai import types
 
 
-# ---- Global concurrency control ----
-# Global semaphore to cap concurrent Pixtral calls across all blocks/sections.
-# This prevents concurrency multiplication (sections * blocks * per-block ranking).
-_VISION_CALL_SEMAPHORE: threading.Semaphore | None = None
+# Configuration
+DEFAULT_MODEL = "gemini-3-pro-image-preview"
+POLL_INTERVAL_SECONDS = 10
+INTERACTIVE_FORMATS = [
+    "paragraphs", "accordion", "tabs", "carousel", 
+    "flip", "timeline", "conversation"
+]
 
 
-def _set_vision_call_semaphore(max_concurrent_calls: int) -> None:
-    global _VISION_CALL_SEMAPHORE
-    _VISION_CALL_SEMAPHORE = threading.Semaphore(max(1, int(max_concurrent_calls)))
-
-
-def _vision_invoke(vision_llm, messages):
-    if _VISION_CALL_SEMAPHORE is None:
-        return vision_llm.invoke(messages)
-    _VISION_CALL_SEMAPHORE.acquire()
-    try:
-        return vision_llm.invoke(messages)
-    finally:
-        _VISION_CALL_SEMAPHORE.release()
-
-
-def _chunk_list(items: List[str], chunk_size: int) -> List[List[str]]:
-    return [items[i : i + chunk_size] for i in range(0, len(items), chunk_size)]
-
-
-def _looks_like_invalid_image_error(exc: BaseException) -> bool:
-    """True for Pixtral 400-style invalid image URL errors (permanent, should drop URL)."""
-    s = str(exc)
-    return ("Error response 400" in s) or ("invalid_request_file" in s) or ("code\":\"3310" in s) or ("code': '3310" in s)
-
-
-def _extract_invalid_image_url(exc: BaseException) -> str | None:
-    """
-    Try to extract the offending image URL from Pixtral 400 errors.
-
-    Examples seen:
-    - \"Image, 'https://...png', could not be loaded as a valid image\"
-    - \"File could not be fetched from url 'https://...'\"
-    - \"Image is an animated GIF. Image URL: https://...gif\"
-    """
-    s = str(exc)
-
-    m = re.search(r"Image URL:\s*(https?://\S+)", s)
-    if m:
-        return m.group(1).rstrip("',\"")
-
-    m = re.search(r"from url '([^']+)'", s)
-    if m:
-        return m.group(1)
-
-    m = re.search(r"Image,\s*'([^']+)'", s)
-    if m:
-        return m.group(1)
-
-    return None
-
-
-# ---- State for individual block task ----
-class BlockImageTask(BaseModel):
-    """State for processing a single block's image"""
-    course_title: str
-    module_idx: int
+@dataclass
+class ImageLocation:
+    """Tracks the location of an image within the module JSON structure."""
     submodule_idx: int
     section_idx: int
     element_idx: int
     block_idx: int
-    block_title: str
-    content_preview: str
-    # Config values needed for processing
-    llm_provider: str
-    image_provider: str
-    k_images: int
-    use_vision_ranking: bool
-    vision_provider: str
-    imagetext2text_concurrency: int
-    vision_ranking_batch_size: int
+    query: str
+    request_key: str  # Unique key for batch request matching
 
 
-# ---- State for aggregating results ----
-class ImageGenerationState(BaseModel):
-    """State for the image generation graph"""
-    course_state: CourseState
-    completed_blocks: Annotated[list[dict], add] = Field(default_factory=list)
-    failed_blocks: Annotated[list[dict], add] = Field(default_factory=list)
-    total_blocks: int = 0
-
-
-def rank_images(
-    image_urls: List[str],
-    course_title: str,
-    block_title: str,
-    content_preview: str,
-    text_llm_provider: str,
-    vision_provider: str,
-    imagetext2text_concurrency: int,
-    batch_size: int,
-) -> Tuple[str, ImageRankingScore]:
+def extract_image_queries(module_data: dict) -> list[ImageLocation]:
     """
-    Rank multiple images using batched vision LLM calls and return the best one.
-
-    This avoids making one Pixtral call per image. Instead, it scores images in batches
-    (up to `batch_size` images per call) and selects the best image locally.
+    Extract all image queries from a module JSON structure.
     
-    Scoring rubric (max 12 points):
-    - Alignment (0,1,2,4,8): How well image matches topic AND block title
-    - No Watermark (0 or 2): Clean images score higher
-    - No Text (0 or 2): Images without text score higher
+    Traverses the module structure to find all ParagraphBlock.image.query fields
+    within interactive HTML elements (paragraphs, accordion, tabs, etc.).
     
     Args:
-        image_urls: List of image URLs to rank
-        course_title: Course topic for context
-        block_title: Block title for context
-        content_preview: Content preview for context
-        text_llm_provider: Provider for fallback parsing (e.g., 'mistral')
-        vision_provider: Vision LLM provider (default: 'pixtral')
-        imagetext2text_concurrency: Max parallel Pixtral calls (default: 5)
-    
-    Returns:
-        Tuple of (best_image_url, score)
-    """
-    if not image_urls:
-        raise ValueError("No images to rank")
-    
-    if len(image_urls) == 1:
-        # No need to rank a single image, return with default score
-        return image_urls[0], ImageRankingScore(
-            alignment=4, no_watermark=2, has_text=2, total=8
-        )
-
-    # If semaphore wasn't initialized at run start, initialize best-effort here.
-    if _VISION_CALL_SEMAPHORE is None:
-        _set_vision_call_semaphore(imagetext2text_concurrency)
-
-    # Create vision LLM once per block ranking
-    vision_model_name = resolve_vision_model_name(vision_provider)
-    vision_kwargs = {"temperature": 0.1}
-    if vision_model_name:
-        vision_kwargs["model_name"] = vision_model_name
-    vision_llm = create_vision_llm(provider=vision_provider, **vision_kwargs)
-
-    scored_images: List[Tuple[str, ImageRankingScore]] = []
-    for batch in _chunk_list(image_urls, batch_size):
-        # We may need to drop invalid URLs and retry the same batch
-        remaining = list(batch)
-
-        while remaining:
-            human_prompt = create_image_ranking_prompt(
-                course_title=course_title,
-                block_title=block_title,
-                content_preview=content_preview,
-                num_images=len(remaining),
-            )
-
-            content = [{"type": "text", "text": human_prompt}]
-            for url in remaining:
-                content.append({"type": "image_url", "image_url": {"url": url}})
-
-            messages = [
-                {"role": "system", "content": IMAGE_RANKING_SYSTEM_PROMPT},
-                HumanMessage(content=content),
-            ]
-
-            try:
-                response = _vision_invoke(vision_llm, messages)
-                raw_response = response.content
-
-                try:
-                    json_str = raw_response
-                    if "```json" in json_str:
-                        json_str = json_str.split("```json")[1].split("```")[0]
-                    elif "```" in json_str:
-                        json_str = json_str.split("```")[1].split("```")[0]
-                    json_str = json_str.strip()
-
-                    parsed_data = json.loads(json_str)
-                    ranking_result = ImageRankingResult.model_validate(parsed_data)
-                except (json.JSONDecodeError, Exception) as parse_error:
-                    print(f"⚠️ Vision LLM output parsing failed: {parse_error}")
-                    print(f"   Raw response: {raw_response[:500]}...")
-                    print("   Attempting fallback parsing with text LLM...")
-                    ranking_result = _fallback_parse_ranking(raw_response, len(remaining), text_llm_provider)
-
-                # Ensure score count matches batch size
-                if len(ranking_result.scores) != len(remaining):
-                    while len(ranking_result.scores) < len(remaining):
-                        ranking_result.scores.append(
-                            ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)
-                        )
-                    ranking_result.scores = ranking_result.scores[: len(remaining)]
-
-                for url, score in zip(remaining, ranking_result.scores):
-                    score.total = score.alignment + score.no_watermark + score.has_text
-                    scored_images.append((url, score))
-
-                # Batch succeeded; move to next batch
-                break
-
-            except Exception as e:
-                # For 400 invalid-image style errors, drop the offending URL and retry the batch.
-                if _looks_like_invalid_image_error(e):
-                    bad_url = _extract_invalid_image_url(e)
-                    if bad_url and bad_url in remaining:
-                        remaining.remove(bad_url)
-                        continue
-                    # Heuristic: drop any GIFs (Pixtral rejects animated GIFs)
-                    gif_urls = [u for u in remaining if u.lower().endswith(".gif")]
-                    if gif_urls:
-                        remaining.remove(gif_urls[0])
-                        continue
-
-                # Give up on this remaining batch and assign zero scores
-                print(f"❌ Vision LLM call failed for batch of {len(remaining)} images: {str(e)}")
-                for url in remaining:
-                    scored_images.append((url, ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)))
-                break
-    
-    # Find best image by total score
-    if not scored_images:
-        # Fallback: return first URL with zero score
-        return image_urls[0], ImageRankingScore(
-            alignment=0, no_watermark=0, has_text=0, total=0
-        )
-    
-    best_url, best_score = scored_images[0]
-    for url, score in scored_images[1:]:
-        if score.total > best_score.total:
-            best_url = url
-            best_score = score
-    
-    # Find index for logging
-    best_idx = image_urls.index(best_url) + 1
-    print(f"   🏆 Best image: #{best_idx} with score {best_score.total}/12")
-    
-    return best_url, best_score
-
-
-def _fallback_parse_ranking(
-    raw_text: str,
-    num_images: int,
-    text_llm_provider: str
-) -> ImageRankingResult:
-    """
-    Fallback parser using text LLM when vision LLM output is malformed.
-    
-    Args:
-        raw_text: Raw response from vision LLM
-        num_images: Expected number of images/scores
-        text_llm_provider: Provider for text LLM (e.g., 'mistral')
-    
-    Returns:
-        Parsed ImageRankingResult
-    """
-    # Create text LLM for parsing
-    model_name = resolve_text_model_name(text_llm_provider)
-
-    llm_kwargs = {"temperature": 0}  # Deterministic for parsing
-    if model_name:
-        llm_kwargs["model_name"] = model_name
-    text_llm = create_text_llm(provider=text_llm_provider, **llm_kwargs)
-    
-    # Create parsing chain
-    parse_chain = FALLBACK_PARSE_PROMPT | text_llm | StrOutputParser()
-    
-    try:
-        parsed_response = parse_chain.invoke({
-            "num_images": num_images,
-            "raw_text": raw_text
-        })
-        
-        # Clean up and parse
-        json_str = parsed_response.strip()
-        if "```json" in json_str:
-            json_str = json_str.split("```json")[1].split("```")[0]
-        elif "```" in json_str:
-            json_str = json_str.split("```")[1].split("```")[0]
-        json_str = json_str.strip()
-        
-        parsed_data = json.loads(json_str)
-        return ImageRankingResult.model_validate(parsed_data)
-        
-    except Exception as e:
-        print(f"⚠️ Fallback parsing also failed: {str(e)}")
-        # Return default scores
-        default_scores = [
-            ImageRankingScore(alignment=0, no_watermark=0, has_text=0, total=0)
-            for _ in range(num_images)
-        ]
-        return ImageRankingResult(scores=default_scores)
-
-
-def plan_blocks(state: ImageGenerationState) -> dict:
-    """Count total blocks that need images."""
-    block_count = 0
-    interactive_formats = ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]
-    
-    for module in state.course_state.modules:
-        for submodule in module.submodules:
-            for section in submodule.sections:
-                if section.html:
-                    for element in section.html:
-                        if element.type in interactive_formats and isinstance(element.content, list):
-                            block_count += len(element.content)
-    
-    print(f"📋 Planning image generation for {block_count} blocks")
-    
-    return {"total_blocks": block_count}
-
-
-def continue_to_blocks(state: ImageGenerationState) -> list[Send]:
-    """Fan-out: Create a Send for each block to process in parallel."""
-    sends = []
-    config = state.course_state.config
-    interactive_formats = ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]
-    
-    # Determine k_images based on vision ranking setting
-    k_images = config.num_images_to_fetch if config.use_vision_ranking else 1
-    
-    for m_idx, module in enumerate(state.course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                if section.html:
-                    for e_idx, element in enumerate(section.html):
-                        if element.type in interactive_formats and isinstance(element.content, list):
-                            for b_idx, block in enumerate(element.content):
-                                # Handle both dict and ParagraphBlock
-                                if isinstance(block, dict):
-                                    block_title = block.get("title", "")
-                                    elements = block.get("elements", [])
-                                else:
-                                    block_title = block.title
-                                    elements = block.elements
-                                
-                                # Extract content preview from first paragraph
-                                content_preview = ""
-                                for elem in elements:
-                                    elem_type = elem.get("type") if isinstance(elem, dict) else elem.type
-                                    elem_content = elem.get("content") if isinstance(elem, dict) else elem.content
-                                    if elem_type == "p" and isinstance(elem_content, str):
-                                        content_preview = elem_content[:200]
-                                        break
-                                
-                                task = BlockImageTask(
-                                    course_title=state.course_state.title,
-                                    module_idx=m_idx,
-                                    submodule_idx=sm_idx,
-                                    section_idx=s_idx,
-                                    element_idx=e_idx,
-                                    block_idx=b_idx,
-                                    block_title=block_title,
-                                    content_preview=content_preview,
-                                    llm_provider=config.text_llm_provider,
-                                    image_provider=config.image_search_provider,
-                                    k_images=k_images,
-                                    use_vision_ranking=config.use_vision_ranking,
-                                    vision_provider=config.vision_llm_provider,
-                                    imagetext2text_concurrency=config.imagetext2text_concurrency,
-                                    vision_ranking_batch_size=config.vision_ranking_batch_size,
-                                )
-                                sends.append(Send("generate_block_image", task))
-    
-    return sends
-
-
-def generate_block_image(state: BlockImageTask) -> dict:
-    """
-    Generate image for a single block.
-    
-    This is a LangGraph node that processes ONE block:
-    1. Generates an image search query using LLM
-    2. Searches for images
-    3. Optionally ranks images using vision LLM
-    4. Returns the result for aggregation
-    
-    Args:
-        state: BlockImageTask with block info and config
+        module_data: Parsed module JSON dictionary
         
     Returns:
-        Dict with completed_blocks or failed_blocks
+        List of ImageLocation objects with query and location info
     """
-    # Create LLM for query generation
-    model_name = resolve_text_model_name(state.llm_provider)
-    llm_kwargs = {"temperature": 0.1}
-    if model_name:
-        llm_kwargs["model_name"] = model_name
-    llm = create_text_llm(provider=state.llm_provider, **llm_kwargs)
+    locations: list[ImageLocation] = []
+    request_idx = 0
     
-    # Create query generation chain
-    query_chain = image_query_prompt | llm | StrOutputParser()
+    submodules = module_data.get("submodules", [])
     
-    # Get the image search function
-    search_images = create_image_search(state.image_provider)
-    
-    try:
-        # Generate image query using LLM
-        query = query_chain.invoke({
-            "course_title": state.course_title,
-            "block_title": state.block_title,
-            "content_preview": state.content_preview
-        })
-        query = query.strip().replace('*', '').replace('"', '').strip()
+    for sm_idx, submodule in enumerate(submodules):
+        sections = submodule.get("sections", [])
         
-        # Search for images
-        print(f"   🔍 Searching: '{query}'")
-        results = search_images(query, max_results=state.k_images)
-        
-        # Check for errors
-        if not results:
-            raise Exception(f"Image search ({state.image_provider}) returned no results for query '{query}'")
-        
-        # Filter out error results
-        valid_results = [r for r in results if "error" not in r]
-        if not valid_results:
-            error_msg = results[0].get("error", "Unknown error") if results else "No results"
-            raise Exception(f"Image search ({state.image_provider}) failed for query '{query}': {error_msg}")
-        
-        # Extract image URLs
-        image_urls = [r["url"] for r in valid_results]
-        
-        # Select image based on config
-        if state.use_vision_ranking and len(image_urls) > 1:
-            # Rank images and select best one using vision LLM
-            print(f"   🎯 Ranking {len(image_urls)} images for '{state.block_title}'...")
-            best_url, best_score = rank_images(
-                image_urls=image_urls,
-                course_title=state.course_title,
-                block_title=state.block_title,
-                content_preview=state.content_preview,
-                text_llm_provider=state.llm_provider,
-                vision_provider=state.vision_provider,
-                imagetext2text_concurrency=state.imagetext2text_concurrency,
-                batch_size=state.vision_ranking_batch_size,
-            )
+        for s_idx, section in enumerate(sections):
+            html_elements = section.get("html", []) or []
             
-            image_data = {
-                "type": "img",
-                "query": query,
-                "content": best_url,
-                "ranking_score": best_score.total,
-                "ranking_details": {
-                    "alignment": best_score.alignment,
-                    "no_watermark": best_score.no_watermark,
-                    "has_text": best_score.has_text,
+            for e_idx, element in enumerate(html_elements):
+                element_type = element.get("type", "")
+                
+                if element_type in INTERACTIVE_FORMATS:
+                    content = element.get("content", [])
+                    
+                    if isinstance(content, list):
+                        for b_idx, block in enumerate(content):
+                            image = block.get("image")
+                            
+                            if image and isinstance(image, dict):
+                                query = image.get("query", "")
+                                
+                                if query:
+                                    locations.append(ImageLocation(
+                                        submodule_idx=sm_idx,
+                                        section_idx=s_idx,
+                                        element_idx=e_idx,
+                                        block_idx=b_idx,
+                                        query=query,
+                                        request_key=f"image-{request_idx:04d}"
+                                    ))
+                                    request_idx += 1
+    
+    return locations
+
+
+def create_batch_requests(locations: list[ImageLocation]) -> list[dict]:
+    """
+    Create JSONL-compatible batch requests for Gemini image generation.
+    
+    Args:
+        locations: List of ImageLocation objects with queries
+        
+    Returns:
+        List of request dictionaries for JSONL serialization
+    """
+    requests = []
+    
+    for loc in locations:
+        request = {
+            "key": loc.request_key,
+            "request": {
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": loc.query}
+                        ]
+                    }
+                ],
+                "generation_config": {
+                    "responseModalities": ["IMAGE"]
                 }
             }
-        else:
-            # Just use first image (no ranking)
-            best_url = image_urls[0]
-            image_data = {
-                "type": "img",
-                "query": query,
-                "content": best_url,
-            }
-        
-        # Return completed block info
-        return {
-            "completed_blocks": [{
-                "module_idx": state.module_idx,
-                "submodule_idx": state.submodule_idx,
-                "section_idx": state.section_idx,
-                "element_idx": state.element_idx,
-                "block_idx": state.block_idx,
-                "image": image_data
-            }]
         }
-        
-    except Exception as e:
-        error_msg = str(e)
-        print(f"❌ Error generating image for block '{state.block_title}': {error_msg}")
-        return {
-            "failed_blocks": [{
-                "module_idx": state.module_idx,
-                "submodule_idx": state.submodule_idx,
-                "section_idx": state.section_idx,
-                "element_idx": state.element_idx,
-                "block_idx": state.block_idx,
-                "block_title": state.block_title,
-                "error": error_msg
-            }]
-        }
+        requests.append(request)
+    
+    return requests
 
 
-def reduce_blocks(state: ImageGenerationState) -> dict:
-    """Fan-in: Merge all block images back into course state."""
-    print(f"📦 Reducing {len(state.completed_blocks)} completed blocks")
-    
-    # Update course state with all generated images
-    for block_info in state.completed_blocks:
-        m_idx = block_info["module_idx"]
-        sm_idx = block_info["submodule_idx"]
-        s_idx = block_info["section_idx"]
-        e_idx = block_info["element_idx"]
-        b_idx = block_info["block_idx"]
-        
-        section = state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx]
-        element = section.html[e_idx]
-        block = element.content[b_idx]
-        
-        # Update the block with the image
-        if isinstance(block, dict):
-            block["image"] = block_info["image"]
-        else:
-            block.image = block_info["image"]
-    
-    # Log failures
-    if state.failed_blocks:
-        print(f"⚠️ {len(state.failed_blocks)} blocks failed:")
-        for fb in state.failed_blocks:
-            print(f"   - [{fb['block_title']}] in Module {fb['module_idx']+1}.{fb['submodule_idx']+1}.{fb['section_idx']+1}")
-        print("   (Continuing without these images)")
-    
-    success_count = len(state.completed_blocks)
-    total_count = state.total_blocks
-    if state.failed_blocks:
-        print(f"✅ Image generation complete! ({success_count}/{total_count} blocks)")
-    else:
-        print(f"✅ All {total_count} block images generated successfully!")
-    
-    return {"course_state": state.course_state}
+def create_jsonl_file(requests: list[dict], output_path: Path) -> Path:
+    """Create a JSONL file from the requests list."""
+    with open(output_path, "w") as f:
+        for request in requests:
+            f.write(json.dumps(request) + "\n")
+    print(f"✅ Created JSONL file: {output_path}")
+    return output_path
 
 
-def build_image_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
-    """
-    Build the image generation graph using Send for block-level parallelization.
-    
-    Args:
-        max_retries: Number of retries for each block generation
-        initial_delay: Initial delay in seconds before first retry
-        backoff_factor: Multiplier for exponential backoff
-    """
-    graph = StateGraph(ImageGenerationState)
-    
-    # Configure retry policy with exponential backoff
-    retry_policy = RetryPolicy(
-        max_attempts=max_retries,
-        initial_interval=initial_delay,
-        backoff_factor=backoff_factor,
-        max_interval=60.0
+def upload_jsonl_file(client: genai.Client, file_path: Path) -> str:
+    """Upload the JSONL file to the Gemini File API."""
+    print(f"📤 Uploading file: {file_path.name}...")
+    uploaded_file = client.files.upload(
+        file=str(file_path),
+        config=types.UploadFileConfig(
+            display_name=file_path.stem,
+            mime_type="application/jsonl"
+        )
     )
-    
-    # Add nodes
-    graph.add_node("plan_blocks", plan_blocks)
-    graph.add_node("generate_block_image", generate_block_image, retry=retry_policy)
-    graph.add_node("reduce_blocks", reduce_blocks)
-    
-    # Add edges
-    graph.add_edge(START, "plan_blocks")
-    graph.add_conditional_edges("plan_blocks", continue_to_blocks, ["generate_block_image"])
-    graph.add_edge("generate_block_image", "reduce_blocks")
-    graph.add_edge("reduce_blocks", END)
-    
-    return graph.compile()
+    print(f"✅ Uploaded file: {uploaded_file.name}")
+    return uploaded_file.name
 
 
-def generate_all_section_images(
-    course_state: CourseState,
-    max_retries: int = 3,
-    initial_delay: float = 1.0,
-    backoff_factor: float = 2.0,
-    use_vision_ranking: bool = None,
-    num_images_to_fetch: int = None,
-    vision_provider: str = None,
-) -> CourseState:
+def create_batch_job(client: genai.Client, file_name: str, model: str) -> str:
+    """Create a batch job for image generation."""
+    print(f"🚀 Creating batch job with model: {model}...")
+    batch_job = client.batches.create(
+        model=f"models/{model}",
+        src=file_name,
+        config={
+            "display_name": "module-image-generation",
+        },
+    )
+    print(f"✅ Created batch job: {batch_job.name}")
+    return batch_job.name
+
+
+def wait_for_completion(client: genai.Client, job_name: str) -> dict:
+    """Poll the batch job until it completes."""
+    completed_states = {
+        "JOB_STATE_SUCCEEDED",
+        "JOB_STATE_FAILED",
+        "JOB_STATE_CANCELLED",
+        "JOB_STATE_EXPIRED",
+    }
+    
+    print(f"⏳ Waiting for batch job to complete...")
+    while True:
+        batch_job = client.batches.get(name=job_name)
+        state = batch_job.state
+        print(f"   Current state: {state}")
+        
+        if state in completed_states:
+            return batch_job
+        
+        time.sleep(POLL_INTERVAL_SECONDS)
+
+
+@dataclass
+class GeneratedImage:
+    """Holds a generated image with its metadata."""
+    request_key: str
+    image_bytes: bytes
+    mime_type: str
+    extension: str
+
+
+def extract_images_from_results(
+    client: genai.Client, 
+    batch_job: dict
+) -> dict[str, GeneratedImage]:
     """
-    Main function to generate images for all section HTML blocks using LangGraph Send pattern.
-    
-    Uses block-level parallelism with LangGraph Send for proper trace context propagation.
-    
-    If use_vision_ranking is True, fetches K images for each block, ranks them using 
-    vision LLM (Pixtral), and selects the best one based on rubric scoring.
-    If False, fetches only 1 image and uses it directly (faster, no vision LLM calls).
-    
-    Concurrency is controlled at two levels:
-    - image_concurrency: Max parallel blocks (LangGraph max_concurrency)
-    - imagetext2text_concurrency: Max parallel Pixtral calls (semaphore)
+    Extract images from batch job results.
     
     Args:
-        course_state: CourseState with HTML structures filled
-        max_retries: Maximum number of retry attempts per block
-        initial_delay: Initial delay in seconds before first retry
-        backoff_factor: Multiplier for exponential backoff
-        use_vision_ranking: Whether to use vision LLM for ranking (default from config)
-        num_images_to_fetch: Number of images to fetch for ranking (default from config)
-        vision_provider: Vision LLM provider for ranking (default from config)
+        client: Gemini client
+        batch_job: Completed batch job object
         
     Returns:
-        Updated CourseState with all images added to HTML blocks
+        Dictionary mapping request_key to GeneratedImage
     """
-    image_provider = course_state.config.image_search_provider
+    images: dict[str, GeneratedImage] = {}
     
-    # Get settings from config (use config defaults if not overridden)
-    if use_vision_ranking is None:
-        use_vision_ranking = course_state.config.use_vision_ranking
-    if num_images_to_fetch is None:
-        num_images_to_fetch = course_state.config.num_images_to_fetch
-    if vision_provider is None:
-        vision_provider = course_state.config.vision_llm_provider
+    if batch_job.state != "JOB_STATE_SUCCEEDED":
+        print(f"❌ Job did not succeed. State: {batch_job.state}")
+        if hasattr(batch_job, 'error') and batch_job.error:
+            print(f"   Error: {batch_job.error}")
+        return images
     
-    # Get concurrency settings from config
-    image_concurrency = course_state.config.image_concurrency
-    imagetext2text_concurrency = course_state.config.imagetext2text_concurrency
-    vision_ranking_batch_size = course_state.config.vision_ranking_batch_size
-
-    # Enforce a global cap on concurrent Pixtral calls
-    _set_vision_call_semaphore(imagetext2text_concurrency)
-    
-    print(f"🚀 Starting parallel image generation with provider={image_provider}, "
-          f"max_retries={max_retries}, initial_delay={initial_delay}s, backoff_factor={backoff_factor}")
-    print(f"   📊 Concurrency: blocks={image_concurrency}, vision_calls={imagetext2text_concurrency}")
-    
-    if use_vision_ranking:
-        print(f"   📸 Fetching {num_images_to_fetch} images per block, ranking with {vision_provider} (batch_size={vision_ranking_batch_size})")
-    else:
-        print("   📸 Vision ranking disabled: picking first image result")
-    
-    # Build the graph with retry configuration
-    graph = build_image_generation_graph(
-        max_retries=max_retries,
-        initial_delay=initial_delay,
-        backoff_factor=backoff_factor
-    )
-    
-    # Initialize state
-    initial_state = ImageGenerationState(course_state=course_state)
-    
-    # Execute the graph with concurrency control
-    result = graph.invoke(
-        initial_state,
-        config={"max_concurrency": image_concurrency}
-    )
-    
-    return result["course_state"]
-
-
-if __name__ == "__main__":
-    import json
-    from main.state import CourseConfig
-    
-    INPUT_FILE = "/Users/inaki/Documents/Personal/course-generator-agent/output/Chess_masterclass_20251215_213954.json"
-    # Generate OUTPUT_FILE from INPUT_FILE with _images suffix
-    base, ext = os.path.splitext(INPUT_FILE)
-    OUTPUT_FILE = f"{base}_images{ext}"
-    
-    # Hardcoded defaults - change these to override config values
-    DEFAULT_LLM_PROVIDER = "mistral"
-    DEFAULT_LANGUAGE = "English"
-    DEFAULT_IMAGE_PROVIDER = "google"  # Options: bing | freepik | ddg
-    USE_VISION_RANKING = False  # Set to True to rank images with Pixtral, False to pick first result
-    NUM_IMAGES_TO_FETCH = 8  # Number of images to fetch for ranking (only used if USE_VISION_RANKING=True)
-    VISION_PROVIDER = "pixtral"  # Vision LLM for ranking
-    IMAGE_CONCURRENCY = 10  # Number of blocks to process in parallel
-    IMAGETEXT2TEXT_CONCURRENCY = 5  # Number of Pixtral calls in parallel for image scoring
-    VISION_RANKING_BATCH_SIZE = 8
-    
-    print("="*60)
-    print("Image Generator - Standalone Mode")
-    print("="*60)
-    print(f"Reading from: {INPUT_FILE}")
-    
-    # Load input JSON
-    try:
-        with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        print(f"❌ Error: {INPUT_FILE} not found")
-        print(f"   Please create an {INPUT_FILE} file with CourseState JSON structure")
-        exit(1)
-    except json.JSONDecodeError as e:
-        print(f"❌ Error: Invalid JSON in {INPUT_FILE}: {str(e)}")
-        exit(1)
-    
-    # Parse as CourseState
-    try:
-        course_state = CourseState.model_validate(data)
+    # Check if results are in a file
+    if hasattr(batch_job, 'dest') and batch_job.dest and hasattr(batch_job.dest, 'file_name'):
+        result_file_name = batch_job.dest.file_name
+        print(f"📥 Downloading results from: {result_file_name}")
         
-        # Apply defaults if config is incomplete
-        if not course_state.config:
-            course_state.config = CourseConfig(
-                title=course_state.title or "Untitled Course",
-                text_llm_provider=DEFAULT_LLM_PROVIDER,
-                image_search_provider=DEFAULT_IMAGE_PROVIDER,
-                total_pages=10
-            )
-        else:
-            # Override config with hardcoded defaults
-            course_state.config.image_search_provider = DEFAULT_IMAGE_PROVIDER
-            course_state.config.use_vision_ranking = USE_VISION_RANKING
-            course_state.config.num_images_to_fetch = NUM_IMAGES_TO_FETCH
-            course_state.config.vision_llm_provider = VISION_PROVIDER
-            course_state.config.image_concurrency = IMAGE_CONCURRENCY
-            course_state.config.imagetext2text_concurrency = IMAGETEXT2TEXT_CONCURRENCY
-            course_state.config.vision_ranking_batch_size = VISION_RANKING_BATCH_SIZE
+        # Download the result file
+        file_content = client.files.download(file=result_file_name)
+        content_str = file_content.decode('utf-8') if isinstance(file_content, bytes) else str(file_content)
         
-        if not course_state.language:
-            course_state.language = DEFAULT_LANGUAGE
+        # Parse each line of the JSONL response
+        for line in content_str.strip().split('\n'):
+            if not line:
+                continue
             
-    except Exception as e:
-        print(f"❌ Error: Failed to parse CourseState: {str(e)}")
-        exit(1)
+            try:
+                result = json.loads(line)
+                image = extract_image_from_result(result)
+                if image:
+                    images[image.request_key] = image
+            except json.JSONDecodeError as e:
+                print(f"⚠️ Failed to parse result line: {e}")
     
-    # Count sections with HTML
-    html_sections = 0
-    total_sections = 0
-    for module in course_state.modules:
-        for submodule in module.submodules:
-            for section in submodule.sections:
-                total_sections += 1
-                if section.html:
-                    html_sections += 1
+    elif hasattr(batch_job, 'response') and batch_job.response:
+        # Inline responses
+        print("📥 Processing inline responses...")
+        for idx, response in enumerate(batch_job.response.responses):
+            result = {"key": f"image-{idx:04d}", "response": response}
+            image = extract_image_from_result(result)
+            if image:
+                images[image.request_key] = image
     
-    print(f"📊 Course: {course_state.title}")
-    print(f"   Language: {course_state.language}")
-    print(f"   Modules: {len(course_state.modules)}")
-    print(f"   Sections: {total_sections}")
-    print(f"   Sections with HTML: {html_sections}")
+    return images
+
+
+def extract_image_from_result(result: dict) -> GeneratedImage | None:
+    """Extract image data from a single result."""
+    key = result.get("key", "unknown")
     
-    if html_sections == 0:
-        print("⚠️  Warning: No sections have HTML content to add images to")
-        print("   Exiting without changes")
-        exit(0)
+    if "error" in result:
+        print(f"⚠️ Error for {key}: {result['error']}")
+        return None
     
-    # Generate images
-    print(f"\n🚀 Starting image generation...")
-    print(f"   Using LLM: {course_state.config.text_llm_provider}")
-    print(f"   Image provider: {course_state.config.image_search_provider}")
-    print(f"   Vision ranking: {'ENABLED' if USE_VISION_RANKING else 'DISABLED (picking first image)'}")
-    if USE_VISION_RANKING:
-        print(f"   Images to fetch per block: {NUM_IMAGES_TO_FETCH}")
-        print(f"   Vision LLM for ranking: {VISION_PROVIDER}")
-    print(f"   Concurrency: blocks={IMAGE_CONCURRENCY}, vision_calls={IMAGETEXT2TEXT_CONCURRENCY}")
+    response = result.get("response", {})
+    candidates = response.get("candidates", [])
     
-    try:
-        updated_state = generate_all_section_images(
-            course_state,
-            max_retries=3,
-            initial_delay=1.0,
-            backoff_factor=2.0,
-            use_vision_ranking=USE_VISION_RANKING,
-            num_images_to_fetch=NUM_IMAGES_TO_FETCH,
-            vision_provider=VISION_PROVIDER,
+    if not candidates:
+        print(f"⚠️ No candidates for {key}")
+        return None
+    
+    content = candidates[0].get("content", {})
+    parts = content.get("parts", [])
+    
+    for part in parts:
+        if "inlineData" in part:
+            inline_data = part["inlineData"]
+            mime_type = inline_data.get("mimeType", "image/png")
+            image_data = inline_data.get("data", "")
+            
+            # Determine file extension from mime type
+            ext_map = {
+                "image/png": ".png",
+                "image/jpeg": ".jpg",
+                "image/webp": ".webp",
+                "image/gif": ".gif",
+            }
+            ext = ext_map.get(mime_type, ".png")
+            
+            try:
+                image_bytes = base64.b64decode(image_data)
+                return GeneratedImage(
+                    request_key=key,
+                    image_bytes=image_bytes,
+                    mime_type=mime_type,
+                    extension=ext
+                )
+            except Exception as e:
+                print(f"⚠️ Failed to decode image for {key}: {e}")
+                return None
+        
+        elif "text" in part:
+            # Some responses may include text descriptions
+            print(f"📝 Text response for {key}: {part['text'][:100]}...")
+    
+    print(f"⚠️ No image data found for {key}")
+    return None
+
+
+def save_images_to_folder(
+    images: dict[str, GeneratedImage],
+    locations: list[ImageLocation],
+    output_dir: Path
+) -> dict[str, Path]:
+    """
+    Save generated images to the output folder.
+    
+    Args:
+        images: Dictionary of request_key to GeneratedImage
+        locations: Original image locations for naming
+        output_dir: Directory to save images
+        
+    Returns:
+        Dictionary mapping request_key to saved file path
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: dict[str, Path] = {}
+    
+    for loc in locations:
+        if loc.request_key in images:
+            img = images[loc.request_key]
+            
+            # Create descriptive filename
+            filename = f"{loc.request_key}{img.extension}"
+            output_path = output_dir / filename
+            
+            with open(output_path, "wb") as f:
+                f.write(img.image_bytes)
+            
+            saved_paths[loc.request_key] = output_path
+            print(f"💾 Saved: {output_path.name}")
+    
+    return saved_paths
+
+
+def update_module_with_images(
+    module_data: dict,
+    images: dict[str, GeneratedImage],
+    locations: list[ImageLocation]
+) -> dict:
+    """
+    Update the module JSON with base64-encoded images.
+    
+    Args:
+        module_data: Original module JSON data
+        images: Dictionary of request_key to GeneratedImage
+        locations: Image locations in the module structure
+        
+    Returns:
+        Updated module data with base64 images
+    """
+    for loc in locations:
+        if loc.request_key not in images:
+            continue
+        
+        img = images[loc.request_key]
+        
+        # Navigate to the image location
+        try:
+            submodule = module_data["submodules"][loc.submodule_idx]
+            section = submodule["sections"][loc.section_idx]
+            element = section["html"][loc.element_idx]
+            block = element["content"][loc.block_idx]
+            
+            # Update the image content with base64 data
+            mime_type = img.mime_type
+            b64_data = base64.b64encode(img.image_bytes).decode('utf-8')
+            
+            block["image"]["content"] = f"data:{mime_type};base64,{b64_data}"
+            
+        except (KeyError, IndexError) as e:
+            print(f"⚠️ Failed to update image at {loc.request_key}: {e}")
+    
+    return module_data
+
+
+def generate_images_batch(
+    locations: list[ImageLocation],
+    api_key: str | None = None,
+    model: str = DEFAULT_MODEL
+) -> dict[str, GeneratedImage]:
+    """
+    Generate images using Gemini Batch API.
+    
+    Args:
+        locations: List of ImageLocation objects with queries
+        api_key: Gemini API key (defaults to GEMINI_API_KEY env var)
+        model: Gemini model to use for image generation
+        
+    Returns:
+        Dictionary mapping request_key to GeneratedImage
+    """
+    if not api_key:
+        api_key = os.getenv("GEMINI_API_KEY")
+    
+    if not api_key:
+        raise ValueError(
+            "GEMINI_API_KEY environment variable not set. "
+            "Set it with: export GEMINI_API_KEY='your-api-key'"
         )
-    except Exception as e:
-        print(f"\n❌ Error during image generation: {str(e)}")
-        print("   No output file created")
-        exit(1)
     
-    # Save output
-    print(f"\n💾 Saving to: {OUTPUT_FILE}")
+    if not locations:
+        print("⚠️ No image queries to process")
+        return {}
+    
+    print(f"🎨 Generating {len(locations)} images with Gemini Batch API")
+    print(f"   Model: {model}")
+    
+    # Initialize client
+    client = genai.Client(api_key=api_key)
+    
+    # Create batch requests
+    requests = create_batch_requests(locations)
+    
+    # Create temporary JSONL file
+    import tempfile
+    with tempfile.NamedTemporaryFile(
+        mode='w', 
+        suffix='.jsonl', 
+        delete=False
+    ) as f:
+        jsonl_path = Path(f.name)
+    
     try:
-        with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            f.write(updated_state.model_dump_json(indent=2, by_alias=True))
-        print(f"✅ Success! Images added to {OUTPUT_FILE}")
-    except Exception as e:
-        print(f"❌ Error: Failed to save output: {str(e)}")
-        exit(1)
+        # Write JSONL
+        create_jsonl_file(requests, jsonl_path)
+        
+        # Upload file
+        file_name = upload_jsonl_file(client, jsonl_path)
+        
+        # Create batch job
+        job_name = create_batch_job(client, file_name, model)
+        
+        # Wait for completion
+        batch_job = wait_for_completion(client, job_name)
+        
+        # Extract images
+        images = extract_images_from_results(client, batch_job)
+        
+        print(f"✅ Generated {len(images)}/{len(locations)} images")
+        
+        return images
+        
+    finally:
+        # Cleanup temporary file
+        if jsonl_path.exists():
+            jsonl_path.unlink()
+
+
+def process_module_images(
+    module_path: str | Path,
+    output_json_path: str | Path | None = None,
+    api_key: str | None = None,
+    model: str = DEFAULT_MODEL,
+    dry_run: bool = False
+) -> tuple[dict, Path]:
+    """
+    Process a module JSON file: generate images and update the file.
     
-    # Print all image queries and scores
-    print("\n" + "="*60)
-    print("📝 All Generated Image Queries and Scores:")
-    print("="*60)
+    This is the main entry point for the image generator agent.
     
-    query_count = 0
-    for m_idx, module in enumerate(updated_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                if section.html:
-                    section_has_images = False
-                    for element in section.html:
-                        if element.type in ["paragraphs", "accordion", "tabs", "carousel", "flip", "timeline", "conversation"]:
-                            if isinstance(element.content, list):
-                                for block in element.content:
-                                    if isinstance(block, (dict, ParagraphBlock)):
-                                        block_obj = block if isinstance(block, ParagraphBlock) else ParagraphBlock(**block)
-                                        if block_obj.image and "query" in block_obj.image:
-                                            if not section_has_images:
-                                                print(f"\n📍 Module {m_idx+1}.{sm_idx+1}.{s_idx+1}: {section.title}")
-                                                section_has_images = True
-                                            query_count += 1
-                                            score = block_obj.image.get('ranking_score')
-                                            score_str = f"score: {score}/12" if score is not None else "no ranking"
-                                            print(f"   {query_count}. [{block_obj.title}] → \"{block_obj.image['query']}\" ({score_str})")
+    Args:
+        module_path: Path to the module JSON file
+        output_json_path: Path for output JSON (defaults to overwriting input)
+        api_key: Gemini API key (defaults to GEMINI_API_KEY env var)
+        model: Gemini model for image generation
+        dry_run: If True, only extract queries without generating images
+        
+    Returns:
+        Tuple of (updated module data, images folder path)
+    """
+    module_path = Path(module_path)
     
-    print(f"\n✨ Total queries generated: {query_count}")
-    print("="*60)
+    if not module_path.exists():
+        raise FileNotFoundError(f"Module file not found: {module_path}")
+    
+    # Determine output paths
+    if output_json_path:
+        output_json_path = Path(output_json_path)
+    else:
+        output_json_path = module_path
+    
+    images_dir = module_path.parent / "images"
+    
+    print("=" * 60)
+    print("🖼️  Gemini Image Generator Agent")
+    print("=" * 60)
+    print(f"Input:  {module_path}")
+    print(f"Output: {output_json_path}")
+    print(f"Images: {images_dir}")
+    print(f"Model:  {model}")
+    print()
+    
+    # Load module JSON
+    print("📂 Loading module JSON...")
+    with open(module_path, 'r', encoding='utf-8') as f:
+        module_data = json.load(f)
+    
+    # Extract image queries
+    print("🔍 Extracting image queries...")
+    locations = extract_image_queries(module_data)
+    print(f"   Found {len(locations)} images with queries")
+    
+    if not locations:
+        print("⚠️ No images with queries found in module")
+        return module_data, images_dir
+    
+    # Print queries
+    print("\n📝 Image queries:")
+    for i, loc in enumerate(locations, 1):
+        print(f"   {i}. {loc.query[:60]}{'...' if len(loc.query) > 60 else ''}")
+    print()
+    
+    if dry_run:
+        print("🔄 Dry run mode - skipping image generation")
+        return module_data, images_dir
+    
+    # Generate images via batch API
+    images = generate_images_batch(locations, api_key=api_key, model=model)
+    
+    if not images:
+        print("❌ No images were generated")
+        return module_data, images_dir
+    
+    # Save images to folder
+    print(f"\n💾 Saving images to {images_dir}...")
+    saved_paths = save_images_to_folder(images, locations, images_dir)
+    
+    # Update module JSON with base64 images
+    print("\n📝 Updating module JSON with base64 images...")
+    updated_module = update_module_with_images(module_data, images, locations)
+    
+    # Save updated JSON
+    print(f"\n💾 Saving updated JSON to {output_json_path}...")
+    with open(output_json_path, 'w', encoding='utf-8') as f:
+        json.dump(updated_module, f, indent=2, ensure_ascii=False)
+    
+    # Summary
+    print("\n" + "=" * 60)
+    print("✨ Summary")
+    print("=" * 60)
+    print(f"   Total queries: {len(locations)}")
+    print(f"   Images generated: {len(images)}")
+    print(f"   Images saved: {len(saved_paths)}")
+    print(f"   Output JSON: {output_json_path}")
+    print(f"   Images folder: {images_dir}")
+    
+    return updated_module, images_dir
+
+
+
+

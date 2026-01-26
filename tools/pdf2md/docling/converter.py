@@ -257,7 +257,7 @@ if __name__ == "__main__":
     
     print("\n=== Spanish PDF conversion with optimized settings ===")
     result_path = convert_pdf_to_markdown(
-        "/Users/inaki/Documents/Personal/course-generator-agent/test.pdf",
+        "example_pdfs/coaching_y_orientacion.pdf",
         ocr_engine="auto",        # Auto-detect best OCR for platform
         language="es",            # Spanish language
         force_ocr=True,           # Bypass corrupted PDF text layer

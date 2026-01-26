@@ -907,7 +907,7 @@ def generate_course_state_from_pdf(
 
 if __name__ == "__main__":
     # Test with a sample PDF syllabus
-    pdf_syllabus = "test.pdf"
+    pdf_syllabus = "example_pdfs/coaching_y_orientacion.pdf"
     pages = 50
     
     course_state: CourseState = generate_course_state_from_pdf(

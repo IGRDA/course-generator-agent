@@ -1,15 +1,21 @@
-from typing import Annotated, List, Optional
-from operator import add
+"""
+Section theory generator agent using the base SectionProcessor pattern.
+
+This agent generates educational theory content for each section,
+with optional reflection-based fact verification.
+"""
+
+from typing import Any, List, Optional
+
 from pydantic import BaseModel, Field
-from main.state import CourseState
-from main.audience_profiles import build_audience_guidelines
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnableParallel, RunnableLambda
-from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send, RetryPolicy
+
+from main.state import CourseState, Section
+from main.audience_profiles import build_audience_guidelines
+from agents.base import SectionProcessor, SectionTask
 from LLMs.text2text import create_text_llm, resolve_text_model_name
 from tools.websearch import create_web_search
-from tools.imagesearch import create_image_search  # Import for testing
 from .prompts import (
     section_theory_prompt,
     query_generation_prompt,
@@ -41,69 +47,7 @@ class Reflection(BaseModel):
     )
 
 
-# ---- State for individual section task ----
-class SectionTask(BaseModel):
-    """State for processing a single section"""
-    course_state: CourseState
-    module_idx: int
-    submodule_idx: int
-    section_idx: int
-    section_title: str
-    theory: str = ""
-    use_reflection: bool = True
-    num_queries: int = 3
-
-
-# ---- State for aggregating results ----
-class TheoryGenerationState(BaseModel):
-    """State for the theory generation subgraph"""
-    course_state: CourseState
-    completed_sections: Annotated[list[dict], add] = Field(default_factory=list)
-    total_sections: int = 0
-
-
-def plan_sections(state: TheoryGenerationState) -> dict:
-    """
-    Update the total_sections count in the state.
-    The actual Send objects are created by continue_to_sections().
-    """
-    section_count = 0
-    
-    for module in state.course_state.modules:
-        for submodule in module.submodules:
-            section_count += len(submodule.sections)
-    
-    print(f"📋 Planning {section_count} sections for parallel generation")
-    
-    return {"total_sections": section_count}
-
-
-def continue_to_sections(state: TheoryGenerationState) -> list[Send]:
-    """
-    Fan-out: Create a Send for each section to process in parallel.
-    This is used as a conditional edge function.
-    """
-    sends = []
-    
-    for m_idx, module in enumerate(state.course_state.modules):
-        for sm_idx, submodule in enumerate(module.submodules):
-            for s_idx, section in enumerate(submodule.sections):
-                # Create a task for each section
-                task = SectionTask(
-                    course_state=state.course_state,
-                    module_idx=m_idx,
-                    submodule_idx=sm_idx,
-                    section_idx=s_idx,
-                    section_title=section.title,
-                    use_reflection=state.course_state.config.use_reflection,
-                    num_queries=state.course_state.config.num_reflection_queries
-                )
-                # Send to the generate_section node
-                sends.append(Send("generate_section", task))
-    
-    return sends
-
-
+# ---- Helper functions ----
 def select_style_guidelines(
     module_idx: int,
     submodule_idx: int,
@@ -312,162 +256,124 @@ def reflect_and_improve(
         print(f"  ⚠ Reflection failed: {str(e)}, using original content")
         return theory
 
-def generate_section(state: SectionTask) -> dict:
-    """
-    Generate theory for a single section.
-    Optionally applies reflection pattern for fact verification and improvement.
-    LangGraph's built-in retry mechanism handles failures automatically.
-    """
-    # Extract context from course state
-    module = state.course_state.modules[state.module_idx]
-    submodule = module.submodules[state.submodule_idx]
-    provider = state.course_state.config.text_llm_provider
-    
-    # Calculate target word count
-    total_sections = sum(
-        len(submodule.sections) 
-        for module in state.course_state.modules 
-        for submodule in module.submodules
-    )
-    n_words = state.course_state.config.total_pages * state.course_state.config.words_per_page // total_sections
-    
-    # Create LLM with specified provider
-    model_name = resolve_text_model_name(provider)
-    llm_kwargs = {"temperature": 0}
-    if model_name:
-        llm_kwargs["model_name"] = model_name
-    llm = create_text_llm(provider=provider, **llm_kwargs)
-    
-    # Determine style guidelines based on position
-    style_guidelines = select_style_guidelines(
-        module_idx=state.module_idx,
-        submodule_idx=state.submodule_idx,
-        section_idx=state.section_idx,
-        total_sections_in_submodule=len(submodule.sections)
-    )
-    
-    # Build sibling section context with summaries to avoid content repetition
-    sibling_parts = []
-    for s in submodule.sections:
-        if s.title != state.section_title:
-            if s.summary:
-                sibling_parts.append(f"- {s.title}:\n  {s.summary}")
-            else:
-                sibling_parts.append(f"- {s.title}: (no summary available)")
-    sibling_summaries = "\n".join(sibling_parts) if sibling_parts else "None (this is the only section in this submodule)"
-    
-    # Build course-wide context to avoid repetition across modules/submodules
-    course_outline, same_module_sections = build_course_context(
-        state.course_state,
-        state.module_idx,
-        state.submodule_idx
-    )
-    
-    # Build audience guidelines block
-    audience_guidelines = build_audience_guidelines(
-        state.course_state.config.target_audience, 
-        context="theory"
-    )
-    
-    # Generate initial content using LCEL chain (retry handled by LangGraph)
-    section_chain = section_theory_prompt | llm | StrOutputParser()
-    theory = section_chain.invoke({
-        "course_title": state.course_state.title,
-        "module_title": module.title,
-        "submodule_title": submodule.title,
-        "section_title": state.section_title,
-        "language": state.course_state.language,
-        "n_words": n_words,
-        "style_guidelines": style_guidelines,
-        "sibling_summaries": sibling_summaries,
-        "course_outline": course_outline,
-        "same_module_sections": same_module_sections,
-        "audience_guidelines": audience_guidelines
-    }).strip()
-    
-    print(f"✓ Generated theory for Module {state.module_idx+1}, "
-          f"Submodule {state.submodule_idx+1}, Section {state.section_idx+1}")
-    
-    # Apply reflection pattern if enabled
-    if state.use_reflection:
-        theory = reflect_and_improve(
-            theory=theory,
-            section_title=state.section_title,
-            module_title=module.title,
-            submodule_title=submodule.title,
-            sibling_summaries=sibling_summaries,
-            language=state.course_state.language,
-            n_words=n_words,
-            num_queries=state.num_queries,
-            provider=provider,
-            web_search_provider=state.course_state.config.web_search_provider,
-            target_audience=state.course_state.config.target_audience
-        )
-    
-    # Return the completed section info
-    return {
-        "completed_sections": [{
-            "module_idx": state.module_idx,
-            "submodule_idx": state.submodule_idx,
-            "section_idx": state.section_idx,
-            "theory": theory
-        }]
-    }
 
-
-def reduce_sections(state: TheoryGenerationState) -> dict:
-    """
-    Fan-in: Aggregate all generated theories back into the course state.
-    """
-    print(f"📦 Reducing {len(state.completed_sections)} completed sections")
+# ---- Theory Processor using SectionProcessor pattern ----
+class TheoryProcessor(SectionProcessor):
+    """Processor for generating theory content for sections."""
     
-    # Update course state with all generated theories
-    for section_info in state.completed_sections:
-        m_idx = section_info["module_idx"]
-        sm_idx = section_info["submodule_idx"]
-        s_idx = section_info["section_idx"]
-        theory = section_info["theory"]
+    def __init__(self):
+        super().__init__(name="theory_generator")
+    
+    def create_task_data(
+        self,
+        course_state: CourseState,
+        module_idx: int,
+        submodule_idx: int,
+        section_idx: int,
+        section: Section,
+    ) -> dict[str, Any]:
+        """Create task-specific data for theory generation."""
+        return {
+            "section_title": section.title,
+            "use_reflection": course_state.config.use_reflection,
+            "num_queries": course_state.config.num_reflection_queries,
+        }
+    
+    def process_section(self, task: SectionTask) -> dict[str, Any]:
+        """Generate theory for a single section."""
+        # Extract context from course state
+        module = task.course_state.modules[task.module_idx]
+        submodule = module.submodules[task.submodule_idx]
+        provider = task.config.text_llm_provider
         
-        state.course_state.modules[m_idx].submodules[sm_idx].sections[s_idx].theory = theory
+        # Get task-specific data
+        section_title = task.extra_data["section_title"]
+        use_reflection = task.extra_data["use_reflection"]
+        num_queries = task.extra_data["num_queries"]
+        
+        # Calculate target word count
+        total_sections = sum(
+            len(submodule.sections) 
+            for module in task.course_state.modules 
+            for submodule in module.submodules
+        )
+        n_words = task.config.total_pages * task.config.words_per_page // total_sections
+        
+        # Create LLM with specified provider
+        model_name = resolve_text_model_name(provider)
+        llm_kwargs = {"temperature": 0}
+        if model_name:
+            llm_kwargs["model_name"] = model_name
+        llm = create_text_llm(provider=provider, **llm_kwargs)
+        
+        # Determine style guidelines based on position
+        style_guidelines = select_style_guidelines(
+            module_idx=task.module_idx,
+            submodule_idx=task.submodule_idx,
+            section_idx=task.section_idx,
+            total_sections_in_submodule=len(submodule.sections)
+        )
+        
+        # Build sibling section context with summaries to avoid content repetition
+        sibling_parts = []
+        for s in submodule.sections:
+            if s.title != section_title:
+                if s.summary:
+                    sibling_parts.append(f"- {s.title}:\n  {s.summary}")
+                else:
+                    sibling_parts.append(f"- {s.title}: (no summary available)")
+        sibling_summaries = "\n".join(sibling_parts) if sibling_parts else "None (this is the only section in this submodule)"
+        
+        # Build course-wide context to avoid repetition across modules/submodules
+        course_outline, same_module_sections = build_course_context(
+            task.course_state,
+            task.module_idx,
+            task.submodule_idx
+        )
+        
+        # Build audience guidelines block
+        audience_guidelines = build_audience_guidelines(
+            task.config.target_audience, 
+            context="theory"
+        )
+        
+        # Generate initial content using LCEL chain (retry handled by LangGraph)
+        section_chain = section_theory_prompt | llm | StrOutputParser()
+        theory = section_chain.invoke({
+            "course_title": task.course_state.title,
+            "module_title": module.title,
+            "submodule_title": submodule.title,
+            "section_title": section_title,
+            "language": task.language,
+            "n_words": n_words,
+            "style_guidelines": style_guidelines,
+            "sibling_summaries": sibling_summaries,
+            "course_outline": course_outline,
+            "same_module_sections": same_module_sections,
+            "audience_guidelines": audience_guidelines
+        }).strip()
+        
+        # Apply reflection pattern if enabled
+        if use_reflection:
+            theory = reflect_and_improve(
+                theory=theory,
+                section_title=section_title,
+                module_title=module.title,
+                submodule_title=submodule.title,
+                sibling_summaries=sibling_summaries,
+                language=task.language,
+                n_words=n_words,
+                num_queries=num_queries,
+                provider=provider,
+                web_search_provider=task.config.web_search_provider,
+                target_audience=task.config.target_audience
+            )
+        
+        return {"theory": theory}
     
-    print(f"✅ All {state.total_sections} section theories generated successfully!")
-    
-    return {"course_state": state.course_state}
-
-
-def build_theory_generation_graph(max_retries: int = 3, initial_delay: float = 1.0, backoff_factor: float = 2.0):
-    """
-    Build the theory generation subgraph using Send for dynamic parallelization.
-    
-    Args:
-        max_retries: Number of retries for each section generation
-        initial_delay: Initial delay in seconds before first retry
-        backoff_factor: Multiplier for exponential backoff (e.g., 2.0 means delays of 1s, 2s, 4s, 8s...)
-    """
-    graph = StateGraph(TheoryGenerationState)
-    
-    # Configure retry policy with exponential backoff
-    retry_policy = RetryPolicy(
-        max_attempts=max_retries,
-        initial_interval=initial_delay,
-        backoff_factor=backoff_factor,
-        max_interval=60.0  # Cap maximum delay at 60 seconds
-    )
-    
-    # Add nodes
-    graph.add_node("plan_sections", plan_sections)
-    graph.add_node("generate_section", generate_section, retry=retry_policy)
-    graph.add_node("reduce_sections", reduce_sections)
-    
-    # Add edges
-    graph.add_edge(START, "plan_sections")
-    # Use conditional edges to send tasks dynamically to generate_section
-    graph.add_conditional_edges("plan_sections", continue_to_sections, ["generate_section"])
-    # All generate_section tasks feed into reduce_sections
-    graph.add_edge("generate_section", "reduce_sections")
-    graph.add_edge("reduce_sections", END)
-    
-    return graph.compile()
+    def reduce_result(self, section: Section, result: dict[str, Any]) -> None:
+        """Apply theory result to section."""
+        section.theory = result["theory"]
 
 
 def generate_all_section_theories(
@@ -494,25 +400,23 @@ def generate_all_section_theories(
     Returns:
         Updated CourseState with all theories filled
     """
-    reflection_msg = f", reflection={'ON' if use_reflection else 'OFF'}"
-    if use_reflection:
-        reflection_msg += f" (queries={num_reflection_queries})"
+    # Note: use_reflection and num_reflection_queries are read from course_state.config
+    # These parameters are kept for backward compatibility but config values take precedence
+    reflection_enabled = course_state.config.use_reflection
+    reflection_queries = course_state.config.num_reflection_queries
+    
+    reflection_msg = f", reflection={'ON' if reflection_enabled else 'OFF'}"
+    if reflection_enabled:
+        reflection_msg += f" (queries={reflection_queries})"
     
     print(f"🚀 Starting parallel generation with max_retries={max_retries}, "
           f"initial_delay={initial_delay}s, backoff_factor={backoff_factor}{reflection_msg}")
     
-    # Build the graph with retry configuration
-    graph = build_theory_generation_graph(
+    processor = TheoryProcessor()
+    return processor.process_all(
+        course_state=course_state,
+        concurrency=concurrency,
         max_retries=max_retries,
         initial_delay=initial_delay,
-        backoff_factor=backoff_factor
+        backoff_factor=backoff_factor,
     )
-    
-    # Initialize state
-    initial_state = TheoryGenerationState(course_state=course_state)
-    
-    # Execute the graph with concurrency limit
-    result = graph.invoke(initial_state, config={"max_concurrency": concurrency})
-    
-    return result["course_state"]
-

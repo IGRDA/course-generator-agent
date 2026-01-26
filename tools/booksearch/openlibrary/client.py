@@ -21,6 +21,28 @@ SEARCH_URL = "https://openlibrary.org/search.json"
 BOOK_URL = "https://openlibrary.org/api/books"
 WORKS_URL = "https://openlibrary.org"
 
+# ISO 639-1 to Open Library language code mapping
+# Open Library uses ISO 639-2/B (bibliographic) codes, not ISO 639-1
+# Reference: https://openlibrary.org/languages
+ISO_TO_OPENLIBRARY_LANG = {
+    "es": "spa",  # Spanish
+    "en": "eng",  # English
+    "fr": "fre",  # French
+    "de": "ger",  # German
+    "pt": "por",  # Portuguese
+    "it": "ita",  # Italian
+    "ru": "rus",  # Russian
+    "zh": "chi",  # Chinese
+    "ja": "jpn",  # Japanese
+    "ko": "kor",  # Korean
+    "ar": "ara",  # Arabic
+    "nl": "dut",  # Dutch
+    "pl": "pol",  # Polish
+    "ca": "cat",  # Catalan
+    "gl": "glg",  # Galician
+    "eu": "baq",  # Basque
+}
+
 
 class BookResult(TypedDict):
     """Structured book result from Open Library."""
@@ -75,7 +97,8 @@ def search_books(
     Args:
         query: Search query (title, author, or combined)
         max_results: Maximum number of results to return
-        language: Optional language filter (e.g., "eng", "spa")
+        language: Optional language filter (ISO 639-1 like "es", "en" or 
+                  Open Library codes like "spa", "eng")
         
     Returns:
         List of BookResult dictionaries with book metadata
@@ -87,7 +110,9 @@ def search_books(
     }
     
     if language:
-        params["language"] = language
+        # Convert ISO 639-1 codes to Open Library codes if needed
+        lang_code = ISO_TO_OPENLIBRARY_LANG.get(language.lower(), language)
+        params["language"] = lang_code
     
     try:
         response = requests.get(SEARCH_URL, params=params, timeout=10)

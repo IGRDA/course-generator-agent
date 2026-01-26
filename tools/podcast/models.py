@@ -134,9 +134,10 @@ LANGUAGE_CONFIGS: dict[str, LanguageConfig] = {
     ),
     "es": LanguageConfig(
         # XTTS multilingual model for Spain Spanish voices
+        # Uses Spanish-sounding speakers for more natural pronunciation
         model_name="tts_models/multilingual/multi-dataset/xtts_v2",
         speakers=XTTS_SPEAKERS,
-        default_speaker_map={"host": "Ferran Simen", "guest": "Brenda Stern"},
+        default_speaker_map={"host": "Luis Moray", "guest": "Alma María"},
         language_code="es",
         is_multilingual=True,
     ),

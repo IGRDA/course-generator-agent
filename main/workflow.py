@@ -1,230 +1,38 @@
-from typing import Optional
-from langchain_core.runnables import RunnableConfig
+"""
+Topic-based Course Generation Workflow.
+
+Generates a complete course from a topic using:
+1. Research phase (optional)
+2. Index/skeleton generation
+3. Theory generation
+4. Activities generation
+5. HTML formatting
+6. Image generation
+7. Video recommendations (optional)
+8. Bibliography generation (optional)
+9. Relevant people generation (optional)
+"""
+
+from langgraph.graph import StateGraph, START, END
 
 from main.state import CourseState, CourseConfig
 from main.output_manager import OutputManager
-from agents.index_generator.agent import generate_course_state
-from agents.section_theory_generator.agent import generate_all_section_theories
-from agents.activities_generator.agent import generate_all_section_activities
-from agents.html_formatter.agent import generate_all_section_html
-from agents.image_generator.agent import generate_all_section_images
-from agents.bibliography_generator.agent import generate_course_bibliography
-from langgraph.graph import StateGraph, START, END
+from main.nodes import (
+    generate_index_node,
+    generate_theories_node,
+    generate_activities_node,
+    calculate_metadata_node,
+    generate_html_node,
+    generate_images_node,
+    generate_videos_node,
+    generate_bibliography_node,
+    generate_people_node,
+    generate_mindmap_node,
+)
 
 
-def _get_output_manager(config: Optional[RunnableConfig]) -> Optional[OutputManager]:
-    """Extract OutputManager from LangGraph config if present."""
-    if config is None:
-        return None
-    return config.get("configurable", {}).get("output_manager")
-
-def generate_index_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate the course skeleton with empty theories while preserving config"""
-    print("Generating course skeleton...")
-    
-    # Use config from the existing state
-    course_config = state.config
-    
-    # Generate new course content skeleton (with empty theories)
-    # Now includes research phase if enabled
-    content_skeleton = generate_course_state(
-        title=state.title,
-        total_pages=course_config.total_pages,
-        description=course_config.description,
-        language=course_config.language,
-        max_retries=course_config.max_retries,
-        words_per_page=course_config.words_per_page,
-        provider=course_config.text_llm_provider,
-        # Research configuration
-        enable_research=course_config.enable_research,
-        web_search_provider=course_config.web_search_provider,
-        research_max_queries=course_config.research_max_queries,
-        research_max_results_per_query=course_config.research_max_results_per_query,
-        # Audience configuration
-        target_audience=course_config.target_audience,
-    )
-    
-    # Transfer generated content to state
-    state.modules = content_skeleton.modules
-    
-    # Preserve research output for downstream agents
-    state.research = content_skeleton.research
-    
-    print("Course skeleton generated successfully!")
-    if state.research:
-        print(f"   Research summary: {state.research.course_summary[:100]}...")
-        print(f"   Learning objectives: {len(state.research.learning_objectives)}")
-        print(f"   Key topics: {len(state.research.key_topics)}")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("index", state)
-    
-    return state
-
-
-def generate_theories_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate all section theories in parallel using LangGraph Send"""
-    print("Generating section theories in parallel...")
-    
-    # Use config settings
-    concurrency = state.config.concurrency
-    max_retries = state.config.max_retries
-    use_reflection = state.config.use_reflection
-    num_reflection_queries = state.config.num_reflection_queries
-    
-    # Run theory generation
-    updated_state = generate_all_section_theories(
-        state, 
-        concurrency=concurrency,
-        max_retries=max_retries,
-        use_reflection=use_reflection,
-        num_reflection_queries=num_reflection_queries
-    )
-    
-    print("All section theories generated successfully!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("theories", updated_state)
-    
-    return updated_state
-
-
-def generate_activities_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate activities for all sections in parallel"""
-    print("Generating section activities in parallel...")
-    
-    updated_state = generate_all_section_activities(
-        state,
-        concurrency=state.config.activities_concurrency,
-        max_retries=state.config.max_retries
-    )
-    
-    print("All section activities generated successfully!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("activities", updated_state)
-    
-    return updated_state
-
-
-def calculate_metadata_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Calculate IDs, indexes and durations for all course elements"""
-    print("Calculating course metadata (IDs, Indexes, Durations)...")
-    
-    for m_idx, module in enumerate(state.modules):
-        # Simple string ID matching index
-        module.id = str(m_idx + 1)
-        module.index = m_idx + 1
-        
-        if not module.description:
-            module.description = module.title
-            
-        for sm_idx, submodule in enumerate(module.submodules):
-            # Submodules only have index, no id
-            submodule.index = sm_idx + 1
-            
-            if not submodule.description:
-                submodule.description = submodule.title
-            
-            for s_idx, section in enumerate(submodule.sections):
-                # Sections only have index, no id
-                section.index = s_idx + 1
-                
-                if not section.description:
-                    section.description = section.title
-            
-            # Calculate submodule duration: 0.1 hours per section
-            submodule.duration = round(len(submodule.sections) * 0.1, 1)
-            
-        # Calculate module duration
-        module.duration = round(sum(sm.duration for sm in module.submodules), 1)
-        
-    print("Metadata calculation completed!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("metadata", state)
-    
-    return state
-
-
-def generate_html_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate HTML structure for all sections in parallel"""
-    print("Generating HTML structures in parallel...")
-    
-    updated_state = generate_all_section_html(
-        state,
-        concurrency=state.config.html_concurrency,
-        max_retries=state.config.max_retries
-    )
-    
-    print("All HTML structures generated successfully!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("html", updated_state)
-    
-    return updated_state
-
-
-def generate_images_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate images for all HTML blocks using configured image search provider"""
-    print(f"Generating images for HTML blocks using {state.config.image_search_provider}...")
-    if state.config.use_vision_ranking:
-        print(f"   Vision ranking enabled: fetching {state.config.num_images_to_fetch} images, ranking with {state.config.vision_llm_provider}")
-    else:
-        print("   Vision ranking disabled: picking first image result")
-    
-    updated_state = generate_all_section_images(
-        state,
-        max_retries=state.config.max_retries,
-        use_vision_ranking=state.config.use_vision_ranking,
-        num_images_to_fetch=state.config.num_images_to_fetch,
-        vision_provider=state.config.vision_llm_provider,
-    )
-    
-    print("All images generated successfully!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("images", updated_state)
-    
-    return updated_state
-
-
-def generate_bibliography_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
-    """Generate book bibliography for the course (optional, controlled by config)"""
-    if not state.config.generate_bibliography:
-        print("📚 Bibliography generation disabled, skipping...")
-        return state
-    
-    print("📚 Generating course bibliography...")
-    
-    bibliography = generate_course_bibliography(state)
-    state.bibliography = bibliography
-    
-    print("Bibliography generation completed!")
-    
-    # Save step snapshot if OutputManager is available
-    output_mgr = _get_output_manager(config)
-    if output_mgr:
-        output_mgr.save_step("bibliography", state)
-    
-    return state
-
-
-# Build the graph
 def build_course_generation_graph():
-    """Build and return the course generation graph"""
+    """Build and return the course generation graph."""
     graph = StateGraph(CourseState)
     
     # Add nodes for complete course generation pipeline
@@ -234,7 +42,10 @@ def build_course_generation_graph():
     graph.add_node("calculate_metadata", calculate_metadata_node)
     graph.add_node("generate_html", generate_html_node)
     graph.add_node("generate_images", generate_images_node)
+    graph.add_node("generate_videos", generate_videos_node)
     graph.add_node("generate_bibliography", generate_bibliography_node)
+    graph.add_node("generate_people", generate_people_node)
+    graph.add_node("generate_mindmap", generate_mindmap_node)
     
     # Add edges for sequential execution
     graph.add_edge(START, "generate_index")
@@ -243,8 +54,11 @@ def build_course_generation_graph():
     graph.add_edge("generate_activities", "calculate_metadata")
     graph.add_edge("calculate_metadata", "generate_html")
     graph.add_edge("generate_html", "generate_images")
-    graph.add_edge("generate_images", "generate_bibliography")
-    graph.add_edge("generate_bibliography", END)
+    graph.add_edge("generate_images", "generate_videos")
+    graph.add_edge("generate_videos", "generate_bibliography")
+    graph.add_edge("generate_bibliography", "generate_people")
+    graph.add_edge("generate_people", "generate_mindmap")
+    graph.add_edge("generate_mindmap", END)
     
     return graph.compile()
 
@@ -277,28 +91,41 @@ if __name__ == "__main__":
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Research configuration
         enable_research=True,  # Enable research phase before index generation
-        research_max_queries= 7,  # Number of search queries to generate
+        research_max_queries=7,  # Number of search queries to generate
         research_max_results_per_query=5,  # Results per search query
         # Activities configuration
         activities_concurrency=30,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
-        num_activities_per_section=1,  # Number of quiz activities (+ multiple_choice + multi_selection)
+        sections_per_activity=1,  # Generate activities every N sections within each submodule (1 = every section)
         # HTML configuration
         html_concurrency=15,  # Number of concurrent HTML generations
         select_html="LLM",  # "LLM" | "random"
-        html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list of available formats
+        html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list
         html_random_seed=42,  # Seed for deterministic random selection
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing",  # Image search provider: bing | freepik | ddg | google
+        image_search_provider="freepik",  # Image search provider: bing | freepik | ddg | google
         use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
         image_concurrency=10,  # Number of image blocks to process in parallel
-        imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel for image scoring
-        vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking calls
+        imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel
+        vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking
         target_audience=None,  # Target audience: None | "kids" | "general" | "advanced"
+        # Video generation configuration
+        generate_videos=True,  # Enable video recommendations
+        videos_per_module=3,   # Number of videos per module
+        # Bibliography generation configuration
+        generate_bibliography=True,  # Enable book bibliography
+        bibliography_books_per_module=5,  # Number of books per module
+        bibliography_articles_per_module=5,  # Number of articles per module
+        # People generation configuration
+        generate_people=True,  # Enable relevant people
+        people_per_module=3,   # Number of people per module
+        # Mind map generation configuration
+        generate_mindmap=True,  # Enable mind map generation
+        mindmap_max_nodes=20,   # Maximum nodes per mind map
     )
     
     initial_state = CourseState(
