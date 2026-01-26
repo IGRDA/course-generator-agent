@@ -82,6 +82,8 @@ Before outputting, verify that your activities:
 ✓ Are written entirely in the target language
 ✓ Test genuine understanding, not trivia or tricks
 ✓ Quote is from an identifiable, real person or entity
+✓ Glossary uses plain text only - NO markdown (no *, **, _, ~)
+✓ Final activities (application): plain prose only - NO markdown, NO HTML, NO lists
 """
 
 # ============================================================================
@@ -126,10 +128,12 @@ REQUIRED OUTPUTS
    - Extract 1 to 4 key terms that are essential for understanding this content
    - Each term must have a clear, concise explanation
    - Use terms that appear in the theory and are important for comprehension
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 2. KEY CONCEPT (one sentence):
    - Provide a single sentence that captures the main idea of this section
    - This should be the most important takeaway for learners
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 3. INTERESTING FACT:
    - Provide an interesting, relevant fact related to the section content
@@ -146,6 +150,8 @@ REQUIRED OUTPUTS
 5. ACTIVITIES:
    You must generate activities of these types: {activity_types}
    
+   IMPORTANT: Use plain text only in ALL activity content - NO markdown formatting (no *, **, _, ~, or other markup).
+   
    Activity Format Specifications:
    
    - **order_list**: Sequence ordering activity
@@ -156,6 +162,9 @@ REQUIRED OUTPUTS
    - **fill_gaps**: Gap-fill completion activity
      Format: {{"question": "Text with *gap* placeholders", "solution": ["word1", "word2", ...]}}
      Requirements: Number of *gap* must equal number of solutions, at least 2 blanks
+     CRITICAL: Do NOT use asterisks (*) for any other purpose in the question text. 
+     The ONLY asterisks should be around the word "gap" to mark blanks (e.g., "The formula is E = *gap*").
+     Write variables and symbols in plain text without any formatting (e.g., "E_c", "hν", "φ").
    
    - **swipper**: True/false categorization activity
      Format: {{"question": "Context or instruction", "solution": {{"true": ["stmt1", ...], "false": ["stmt2", ...]}}}}
@@ -173,7 +182,7 @@ REQUIRED OUTPUTS
      Format: {{"question": "...", "solution": ["correct1", "correct2"], "other_options": ["wrong1", "wrong2"]}}
      Requirements: No overlap between solution and other_options, at least 4 total options
 
-6. FINAL ACTIVITIES:
+6. FINAL ACTIVITIES (PROFUNDIZACIÓN):
    Generate activities of these types: {final_activity_types}
    
    - **group_activity**: Collaborative task for teams to work together
@@ -183,6 +192,7 @@ REQUIRED OUTPUTS
    
    Format: {{"question": "Task or question description"}}
    Requirements: Should encourage critical thinking and application of knowledge
+   IMPORTANT: Write as flowing prose. NO markdown (**, *), NO HTML tags (<b>, <i>), NO numbered/lettered lists (1., a., -).
 
 {format_instructions}
 
@@ -212,6 +222,7 @@ Before outputting, verify that:
 ✓ Interesting fact is accurate and verifiable
 ✓ Quote is from an identifiable, real person or entity
 ✓ All content is written in the target language
+✓ Glossary and key concept use PLAIN TEXT ONLY - NO markdown (no *, **, _, ~)
 """
 
 meta_only_prompt = ChatPromptTemplate.from_messages([
@@ -248,10 +259,12 @@ REQUIRED OUTPUTS
    - Extract 1 to 4 key terms that are essential for understanding this content
    - Each term must have a clear, concise explanation
    - Use terms that appear in the theory and are important for comprehension
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 2. KEY CONCEPT (one sentence):
    - Provide a single sentence that captures the main idea of this section
    - This should be the most important takeaway for learners
+   - Use plain text only - NO markdown formatting (no *, **, _, ~, or other markup)
 
 3. INTERESTING FACT:
    - Provide an interesting, relevant fact related to the section content
@@ -303,4 +316,5 @@ Checklist for correction:
 7. Verify no overlap between solution and other_options for multi_selection
 8. Ensure quote is from an identifiable, real person or entity
 9. Avoid LaTeX notation - use plain text or Unicode symbols instead
+10. Final activities: plain prose only - NO markdown, NO HTML, NO numbered/lettered lists
 """)
