@@ -264,7 +264,7 @@ def generate_module_podcast(
         music_path = project_root / "tools" / "podcast" / "background_music.mp3"
         
         if tts_engine == "edge":
-            from tools.podcast.tts_engine import generate_podcast_edge
+            from tools.podcast import generate_podcast_edge
             
             generate_podcast_edge(
                 conversation=conversation,
@@ -283,7 +283,7 @@ def generate_module_podcast(
                 outro_fade_ms=5000,
             )
         else:
-            from tools.podcast.tts_engine import generate_podcast
+            from tools.podcast import generate_podcast
             
             generate_podcast(
                 conversation=conversation,
