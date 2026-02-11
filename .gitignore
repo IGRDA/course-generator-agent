@@ -229,3 +229,6 @@ migration/
 # Example courses
 curso_*/
 
+# Large audio (use mp3 or LFS if needed)
+*.wav
+
