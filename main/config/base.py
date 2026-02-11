@@ -108,6 +108,14 @@ class CourseConfig(BaseModel):
         default=5,
         description="Number of verification queries to generate during reflection"
     )
+    theory_only: bool = Field(
+        default=False,
+        description="If True, no web search (research and reflection off); content from theory only.",
+    )
+    max_theory_chars_for_llm: int = Field(
+        default=500_000,
+        description="Max characters of section theory to send to LLM (avoids context length errors; ~70k tokens at 4 chars/token). Truncated text gets a suffix.",
+    )
     
     # ---- Nested Configurations ----
     research: ResearchConfig = Field(default_factory=ResearchConfig)
@@ -160,6 +168,18 @@ class CourseConfig(BaseModel):
             else:
                 data[nested_name] = updates
         
+        # When theory_only=True, force no web search (research and reflection off)
+        if data.get("theory_only") is True:
+            if "research" not in data or isinstance(data["research"], dict):
+                research = data.get("research") or {}
+                if isinstance(research, dict):
+                    research = {**research, "enabled": False}
+                else:
+                    research = {"enabled": False}
+                data["research"] = research
+            elif hasattr(data["research"], "model_dump"):
+                data["research"] = {**data["research"].model_dump(), "enabled": False}
+            data["use_reflection"] = False
         return data
     
     # ========================================================================

@@ -13,6 +13,7 @@ Generates a complete course from a PDF syllabus using:
 9. Relevant people generation (optional)
 """
 
+import argparse
 from langgraph.graph import StateGraph, START, END
 
 from main.state import CourseState, CourseConfig
@@ -64,13 +65,27 @@ def build_course_generation_graph_from_pdf():
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate course from PDF syllabus")
+    parser.add_argument(
+        "--theory-only",
+        action="store_true",
+        help="No web search; content from theory only (research and reflection disabled).",
+    )
+    parser.add_argument(
+        "--pdf",
+        default="example_pdfs/coaching_y_orientacion.pdf",
+        help="Path to PDF syllabus (default: example_pdfs/coaching_y_orientacion.pdf)",
+    )
+    args = parser.parse_args()
+
     # Build the graph
     app = build_course_generation_graph_from_pdf()
     
     # Create initial CourseState with config and PDF path
     # Note: title will be extracted from the PDF
     config = CourseConfig(
-        pdf_syllabus_path="example_pdfs/coaching_y_orientacion.pdf",  # Path to your PDF syllabus
+        pdf_syllabus_path=args.pdf,
+        theory_only=args.theory_only,
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai | deepseek
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=200,  # Total pages for the course
@@ -95,7 +110,7 @@ if __name__ == "__main__":
         include_quotes_in_html=True,  # Include quote elements
         include_tables_in_html=True,  # Include table elements
         # Image generation configuration
-        image_search_provider="bing",  # Image search provider
+        image_search_provider="freepik",  # Image search provider
         use_vision_ranking=False,  # Use vision LLM to rank images
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider

@@ -156,7 +156,7 @@ Examples:
         research_max_queries=5,
         research_max_results_per_query=5,
         # Image configuration
-        image_search_provider="bing",
+        image_search_provider="freepik",
         use_vision_ranking=args.vision_ranking,
         num_images_to_fetch=8,
         vision_llm_provider="pixtral",

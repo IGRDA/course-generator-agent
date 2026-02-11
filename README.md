@@ -131,6 +131,20 @@ python3 -m main.workflow_pdf2podcast example_pdfs/coaching_y_orientacion.pdf \
     --language "Español"
 ```
 
+### Generate Course from Markdown
+
+Build a course from an index file and a directory of markdown files (one `.md` per section). Theory is taken verbatim from the files; the pipeline adds activities, HTML, images, etc.
+
+```bash
+# Full course
+python3 -m main.workflow_md
+
+# Quick test: full index + theory, but run activities/HTML only on first module
+python3 -m main.workflow_md --max-modules 1
+```
+
+Full content (titles, descriptions, theory, **html**, **activities**) requires the pipeline to run through the activities and HTML nodes. If the run is interrupted before then, outputs will have `theory` but may have null `html`/`activities`, which can look like "only titles" in viewers that render from `html`.
+
 ## 🛠️ Post-Processing Tools
 
 ### Generate PDF Book
@@ -202,7 +216,7 @@ Key configuration parameters in `CourseConfig`:
 |-----------|-------------|---------|
 | `text_llm_provider` | LLM provider: `mistral`, `gemini`, `groq`, `openai`, `deepseek` | `mistral` |
 | `web_search_provider` | Search: `ddg`, `tavily`, `wikipedia` | `ddg` |
-| `image_search_provider` | Images: `bing`, `freepik`, `ddg`, `google` | `bing` |
+| `image_search_provider` | Images: `bing`, `freepik`, `ddg`, `google` | `freepik` |
 | `total_pages` | Target course length in pages | `2` |
 | `words_per_page` | Words per page target | `400` |
 | `language` | Output language | `Español` |
@@ -246,8 +260,9 @@ course-generator-agent/
 ├── main/                      # Workflow orchestration
 │   ├── workflow.py            # Topic-based generation
 │   ├── workflow_pdf.py        # PDF-based generation
+│   ├── workflow_md.py         # Markdown index + .md files (theory from files)
 │   ├── workflow_podcast.py    # Podcast-focused pipeline
-│   └── workflow_pdf2podcast.py# PDF to podcast pipeline
+│   └── workflow_pdf2podcast.py # PDF to podcast pipeline
 ├── tools/                     # External integrations
 │   ├── websearch/             # DDG, Tavily, Wikipedia
 │   ├── imagesearch/           # Bing, DDG, Freepik, Google

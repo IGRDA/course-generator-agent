@@ -73,28 +73,37 @@ class OutputManager:
         
         return run_folder
     
-    def save_step(self, step_name: str, state: CourseState) -> str:
+    def save_step(
+        self, step_name: str, state: CourseState, update_canonical_outputs: bool = True
+    ) -> str:
         """
         Save a state snapshot after a workflow step.
-        
+        Also updates course.json, course.html, and module_*.json so partial runs
+        produce the expected outputs even if a later step fails.
+
         Args:
             step_name: Name of the step (must be one of STEP_NAMES keys)
             state: The CourseState to save
-            
+            update_canonical_outputs: If True (default), also write course.json,
+                course.html, and module_*.json from this state.
+
         Returns:
             Path to the saved step file
         """
         if step_name not in self.STEP_NAMES:
             raise ValueError(f"Unknown step name: {step_name}. Must be one of {list(self.STEP_NAMES.keys())}")
-        
+
         step_num = self.STEP_NAMES[step_name]
         filename = f"{step_num:02d}_{step_name}.json"
         step_path = os.path.join(self.steps_folder, filename)
-        
+
         with open(step_path, 'w', encoding='utf-8') as f:
             f.write(state.model_dump_json(indent=2, by_alias=True))
-        
+
         print(f"   💾 Step saved: steps/{filename}")
+        if update_canonical_outputs:
+            self.save_final(state)
+            self.save_modules(state)
         return step_path
     
     def save_modules(self, state: CourseState) -> list[str]:

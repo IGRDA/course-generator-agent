@@ -225,3 +225,7 @@ stract_module.py
 
 # Migration
 migration/
+
+# Example courses
+curso_*/
+

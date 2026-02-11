@@ -69,6 +69,11 @@ if __name__ == "__main__":
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Generate a course")
     parser.add_argument("--total-pages", type=int, default=2, help="Total pages for the course (default: 2)")
+    parser.add_argument(
+        "--theory-only",
+        action="store_true",
+        help="No web search; content from theory only (research and reflection disabled).",
+    )
     args = parser.parse_args()
     
     # Ensure you have set: export MISTRAL_API_KEY=your_key
@@ -79,6 +84,7 @@ if __name__ == "__main__":
     # Create initial CourseState with config and minimal content
     course_config = CourseConfig(
         title="Quantum Theory",
+        theory_only=args.theory_only,
         text_llm_provider="mistral",  # LLM provider: mistral | gemini | groq | openai | deepseek
         web_search_provider="ddg",  # Web search provider: ddg | tavily | wikipedia
         total_pages=args.total_pages,  # Total pages for the course

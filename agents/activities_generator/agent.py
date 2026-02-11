@@ -128,6 +128,9 @@ class ActivitiesProcessor(SectionProcessor):
         # Get task-specific data
         section_title = task.extra_data["section_title"]
         theory = task.extra_data["theory"]
+        max_chars = getattr(task.config, "max_theory_chars_for_llm", 10_000_000)
+        if len(theory) > max_chars:
+            theory = theory[:max_chars] + "\n\n[... text truncated for length ...]"
         should_generate_activities = task.extra_data["should_generate_activities"]
         activity_types = task.extra_data["activity_types"]
         final_activity_types = task.extra_data["final_activity_types"]
