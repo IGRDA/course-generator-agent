@@ -48,15 +48,16 @@ LANGUAGE_MAP = {
 
 
 def convert_pdf_to_markdown(
-    pdf_path: str | Path, 
+    pdf_path: str | Path,
     return_string: bool = False,
+    output_dir: str | Path | None = None,
     ocr_engine: str = "auto",  # Auto-detect best engine for platform
     language: str = "es",
     images_scale: float = 2.0,
     extract_tables: bool = True,
     table_mode: str = "accurate",
     force_ocr: bool = True,
-    table_text_handling: str = "hybrid"
+    table_text_handling: str = "hybrid",
 ):
     """
     Convert PDF to Markdown with configurable OCR and extraction options.
@@ -67,6 +68,8 @@ def convert_pdf_to_markdown(
     Args:
         pdf_path: Path to the PDF file
         return_string: If True, return markdown as string; if False, save to file and return path
+        output_dir: Optional directory for the output markdown file. If None, uses
+                    output/docling/{doc_name}/ under the current working directory.
         ocr_engine: OCR engine to use. Options:
                     - 'ocrmac': macOS native OCR (fastest on Mac, default)
                     - 'easyocr': Deep learning based (high accuracy, slower)
@@ -99,6 +102,9 @@ def convert_pdf_to_markdown(
         
         # Trust PDF's embedded text (no OCR)
         >>> md = convert_pdf_to_markdown("document.pdf", force_ocr=False)
+        
+        # Write to a custom directory
+        >>> path = convert_pdf_to_markdown("document.pdf", output_dir="course/md_course")
     """
     # Setup paths
     pdf_path = Path(pdf_path).resolve()
@@ -108,9 +114,12 @@ def convert_pdf_to_markdown(
 
     # Extract document name from path
     doc_name = pdf_path.stem
-    
-    # Create output folders: OUTPUT/docling/doc_name
-    output_base = Path.cwd() / "output" / "docling" / doc_name
+
+    # Output directory: custom if provided, else default
+    if output_dir is not None:
+        output_base = Path(output_dir).resolve()
+    else:
+        output_base = Path.cwd() / "output" / "docling" / doc_name
     output_base.mkdir(parents=True, exist_ok=True)
     
     logger.info(f"Processing: {pdf_path}")

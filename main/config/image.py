@@ -7,7 +7,7 @@ class ImageConfig(BaseModel):
     """Configuration for image search and generation."""
     
     search_provider: str = Field(
-        default="bing",
+        default="freepik",
         description="Image search provider (bing | freepik | ddg | google)"
     )
     use_vision_ranking: bool = Field(

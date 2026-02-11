@@ -471,6 +471,139 @@ def generate_podcast_edge(
     return output_path
 
 
+def generate_podcast_chatterbox(
+    conversation: list[dict],
+    output_path: str,
+    language: str = "es",
+    speaker_map: Optional[dict[str, str]] = None,
+    silence_duration_ms: int = 500,
+    device: str = "mps",
+    exaggeration: float = 0.5,
+    cfg_weight: float = 0.5,
+    progress_callback: Optional[callable] = None,
+    # Metadata options
+    title: str = "Module",
+    artist: str = "Adinhub",
+    album: str = "Course",
+    track_number: Optional[int] = None,
+    # Background music options
+    music_path: Optional[str] = None,
+    intro_duration_ms: int = 5000,
+    outro_duration_ms: int = 5000,
+    intro_fade_ms: int = 3000,
+    outro_fade_ms: int = 3000,
+    music_volume_db: int = -6,
+) -> str:
+    """Generate a podcast audio file from a conversation using Chatterbox TTS.
+    
+    Supports voice cloning via speaker_map paths to audio files.
+    
+    Args:
+        conversation: List of dicts with 'role' and 'content' keys
+        output_path: Path to save the output audio file
+        language: Language code (23 languages supported)
+        speaker_map: Mapping of roles to audio file paths for voice cloning
+        silence_duration_ms: Silence duration between messages in milliseconds
+        device: Device to run TTS on (cuda, mps, cpu)
+        exaggeration: Emotion intensity (0.0-1.0), default 0.5
+        cfg_weight: Classifier-free guidance (0.0-1.0), default 0.5
+        progress_callback: Optional callback(current, total) for progress updates
+        title: Podcast title for metadata (default: "Module")
+        artist: Artist name for metadata (default: "Adinhub")
+        album: Album name for metadata (default: "Course")
+        track_number: Optional track number for metadata
+        music_path: Path to background music file (None to skip music)
+        intro_duration_ms: Duration of intro music in ms (default: 5000)
+        outro_duration_ms: Duration of outro music in ms (default: 5000)
+        intro_fade_ms: Fade-in duration for intro in ms (default: 3000)
+        outro_fade_ms: Fade-out duration for outro in ms (default: 3000)
+        music_volume_db: Volume adjustment for music in dB (default: -6)
+        
+    Returns:
+        Path to the generated audio file
+        
+    Example:
+        >>> conversation = [
+        ...     {"role": "host", "content": "Bienvenidos al podcast!"},
+        ...     {"role": "guest", "content": "Gracias por invitarme."},
+        ... ]
+        >>> speaker_map = {
+        ...     "host": "path/to/male_voice.wav",
+        ...     "guest": "path/to/female_voice.wav",
+        ... }
+        >>> generate_podcast_chatterbox(conversation, "podcast.mp3", speaker_map=speaker_map)
+        'podcast.mp3'
+    """
+    from .audio_utils import add_metadata, add_background_music
+    from .chatterbox_engine import ChatterboxEngine
+    from .models import Conversation as ConvModel
+    
+    # Convert dict list to Conversation object
+    conv = ConvModel.from_dicts(conversation)
+    
+    # Create engine with voice cloning support
+    engine = ChatterboxEngine(
+        language=language,
+        speaker_map=speaker_map,
+        device=device,
+        exaggeration=exaggeration,
+        cfg_weight=cfg_weight,
+    )
+    
+    # Determine if we need a temp file for voice (when adding music)
+    if music_path:
+        # Generate voice to temp file, then add music
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_voice:
+            temp_voice_path = temp_voice.name
+        
+        try:
+            # Synthesize voice to temp file
+            engine.synthesize_conversation(
+                conversation=conv,
+                output_path=temp_voice_path,
+                language_code=language,
+                silence_duration_ms=silence_duration_ms,
+                progress_callback=progress_callback,
+            )
+            
+            # Add background music
+            add_background_music(
+                voice_path=temp_voice_path,
+                music_path=music_path,
+                output_path=output_path,
+                intro_duration_ms=intro_duration_ms,
+                outro_duration_ms=outro_duration_ms,
+                intro_fade_ms=intro_fade_ms,
+                outro_fade_ms=outro_fade_ms,
+                music_volume_db=music_volume_db,
+            )
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_voice_path):
+                os.unlink(temp_voice_path)
+    else:
+        # No music, generate directly to output
+        engine.synthesize_conversation(
+            conversation=conv,
+            output_path=output_path,
+            language_code=language,
+            silence_duration_ms=silence_duration_ms,
+            progress_callback=progress_callback,
+        )
+    
+    # Add metadata if output is MP3
+    if output_path.lower().endswith(".mp3"):
+        add_metadata(
+            file_path=output_path,
+            title=title,
+            artist=artist,
+            album=album,
+            track_number=track_number,
+        )
+    
+    return output_path
+
+
 def list_available_languages() -> list[str]:
     """Get list of available language codes for Coqui TTS."""
     return list(LANGUAGE_CONFIGS.keys())

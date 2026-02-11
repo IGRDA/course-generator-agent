@@ -10,7 +10,7 @@ from .base_engine import BaseTTSEngine
 
 
 # Available engine types
-EngineType = Literal["edge", "coqui"]
+EngineType = Literal["edge", "coqui", "chatterbox"]
 
 
 def create_tts_engine(
@@ -44,20 +44,29 @@ def create_tts_engine(
         False
     """
     if engine == "edge":
-        from .edge_engine import EdgeTTSEngine
+        from .edge.client import EdgeTTSEngine
         return EdgeTTSEngine(
             language=language,
             speaker_map=speaker_map,
         )
     elif engine == "coqui":
-        from .tts_engine import CoquiTTSEngine
+        from .coqui.client import CoquiTTSEngine
         return CoquiTTSEngine(
             language=language,
             speaker_map=speaker_map,
             device=kwargs.get("device", "cpu"),
         )
+    elif engine == "chatterbox":
+        from .chatterbox.client import ChatterboxEngine
+        return ChatterboxEngine(
+            language=language,
+            speaker_map=speaker_map,
+            device=kwargs.get("device", "cuda"),
+            exaggeration=kwargs.get("exaggeration", 0.5),
+            cfg_weight=kwargs.get("cfg_weight", 0.5),
+        )
     else:
-        available = ["edge", "coqui"]
+        available = ["edge", "coqui", "chatterbox"]
         raise ValueError(f"Unknown engine '{engine}'. Available: {available}")
 
 
@@ -83,6 +92,16 @@ def get_engine_info(engine: EngineType) -> dict:
             "requires_internet": False,
             "languages": ["en", "es", "multilingual"],
         },
+        "chatterbox": {
+            "name": "Chatterbox TTS",
+            "description": "Resemble AI's zero-shot TTS with voice cloning - 23 languages",
+            "requires_internet": False,
+            "languages": [
+                "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi",
+                "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv",
+                "sw", "tr", "zh",
+            ],
+        },
     }
     
     if engine not in info:
@@ -100,5 +119,6 @@ def list_engines() -> list[dict]:
     return [
         {"engine": "edge", **get_engine_info("edge")},
         {"engine": "coqui", **get_engine_info("coqui")},
+        {"engine": "chatterbox", **get_engine_info("chatterbox")},
     ]
 

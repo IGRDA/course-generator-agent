@@ -134,6 +134,9 @@ class HtmlProcessor(SectionProcessor):
         """Generate HTML structure for a single section."""
         # Extract task data
         theory = task.extra_data["theory"]
+        max_chars = getattr(task.course_state.config, "max_theory_chars_for_llm", 1_000_000)
+        if len(theory) > max_chars:
+            theory = theory[:max_chars] + "\n\n[... text truncated for length ...]"
         section_title = task.extra_data["section_title"]
         include_quotes = task.extra_data["include_quotes"]
         include_tables = task.extra_data["include_tables"]

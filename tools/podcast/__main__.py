@@ -88,8 +88,8 @@ Examples:
         "--engine", "-e",
         type=str,
         default="edge",
-        choices=["edge", "coqui"],
-        help="TTS engine to use. 'edge' (default) is fast and online, 'coqui' works offline."
+        choices=["edge", "coqui", "chatterbox"],
+        help="TTS engine to use. 'edge' (default) is fast and online, 'coqui' works offline, 'chatterbox' for zero-shot TTS."
     )
     
     parser.add_argument(
@@ -117,8 +117,8 @@ Examples:
         "--device", "-d",
         type=str,
         default="cpu",
-        choices=["cpu", "cuda"],
-        help="Device for Coqui TTS (default: cpu). Ignored for Edge TTS."
+        choices=["cpu", "cuda", "mps"],
+        help="Device for Coqui/Chatterbox TTS (default: cpu). Ignored for Edge TTS."
     )
     
     parser.add_argument(
@@ -257,7 +257,7 @@ def main():
     # Handle list voices command
     if args.list_voices:
         if args.engine == "edge":
-            from .edge_engine import EdgeTTSEngine, EDGE_VOICE_MAP
+            from .edge import EdgeTTSEngine, EDGE_VOICE_MAP
             voices = EdgeTTSEngine.list_available_voices(args.list_voices)
             default_map = EDGE_VOICE_MAP.get(args.list_voices, {})
             print(f"Available Edge TTS voices for '{args.list_voices}':")
@@ -268,8 +268,8 @@ def main():
                 elif default_map.get("guest") == voice:
                     role = " (default guest)"
                 print(f"  - {voice}{role}")
-        else:
-            from .tts_engine import list_speakers
+        elif args.engine == "coqui":
+            from .coqui import list_speakers
             from .models import get_language_config
             try:
                 speakers = list_speakers(args.list_voices)
@@ -277,6 +277,16 @@ def main():
                 print(f"Available Coqui speakers for '{args.list_voices}' ({config.model_name}):")
                 for speaker in speakers:
                     print(f"  - {speaker}")
+            except ValueError as e:
+                print(f"Error: {e}", file=sys.stderr)
+                return 1
+        else:
+            from .chatterbox import ChatterboxEngine
+            try:
+                voices = ChatterboxEngine.list_available_voices(args.list_voices)
+                print(f"Available Chatterbox voices for '{args.list_voices}':")
+                for voice in voices:
+                    print(f"  - {voice}")
             except ValueError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 return 1
@@ -292,7 +302,9 @@ def main():
         return 0
     
     # Import generation functions
-    from .tts_engine import generate_podcast, generate_podcast_edge
+    from .edge import generate_podcast_edge
+    from .coqui import generate_podcast
+    from .chatterbox import generate_podcast_chatterbox
     from .audio_utils import get_default_music_path
     
     # Select sample conversation based on language
@@ -322,14 +334,15 @@ def main():
                 return 1
     
     # Print configuration
-    engine_name = "Edge TTS" if args.engine == "edge" else "Coqui TTS"
+    engine_names = {"edge": "Edge TTS", "coqui": "Coqui TTS", "chatterbox": "Chatterbox TTS"}
+    engine_name = engine_names.get(args.engine, args.engine)
     print(f"🎙️  Podcast TTS Generator")
     print(f"   Engine: {engine_name}")
     print(f"   Language: {args.language}")
     if args.engine == "coqui" and args.language_code:
         print(f"   Language code: {args.language_code}")
     print(f"   Output: {args.output}")
-    if args.engine == "coqui":
+    if args.engine in ("coqui", "chatterbox"):
         print(f"   Device: {args.device}")
     print(f"   Messages: {len(conversation)}")
     print(f"   Metadata: {args.title} by {args.artist} ({args.album})")
@@ -350,6 +363,28 @@ def main():
                 language=args.language,
                 speaker_map=speaker_map,
                 silence_duration_ms=args.silence,
+                progress_callback=progress_callback,
+                # Metadata
+                title=args.title,
+                artist=args.artist,
+                album=args.album,
+                track_number=args.track_number,
+                # Background music
+                music_path=music_path,
+                intro_duration_ms=args.intro_duration,
+                outro_duration_ms=args.outro_duration,
+                intro_fade_ms=args.intro_fade,
+                outro_fade_ms=args.outro_fade,
+                music_volume_db=args.music_volume,
+            )
+        elif args.engine == "chatterbox":
+            output_path = generate_podcast_chatterbox(
+                conversation=conversation,
+                output_path=args.output,
+                language=args.language,
+                speaker_map=speaker_map,
+                silence_duration_ms=args.silence,
+                device=args.device,
                 progress_callback=progress_callback,
                 # Metadata
                 title=args.title,

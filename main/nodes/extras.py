@@ -230,7 +230,7 @@ def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] 
         print(f"   🔊 Synthesizing audio with {tts_engine.upper()} TTS...")
         
         if tts_engine == "edge":
-            from tools.podcast.tts_engine import generate_podcast_edge
+            from tools.podcast import generate_podcast_edge
             
             generate_podcast_edge(
                 conversation=conversation,
@@ -248,7 +248,7 @@ def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] 
                 outro_fade_ms=5000,
             )
         else:
-            from tools.podcast.tts_engine import generate_podcast
+            from tools.podcast import generate_podcast
             
             generate_podcast(
                 conversation=conversation,
