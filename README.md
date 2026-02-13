@@ -16,7 +16,9 @@ An AI-powered course generation system that creates comprehensive educational co
 
 ## 📦 Installation
 
-### 1. Clone and Install
+### 1. Clone and Install (Lightweight — Text Generation Only)
+
+The default install includes everything needed for text-based course generation (LangChain, LLM providers, web search, TTS, image search). No heavy ML packages.
 
 ```bash
 git clone <repository-url>
@@ -30,18 +32,41 @@ pip3 install -e .
 playwright install chromium
 ```
 
-### 3. Optional Dependencies
+### 3. Optional Dependency Groups
+
+Heavy packages are split into optional groups to keep the default install lightweight:
 
 ```bash
-# macOS native OCR (Apple Vision framework)
+# PDF to Markdown extraction (docling + easyocr) — adds ~2 GB
+pip3 install -e ".[pdf-extraction]"
+
+# ML / Transformers (torch + torchaudio + transformers) — adds ~2 GB
+pip3 install -e ".[ml]"
+
+# Full install: all heavy optional deps
+pip3 install -e ".[all]"
+
+# macOS native OCR (Apple Vision framework, macOS only)
 pip3 install -e ".[macos-ocr]"
 
 # Evaluation framework
 pip3 install -e ".[evaluation]"
 
-# Coqui TTS (local TTS, conflicts with docling - use separate venv)
+# Coqui TTS (local TTS, conflicts with docling — use separate venv)
 pip3 install -e ".[coqui-tts]"
 ```
+
+**Summary of dependency groups:**
+
+| Group | Packages | Size | Use Case |
+|-------|----------|------|----------|
+| *(default)* | LangChain, pydantic, playwright, edge-tts, etc. | ~500 MB | Text course generation, podcasts |
+| `pdf-extraction` | docling, easyocr | ~2 GB | PDF syllabus → Markdown conversion |
+| `ml` | torch, torchaudio, transformers | ~2 GB | ML inference, Coqui TTS backend |
+| `all` | pdf-extraction + ml | ~4 GB | Full local development |
+| `macos-ocr` | ocrmac | ~50 MB | macOS-only native OCR |
+| `evaluation` | textstat, langdetect, nltk, sentence-transformers | ~500 MB | Course quality evaluation |
+| `coqui-tts` | TTS | ~1 GB | Local TTS (conflicts with docling) |
 
 ### 4. System Dependencies
 
@@ -56,6 +81,25 @@ sudo apt-get install texlive-latex-base texlive-fonts-recommended texlive-latex-
 
 # Windows
 # Install MiKTeX from https://miktex.org/download
+```
+
+### 5. Docker (Lightweight Image)
+
+For containerized deployments that only need text generation (no PDF extraction or ML):
+
+```dockerfile
+RUN git clone <repository-url> /app/course-agent && \
+    pip install --no-cache-dir -e /app/course-agent
+```
+
+This installs only the default lightweight dependencies. To include heavy deps:
+
+```dockerfile
+# With PDF extraction support
+pip install --no-cache-dir -e "/app/course-agent[pdf-extraction]"
+
+# Full install
+pip install --no-cache-dir -e "/app/course-agent[all]"
 ```
 
 ## 🔐 Environment Setup
@@ -130,20 +174,6 @@ python3 -m main.workflow_pdf2podcast example_pdfs/coaching_y_orientacion.pdf \
     --tts-engine edge \
     --language "Español"
 ```
-
-### Generate Course from Markdown
-
-Build a course from an index file and a directory of markdown files (one `.md` per section). Theory is taken verbatim from the files; the pipeline adds activities, HTML, images, etc.
-
-```bash
-# Full course
-python3 -m main.workflow_md
-
-# Quick test: full index + theory, but run activities/HTML only on first module
-python3 -m main.workflow_md --max-modules 1
-```
-
-Full content (titles, descriptions, theory, **html**, **activities**) requires the pipeline to run through the activities and HTML nodes. If the run is interrupted before then, outputs will have `theory` but may have null `html`/`activities`, which can look like "only titles" in viewers that render from `html`.
 
 ## 🛠️ Post-Processing Tools
 
@@ -260,9 +290,8 @@ course-generator-agent/
 ├── main/                      # Workflow orchestration
 │   ├── workflow.py            # Topic-based generation
 │   ├── workflow_pdf.py        # PDF-based generation
-│   ├── workflow_md.py         # Markdown index + .md files (theory from files)
 │   ├── workflow_podcast.py    # Podcast-focused pipeline
-│   └── workflow_pdf2podcast.py # PDF to podcast pipeline
+│   └── workflow_pdf2podcast.py# PDF to podcast pipeline
 ├── tools/                     # External integrations
 │   ├── websearch/             # DDG, Tavily, Wikipedia
 │   ├── imagesearch/           # Bing, DDG, Freepik, Google
