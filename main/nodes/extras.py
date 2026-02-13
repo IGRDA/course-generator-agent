@@ -1,5 +1,9 @@
 """
 Extra nodes for bibliography, video, people, podcast, and PDF book generation.
+
+Agent imports are deferred to the node functions that use them so that
+importing this module does not eagerly pull in every agent and its
+transitive dependencies.
 """
 
 import json
@@ -9,15 +13,6 @@ from typing import Optional
 from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
-from agents.bibliography_generator.agent import generate_course_bibliography
-from agents.video_search.agent import generate_course_videos
-from agents.people_search.agent import generate_course_people
-from agents.mind_map_generator.agent import generate_course_mindmaps
-from agents.podcast_generator.agent import (
-    generate_conversation,
-    get_tts_language,
-    TTSEngineType,
-)
 from .utils import get_output_manager
 
 
@@ -40,6 +35,8 @@ def generate_bibliography_node(state: CourseState, config: Optional[RunnableConf
     
     print("📚 Generating course bibliography...")
     
+    from agents.bibliography_generator.agent import generate_course_bibliography
+
     bibliography = generate_course_bibliography(state)
     state.bibliography = bibliography
     
@@ -73,6 +70,8 @@ def generate_videos_node(state: CourseState, config: Optional[RunnableConfig] = 
     
     print("🎬 Generating video recommendations...")
     
+    from agents.video_search.agent import generate_course_videos
+
     course_videos = generate_course_videos(state)
     state.videos = course_videos
     
@@ -106,6 +105,8 @@ def generate_people_node(state: CourseState, config: Optional[RunnableConfig] = 
     
     print("👥 Generating relevant people...")
     
+    from agents.people_search.agent import generate_course_people
+
     state = generate_course_people(state)
     
     print("People generation completed!")
@@ -138,6 +139,8 @@ def generate_mindmap_node(state: CourseState, config: Optional[RunnableConfig] =
     
     print("🧠 Generating mind maps...")
     
+    from agents.mind_map_generator.agent import generate_course_mindmaps
+
     state = generate_course_mindmaps(state)
     
     print("Mind map generation completed!")
@@ -175,6 +178,8 @@ def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] 
         print("⚠️ Warning: No OutputManager found, skipping podcast generation")
         return state
     
+    from agents.podcast_generator.agent import generate_conversation, get_tts_language, TTSEngineType
+
     # Convert state to course_data dict format expected by podcast generator
     course_data = state.model_dump()
     

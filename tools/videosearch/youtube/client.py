@@ -1,7 +1,10 @@
-"""YouTube video search using yt-dlp for rich metadata extraction."""
+"""YouTube video search using yt-dlp for rich metadata extraction.
+
+yt_dlp is imported lazily inside the search function so that merely
+importing this module does not pull in the heavy yt-dlp package.
+"""
 
 from typing import List
-import yt_dlp
 
 
 def search_videos(query: str, max_results: int = 5) -> List[dict]:
@@ -23,6 +26,8 @@ def search_videos(query: str, max_results: int = 5) -> List[dict]:
         - views: View count
         - likes: Like count
     """
+    import yt_dlp
+
     # yt-dlp options for search
     ydl_opts = {
         'quiet': True,

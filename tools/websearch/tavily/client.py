@@ -1,8 +1,11 @@
-"""Web search using Tavily."""
+"""Web search using Tavily.
+
+langchain_tavily is imported lazily inside the search function so that
+merely importing this module does not pull in that package.
+"""
 
 import os
 import logging
-from langchain_tavily import TavilySearch
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -30,6 +33,8 @@ def web_search(query: str, max_results: int = 5) -> str:
             )
             return "Error: TAVILY_API_KEY environment variable is not set."
         
+        from langchain_tavily import TavilySearch
+
         search_tool = TavilySearch(max_results=max_results, topic="general")
         result = search_tool.invoke({"query": query})
         return result

@@ -14,8 +14,10 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from playwright.sync_api import sync_playwright, Page
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 
 # Default configuration
@@ -396,6 +398,8 @@ def main():
     
     slides_data = []  # List of (image_path, audio_path, duration)
     
+    from playwright.sync_api import sync_playwright
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=args.headless)
         context = browser.new_context(

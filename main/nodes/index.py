@@ -1,13 +1,13 @@
 """
 Index generation nodes for course structure creation.
+
+Agent imports are deferred to the node functions that use them.
 """
 
 from typing import Optional
 from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
-from agents.index_generator.agent import generate_course_state
-from agents.pdf_index_generator.agent import generate_course_state_from_pdf
 from .utils import get_output_manager
 
 
@@ -26,6 +26,8 @@ def generate_index_node(state: CourseState, config: Optional[RunnableConfig] = N
     """
     print("Generating course skeleton...")
     
+    from agents.index_generator.agent import generate_course_state
+
     # Use config from the existing state
     course_config = state.config
     
@@ -85,6 +87,8 @@ def generate_index_from_pdf_node(state: CourseState, config: Optional[RunnableCo
     """
     print("Generating course skeleton from PDF syllabus...")
     
+    from agents.pdf_index_generator.agent import generate_course_state_from_pdf
+
     # Use config from the existing state
     course_config = state.config
     

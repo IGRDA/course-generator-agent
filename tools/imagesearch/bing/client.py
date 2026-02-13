@@ -1,8 +1,9 @@
-"""Bing image search."""
+"""Bing image search.
+
+requests and beautifulsoup4 are imported lazily inside the search function.
+"""
 
 from typing import List
-import requests
-from bs4 import BeautifulSoup
 import json
 import re
 
@@ -51,6 +52,9 @@ def search_images(query: str, max_results: int = 5) -> List[dict]:
         List of image results with URLs and metadata
     """
     try:
+        import requests
+        from bs4 import BeautifulSoup
+
         url = "https://www.bing.com/images/search"
         
         params = {

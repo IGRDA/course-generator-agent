@@ -1,8 +1,10 @@
-"""Wikipedia search using LangChain."""
+"""Wikipedia search using LangChain.
+
+langchain_community is imported lazily inside the search function so that
+merely importing this module does not pull in that heavy package.
+"""
 
 import logging
-from langchain_community.tools import WikipediaQueryRun
-from langchain_community.utilities import WikipediaAPIWrapper
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -20,6 +22,9 @@ def web_search(query: str, max_results: int = 5) -> str:
         String containing Wikipedia search results
     """
     try:
+        from langchain_community.tools import WikipediaQueryRun
+        from langchain_community.utilities import WikipediaAPIWrapper
+
         # Initialize Wikipedia API wrapper with max_results
         wikipedia = WikipediaAPIWrapper(
             top_k_results=max_results,

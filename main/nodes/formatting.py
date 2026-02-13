@@ -1,13 +1,13 @@
 """
 Formatting nodes for HTML structure and image generation.
+
+Agent imports are deferred to the node functions that use them.
 """
 
 from typing import Optional
 from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
-from agents.html_formatter.agent import generate_all_section_html
-from agents.image_search.agent import generate_all_section_images
 from .utils import get_output_manager
 
 
@@ -26,6 +26,8 @@ def generate_html_node(state: CourseState, config: Optional[RunnableConfig] = No
     """
     print("Generating HTML structures in parallel...")
     
+    from agents.html_formatter.agent import generate_all_section_html
+
     updated_state = generate_all_section_html(
         state,
         concurrency=state.config.html_concurrency,
@@ -61,6 +63,8 @@ def generate_images_node(state: CourseState, config: Optional[RunnableConfig] = 
     else:
         print("   Vision ranking disabled: picking first image result")
     
+    from agents.image_search.agent import generate_all_section_images
+
     updated_state = generate_all_section_images(
         state,
         max_retries=state.config.max_retries,

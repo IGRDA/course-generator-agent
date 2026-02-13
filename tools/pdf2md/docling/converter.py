@@ -1,13 +1,11 @@
-from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling.datamodel.pipeline_options import (
-    PdfPipelineOptions,
-    TableFormerMode,
-    EasyOcrOptions,
-    TesseractOcrOptions,
-    OcrMacOptions,
-)
-from docling.datamodel.base_models import InputFormat
-from docling_core.types.doc import ImageRefMode, PictureItem, TableItem
+"""
+PDF to Markdown converter using the Docling library.
+
+All heavy imports (docling, docling_core, easyocr, torch) are deferred
+to function bodies so that importing this module does not pull in ~2 GB
+of transitive dependencies at module-load time.
+"""
+
 import os
 import platform
 from pathlib import Path
@@ -127,6 +125,11 @@ def convert_pdf_to_markdown(
     logger.info(f"OCR Engine: {ocr_engine}, Language: {language}, Force OCR: {force_ocr}")
     logger.info(f"Table extraction: {extract_tables} (mode: {table_mode}, handling: {table_text_handling})")
 
+    # --- Lazy imports of heavy docling dependencies ---
+    from docling.document_converter import DocumentConverter, PdfFormatOption
+    from docling.datamodel.pipeline_options import PdfPipelineOptions, TableFormerMode
+    from docling.datamodel.base_models import InputFormat
+
     # Step 1: Configure pipeline with optimized settings
     pipeline_options = PdfPipelineOptions()
     
@@ -215,6 +218,7 @@ def _get_ocr_options(ocr_engine: str, language: str = "es", force_ocr: bool = Tr
             logger.warning("ocrmac requested but not on macOS - falling back to easyocr")
             return _get_ocr_options("easyocr", language, force_ocr)
         
+        from docling.datamodel.pipeline_options import OcrMacOptions
         lang_codes = LANGUAGE_MAP["ocrmac"].get(language, [f"{language}-{language.upper()}"])
         ocr_options = OcrMacOptions(
             force_full_page_ocr=force_ocr,
@@ -225,6 +229,7 @@ def _get_ocr_options(ocr_engine: str, language: str = "es", force_ocr: bool = Tr
     
     elif ocr_engine == "tesseract":
         # Google's Tesseract OCR - good accuracy, widely supported
+        from docling.datamodel.pipeline_options import TesseractOcrOptions
         lang_codes = LANGUAGE_MAP["tesseract"].get(language, [language])
         ocr_options = TesseractOcrOptions(
             force_full_page_ocr=force_ocr,
@@ -235,6 +240,7 @@ def _get_ocr_options(ocr_engine: str, language: str = "es", force_ocr: bool = Tr
     
     elif ocr_engine == "easyocr":
         # Deep learning based - high accuracy but slower
+        from docling.datamodel.pipeline_options import EasyOcrOptions
         lang_codes = LANGUAGE_MAP["easyocr"].get(language, [language])
         ocr_options = EasyOcrOptions(
             force_full_page_ocr=force_ocr,

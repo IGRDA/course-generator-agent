@@ -1,13 +1,13 @@
 """
 Content generation nodes for theories and activities.
+
+Agent imports are deferred to the node functions that use them.
 """
 
 from typing import Optional
 from langchain_core.runnables import RunnableConfig
 
 from main.state import CourseState
-from agents.section_theory_generator.agent import generate_all_section_theories
-from agents.activities_generator.agent import generate_all_section_activities
 from .utils import get_output_manager
 
 
@@ -26,6 +26,8 @@ def generate_theories_node(state: CourseState, config: Optional[RunnableConfig] 
     """
     print("Generating section theories in parallel...")
     
+    from agents.section_theory_generator.agent import generate_all_section_theories
+
     # Use config settings
     concurrency = state.config.concurrency
     max_retries = state.config.max_retries
@@ -66,6 +68,8 @@ def generate_activities_node(state: CourseState, config: Optional[RunnableConfig
     """
     print("Generating section activities in parallel...")
     
+    from agents.activities_generator.agent import generate_all_section_activities
+
     updated_state = generate_all_section_activities(
         state,
         concurrency=state.config.activities_concurrency,

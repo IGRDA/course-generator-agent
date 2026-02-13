@@ -1,10 +1,11 @@
-"""Video search factory with provider abstraction."""
+"""Video search factory with provider abstraction.
 
-from typing import Callable, Dict, List
+Uses lazy imports so that heavy optional dependencies (yt-dlp, etc.)
+are only loaded when the caller requests a specific provider.
+"""
+
+from typing import Callable, List
 from pydantic import BaseModel, Field
-
-from .youtube.client import search_videos as youtube_search_videos
-from .bing.client import search_videos as bing_search_videos
 
 
 class VideoResult(BaseModel):
@@ -21,15 +22,25 @@ class VideoResult(BaseModel):
 
 VideoSearchFunc = Callable[[str, int], List[dict]]
 
-VIDEO_SEARCH_PROVIDERS: Dict[str, VideoSearchFunc] = {
-    "youtube": youtube_search_videos,  # Primary provider (yt-dlp, full metadata)
-    "bing": bing_search_videos,  # Deprecated: minimal metadata, kept for fallback
-}
+# Provider names registered (no eager imports)
+_PROVIDER_NAMES: list[str] = ["bing", "youtube"]
 
 
 def available_video_search_providers() -> list[str]:
     """Return the list of registered video search providers."""
-    return sorted(VIDEO_SEARCH_PROVIDERS.keys())
+    return sorted(_PROVIDER_NAMES)
+
+
+def _get_search_func(provider: str) -> VideoSearchFunc | None:
+    """Lazily import and return the search function for *provider*."""
+    if provider == "youtube":
+        from .youtube.client import search_videos
+        return search_videos
+    elif provider == "bing":
+        from .bing.client import search_videos
+        return search_videos
+    else:
+        return None
 
 
 def create_video_search(provider: str = "youtube") -> VideoSearchFunc:
@@ -49,11 +60,11 @@ def create_video_search(provider: str = "youtube") -> VideoSearchFunc:
         provider = "youtube"
     
     key = provider.lower()
-    try:
-        return VIDEO_SEARCH_PROVIDERS[key]
-    except KeyError as exc:
+    func = _get_search_func(key)
+    if func is None:
         available = ", ".join(available_video_search_providers())
         raise ValueError(
             f"Unsupported video search provider '{provider}'. "
             f"Available providers: {available}"
-        ) from exc
+        )
+    return func

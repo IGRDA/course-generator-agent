@@ -3,26 +3,37 @@ Factory for creating web search client instances.
 
 This module provides a unified interface for web search across
 different providers (DuckDuckGo, Tavily, Wikipedia).
+
+Uses lazy imports so that provider-specific packages (langchain_community,
+langchain_tavily, etc.) are only loaded when the caller requests them.
 """
 
 from typing import Callable
 
-from .ddg.client import web_search as ddg_web_search
-from .tavily.client import web_search as tavily_web_search
-from .wikipedia.client import web_search as wikipedia_web_search
-
 WebSearchFunc = Callable[[str, int], str]
 
-SEARCH_PROVIDERS: dict[str, WebSearchFunc] = {
-    "ddg": ddg_web_search,
-    "tavily": tavily_web_search,
-    "wikipedia": wikipedia_web_search,
-}
+# Provider names registered (no eager imports)
+_PROVIDER_NAMES: list[str] = ["ddg", "tavily", "wikipedia"]
 
 
 def available_search_providers() -> list[str]:
     """Return the list of registered web search providers."""
-    return sorted(SEARCH_PROVIDERS.keys())
+    return sorted(_PROVIDER_NAMES)
+
+
+def _get_search_func(provider: str) -> WebSearchFunc | None:
+    """Lazily import and return the search function for *provider*."""
+    if provider == "ddg":
+        from .ddg.client import web_search
+        return web_search
+    elif provider == "tavily":
+        from .tavily.client import web_search
+        return web_search
+    elif provider == "wikipedia":
+        from .wikipedia.client import web_search
+        return web_search
+    else:
+        return None
 
 
 def create_web_search(provider: str) -> WebSearchFunc:
@@ -42,11 +53,11 @@ def create_web_search(provider: str) -> WebSearchFunc:
         raise ValueError("Provider is required. Must be one of: ddg, tavily, wikipedia")
     
     key = provider.lower()
-    try:
-        return SEARCH_PROVIDERS[key]
-    except KeyError as exc:
+    func = _get_search_func(key)
+    if func is None:
         available = ", ".join(available_search_providers())
         raise ValueError(
             f"Unsupported web search provider '{provider}'. "
             f"Available providers: {available}"
-        ) from exc
+        )
+    return func

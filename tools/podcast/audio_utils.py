@@ -4,12 +4,13 @@ Audio utilities for podcast generation.
 Provides functionality for:
 - Adding ID3 metadata to MP3 files
 - Adding background music (intro/outro) with fade effects
+
+Heavy dependencies (pydub, mutagen) are imported lazily inside the
+functions that need them.
 """
 
 from pathlib import Path
 from typing import Optional
-
-from pydub import AudioSegment
 
 
 def add_metadata(
@@ -102,6 +103,8 @@ def add_background_music(
     if not music_file.exists():
         raise FileNotFoundError(f"Music file not found: {music_path}")
     
+    from pydub import AudioSegment
+
     # Load audio files
     voice = AudioSegment.from_file(str(voice_file))
     music = AudioSegment.from_file(str(music_file))
