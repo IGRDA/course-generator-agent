@@ -1402,14 +1402,11 @@ import os
 import random
 import threading
 from pathlib import Path
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, TYPE_CHECKING
 from urllib.parse import quote, urlparse, unquote, parse_qs
 
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
-
-# Vision LLM for CAPTCHA solving
-from LLMs.imagetext2text import create_vision_llm
-from langchain_core.messages import HumanMessage
+if TYPE_CHECKING:
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 
 # Storage paths - stored in user's home directory for persistence across runs
 STORAGE_STATE_DIR = Path.home() / ".cache" / "course-generator-agent"
@@ -1548,6 +1545,7 @@ class GoogleClient:
         that persists all state (cookies, localStorage, IndexedDB, cache, history)
         across sessions. This helps avoid repeated CAPTCHA challenges.
         """
+        from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         
         # Ensure profile directory exists
@@ -1792,6 +1790,9 @@ class GoogleClient:
                 
                 # Use Pixtral vision LLM to read the CAPTCHA
                 try:
+                    from LLMs.imagetext2text import create_vision_llm
+                    from langchain_core.messages import HumanMessage
+
                     vision_llm = create_vision_llm(provider="pixtral", temperature=0.0)
                     
                     message = HumanMessage(

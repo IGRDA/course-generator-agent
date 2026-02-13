@@ -3,28 +3,17 @@ Factory for creating text-to-text LLM instances.
 
 This module provides a unified interface for instantiating LLMs from
 different providers (Mistral, Gemini, Groq, OpenAI, DeepSeek).
+
+Uses lazy imports so that provider-specific packages (langchain_mistralai,
+langchain_google_genai, etc.) are only loaded when actually requested.
 """
 
 import os
-from typing import Callable
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from .deepseek.client import build_deepseek_chat_model
-from .gemini.client import build_gemini_chat_model
-from .groq.client import build_groq_chat_model
-from .mistral.client import build_mistral_chat_model
-from .openai.client import build_openai_chat_model
-
-Builder = Callable[..., BaseChatModel]
-
-BUILDERS: dict[str, Builder] = {
-    "deepseek": build_deepseek_chat_model,
-    "gemini": build_gemini_chat_model,
-    "groq": build_groq_chat_model,
-    "mistral": build_mistral_chat_model,
-    "openai": build_openai_chat_model,
-}
+# Registered provider names (no eager imports of provider clients)
+_PROVIDER_NAMES: list[str] = ["deepseek", "gemini", "groq", "mistral", "openai"]
 
 MODEL_ENV_VARS: dict[str, str] = {
     "deepseek": "DEEPSEEK_MODEL_NAME",
@@ -37,7 +26,28 @@ MODEL_ENV_VARS: dict[str, str] = {
 
 def available_text_llms() -> list[str]:
     """Return the list of registered providers."""
-    return sorted(BUILDERS.keys())
+    return sorted(_PROVIDER_NAMES)
+
+
+def _get_builder(provider: str):
+    """Lazily import and return the builder function for *provider*."""
+    if provider == "deepseek":
+        from .deepseek.client import build_deepseek_chat_model
+        return build_deepseek_chat_model
+    elif provider == "gemini":
+        from .gemini.client import build_gemini_chat_model
+        return build_gemini_chat_model
+    elif provider == "groq":
+        from .groq.client import build_groq_chat_model
+        return build_groq_chat_model
+    elif provider == "mistral":
+        from .mistral.client import build_mistral_chat_model
+        return build_mistral_chat_model
+    elif provider == "openai":
+        from .openai.client import build_openai_chat_model
+        return build_openai_chat_model
+    else:
+        return None
 
 
 def create_text_llm(provider: str, **kwargs) -> BaseChatModel:
@@ -60,14 +70,13 @@ def create_text_llm(provider: str, **kwargs) -> BaseChatModel:
         )
 
     key = provider.lower()
-    try:
-        builder = BUILDERS[key]
-    except KeyError as exc:
+    builder = _get_builder(key)
+    if builder is None:
         available = ", ".join(available_text_llms())
         raise ValueError(
             f"Unsupported text LLM provider '{provider}'. "
             f"Available providers: {available}"
-        ) from exc
+        )
 
     return builder(**kwargs)
 

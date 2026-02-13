@@ -1,15 +1,16 @@
+"""
+Factory for creating vision (image+text → text) LLM instances.
+
+Uses lazy imports so that provider-specific packages are only loaded
+when actually requested.
+"""
+
 import os
-from typing import Callable, Dict
 
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from .pixtral.client import build_pixtral_chat_model
-
-Builder = Callable[..., BaseChatModel]
-
-BUILDERS: Dict[str, Builder] = {
-    "pixtral": build_pixtral_chat_model,
-}
+# Registered provider names (no eager imports)
+_PROVIDER_NAMES: list[str] = ["pixtral"]
 
 MODEL_ENV_VARS = {
     "pixtral": "PIXTRAL_MODEL_NAME",
@@ -18,7 +19,16 @@ MODEL_ENV_VARS = {
 
 def available_vision_llms() -> list[str]:
     """Return the list of registered vision LLM providers."""
-    return sorted(BUILDERS.keys())
+    return sorted(_PROVIDER_NAMES)
+
+
+def _get_builder(provider: str):
+    """Lazily import and return the builder function for *provider*."""
+    if provider == "pixtral":
+        from .pixtral.client import build_pixtral_chat_model
+        return build_pixtral_chat_model
+    else:
+        return None
 
 
 def create_vision_llm(provider: str, **kwargs) -> BaseChatModel:
@@ -38,14 +48,13 @@ def create_vision_llm(provider: str, **kwargs) -> BaseChatModel:
         )
 
     key = provider.lower()
-    try:
-        builder = BUILDERS[key]
-    except KeyError as exc:
+    builder = _get_builder(key)
+    if builder is None:
         available = ", ".join(available_vision_llms())
         raise ValueError(
             f"Unsupported vision LLM provider '{provider}'. "
             f"Available providers: {available}"
-        ) from exc
+        )
 
     return builder(**kwargs)
 

@@ -1,9 +1,11 @@
 """
 Web search using DuckDuckGo (region-aware).
+
+langchain_community is imported lazily inside the search function so that
+merely importing this module does not pull in that heavy package.
 """
 
 import logging
-from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
 
 # Configure logger for this module
 logger = logging.getLogger(__name__)
@@ -26,6 +28,8 @@ def web_search(
         String containing search results
     """
     try:
+        from langchain_community.utilities import DuckDuckGoSearchAPIWrapper
+
         search = DuckDuckGoSearchAPIWrapper(
             region=region,
             safesearch="moderate",

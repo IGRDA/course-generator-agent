@@ -14,9 +14,10 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, TYPE_CHECKING
 
-from playwright.sync_api import sync_playwright, Page
+if TYPE_CHECKING:
+    from playwright.sync_api import Page
 
 
 # Default configuration
@@ -428,6 +429,8 @@ def generate_course_video(
     
     slides_data: List[Tuple[str, Optional[str], float]] = []  # List of (image_path, audio_path, duration)
     
+    from playwright.sync_api import sync_playwright
+
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
         context = browser.new_context(

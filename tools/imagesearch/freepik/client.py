@@ -1,12 +1,17 @@
-"""Freepik image search using Playwright with thread-local browser instances for thread-safety."""
+"""Freepik image search using Playwright with thread-local browser instances for thread-safety.
+
+Playwright and playwright_stealth are imported lazily inside the methods
+that use them, so that merely importing this module does not require
+those heavy browser-automation packages.
+"""
 
 import atexit
 import threading
-from typing import List, Optional
+from typing import List, Optional, TYPE_CHECKING
 from urllib.parse import quote
 
-from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
-from playwright_stealth import Stealth
+if TYPE_CHECKING:
+    from playwright.sync_api import Browser, BrowserContext, Page, Playwright
 
 
 class FreepikClient:
@@ -24,10 +29,10 @@ class FreepikClient:
     
     def __init__(self):
         """Initialize the client (use get_instance() instead)."""
-        self._playwright: Optional[Playwright] = None
-        self._browser: Optional[Browser] = None
-        self._context: Optional[BrowserContext] = None
-        self._page: Optional[Page] = None
+        self._playwright: Optional["Playwright"] = None
+        self._browser: Optional["Browser"] = None
+        self._context: Optional["BrowserContext"] = None
+        self._page: Optional["Page"] = None
         self._request_count = 0
         self._max_requests_before_refresh = 100  # Refresh context to avoid memory issues
     
@@ -56,6 +61,7 @@ class FreepikClient:
     
     def _initialize(self) -> None:
         """Initialize Playwright browser with anti-detection settings."""
+        from playwright.sync_api import sync_playwright
         self._playwright = sync_playwright().start()
         
         # Launch browser with anti-detection options
@@ -97,6 +103,7 @@ class FreepikClient:
         self._page = self._context.new_page()
         
         # Apply stealth patches to avoid detection
+        from playwright_stealth import Stealth
         Stealth(navigator_platform_override='MacIntel').apply_stealth_sync(self._page)
         
         # Additional CDP-based anti-detection

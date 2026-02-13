@@ -16,9 +16,11 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-from google import genai
-from google.genai import types
+if TYPE_CHECKING:
+    from google import genai
+    from google.genai import types
 
 
 # Configuration
@@ -134,8 +136,10 @@ def create_jsonl_file(requests: list[dict], output_path: Path) -> Path:
     return output_path
 
 
-def upload_jsonl_file(client: genai.Client, file_path: Path) -> str:
+def upload_jsonl_file(client, file_path: Path) -> str:
     """Upload the JSONL file to the Gemini File API."""
+    from google.genai import types
+
     print(f"📤 Uploading file: {file_path.name}...")
     uploaded_file = client.files.upload(
         file=str(file_path),
@@ -148,7 +152,7 @@ def upload_jsonl_file(client: genai.Client, file_path: Path) -> str:
     return uploaded_file.name
 
 
-def create_batch_job(client: genai.Client, file_name: str, model: str) -> str:
+def create_batch_job(client, file_name: str, model: str) -> str:
     """Create a batch job for image generation."""
     print(f"🚀 Creating batch job with model: {model}...")
     batch_job = client.batches.create(
@@ -162,7 +166,7 @@ def create_batch_job(client: genai.Client, file_name: str, model: str) -> str:
     return batch_job.name
 
 
-def wait_for_completion(client: genai.Client, job_name: str) -> dict:
+def wait_for_completion(client, job_name: str) -> dict:
     """Poll the batch job until it completes."""
     completed_states = {
         "JOB_STATE_SUCCEEDED",
@@ -193,7 +197,7 @@ class GeneratedImage:
 
 
 def extract_images_from_results(
-    client: genai.Client, 
+    client, 
     batch_job: dict
 ) -> dict[str, GeneratedImage]:
     """
@@ -410,6 +414,9 @@ def generate_images_batch(
     print(f"🎨 Generating {len(locations)} images with Gemini Batch API")
     print(f"   Model: {model}")
     
+    # Lazy import of google genai SDK
+    from google import genai
+
     # Initialize client
     client = genai.Client(api_key=api_key)
     

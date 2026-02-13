@@ -3,8 +3,13 @@ Podcast TTS Tool
 
 Generate multi-speaker podcast audio from structured conversations.
 Supports Edge TTS, Coqui TTS (offline), and Chatterbox TTS.
+
+All engine-specific imports are lazy so that heavy optional dependencies
+(pydub, torch, coqui-tts, edge-tts, chatterbox, mutagen) are only
+loaded when the caller actually uses a specific engine or utility.
 """
 
+# Lightweight imports that have no heavy deps
 from .models import (
     Message,
     Conversation,
@@ -13,26 +18,61 @@ from .models import (
     get_language_config,
 )
 from .base_engine import BaseTTSEngine
-from .edge import (
-    EdgeTTSEngine,
-    EDGE_VOICE_MAP,
-    EDGE_VOICES,
-    generate_podcast_edge,
-)
-from .coqui import (
-    TTSEngine,
-    CoquiTTSEngine,
-    generate_podcast,
-    list_available_languages,
-    list_speakers,
-)
-from .chatterbox import ChatterboxEngine, generate_podcast_chatterbox
 from .factory import create_tts_engine, get_engine_info, list_engines, EngineType
-from .audio_utils import (
-    add_metadata,
-    add_background_music,
-    get_default_music_path,
-)
+
+
+def __getattr__(name: str):
+    """Lazy module-level attribute access for heavy engine exports."""
+    # Edge TTS exports
+    if name in ("EdgeTTSEngine", "EDGE_VOICE_MAP", "EDGE_VOICES", "generate_podcast_edge"):
+        from .edge.client import EdgeTTSEngine, EDGE_VOICE_MAP, EDGE_VOICES, generate_podcast_edge
+        _map = {
+            "EdgeTTSEngine": EdgeTTSEngine,
+            "EDGE_VOICE_MAP": EDGE_VOICE_MAP,
+            "EDGE_VOICES": EDGE_VOICES,
+            "generate_podcast_edge": generate_podcast_edge,
+        }
+        return _map[name]
+
+    # Coqui TTS exports
+    if name in ("TTSEngine", "CoquiTTSEngine", "generate_podcast", "list_available_languages", "list_speakers"):
+        from .coqui.client import (
+            CoquiTTSEngine,
+            TTSEngine,
+            generate_podcast,
+            list_available_languages,
+            list_speakers,
+        )
+        _map = {
+            "TTSEngine": TTSEngine,
+            "CoquiTTSEngine": CoquiTTSEngine,
+            "generate_podcast": generate_podcast,
+            "list_available_languages": list_available_languages,
+            "list_speakers": list_speakers,
+        }
+        return _map[name]
+
+    # Chatterbox TTS exports
+    if name in ("ChatterboxEngine", "generate_podcast_chatterbox"):
+        from .chatterbox.client import ChatterboxEngine, generate_podcast_chatterbox
+        _map = {
+            "ChatterboxEngine": ChatterboxEngine,
+            "generate_podcast_chatterbox": generate_podcast_chatterbox,
+        }
+        return _map[name]
+
+    # Audio utility exports
+    if name in ("add_metadata", "add_background_music", "get_default_music_path"):
+        from .audio_utils import add_metadata, add_background_music, get_default_music_path
+        _map = {
+            "add_metadata": add_metadata,
+            "add_background_music": add_background_music,
+            "get_default_music_path": get_default_music_path,
+        }
+        return _map[name]
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # Models

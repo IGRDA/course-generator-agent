@@ -1,15 +1,16 @@
 """
-Coqui TTS Engine for podcast generation.
+Coqui TTS Engine for podcast generation (legacy module).
 
 Provides functionality to synthesize multi-speaker podcast audio from conversations.
+
+Heavy dependencies (pydub, torch, TTS) are imported lazily inside the
+functions/methods that use them.
 """
 
 import os
 import tempfile
 from pathlib import Path
 from typing import Optional
-
-from pydub import AudioSegment
 
 from .base_engine import BaseTTSEngine
 from .models import (
@@ -169,6 +170,8 @@ class CoquiTTSEngine(BaseTTSEngine):
         if len(conversation) == 0:
             raise ValueError("Conversation cannot be empty")
         
+        from pydub import AudioSegment
+
         # Create temporary directory for intermediate files
         with tempfile.TemporaryDirectory(prefix="podcast_tts_") as temp_dir:
             audio_segments = []

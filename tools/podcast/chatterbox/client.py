@@ -12,8 +12,6 @@ import tempfile
 from pathlib import Path
 from typing import Optional
 
-from pydub import AudioSegment
-
 from ..base_engine import BaseTTSEngine
 from ..models import Conversation, Message
 
@@ -240,6 +238,8 @@ class ChatterboxEngine(BaseTTSEngine):
         """
         if len(conversation) == 0:
             raise ValueError("Conversation cannot be empty")
+
+        from pydub import AudioSegment
 
         # Create temporary directory for intermediate files
         with tempfile.TemporaryDirectory(prefix="chatterbox_tts_") as temp_dir:
