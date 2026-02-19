@@ -61,6 +61,16 @@ def __getattr__(name: str):
         }
         return _map[name]
 
+    # ElevenLabs TTS exports
+    if name in ("ElevenLabsTTSEngine", "generate_podcast_elevenlabs", "ELEVENLABS_VOICE_MAP"):
+        from .elevenlabs.client import ELEVENLABS_VOICE_MAP, ElevenLabsTTSEngine, generate_podcast_elevenlabs
+        _map = {
+            "ElevenLabsTTSEngine": ElevenLabsTTSEngine,
+            "generate_podcast_elevenlabs": generate_podcast_elevenlabs,
+            "ELEVENLABS_VOICE_MAP": ELEVENLABS_VOICE_MAP,
+        }
+        return _map[name]
+
     # Audio utility exports
     if name in ("add_metadata", "add_background_music", "get_default_music_path"):
         from .audio_utils import add_metadata, add_background_music, get_default_music_path
@@ -97,6 +107,10 @@ __all__ = [
     # Chatterbox TTS Engine
     "ChatterboxEngine",
     "generate_podcast_chatterbox",
+    # ElevenLabs TTS Engine
+    "ElevenLabsTTSEngine",
+    "generate_podcast_elevenlabs",
+    "ELEVENLABS_VOICE_MAP",
     # Factory
     "create_tts_engine",
     "get_engine_info",

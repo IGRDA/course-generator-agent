@@ -58,6 +58,13 @@ Examples:
         help="Target word count for conversation (default: 600)",
     )
     parser.add_argument(
+        "--tts-engine", "-t",
+        type=str,
+        choices=["edge", "coqui", "elevenlabs", "chatterbox"],
+        default="edge",
+        help="TTS engine to use for audio synthesis (default: edge)",
+    )
+    parser.add_argument(
         "--skip-tts",
         action="store_true",
         help="Only generate conversation JSON, skip audio synthesis",
@@ -85,6 +92,7 @@ Examples:
             provider=args.provider,
             target_words=args.target_words,
             skip_tts=args.skip_tts,
+            tts_engine=args.tts_engine,
         )
         
         # Print summary

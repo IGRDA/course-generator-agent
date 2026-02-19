@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a course with podcasts (no activities, HTML, or images)")
     parser.add_argument("--total-pages", type=int, default=2, help="Total pages for the course (default: 2)")
     parser.add_argument("--target-words", type=int, default=600, help="Target word count per podcast (default: 600)")
-    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui"], default="edge", help="TTS engine (default: edge)")
+    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox"], default="edge", help="TTS engine (default: edge)")
     args = parser.parse_args()
     
     # Build the graph
@@ -82,12 +82,10 @@ if __name__ == "__main__":
         # Podcast configuration
         podcast_target_words=args.target_words,
         podcast_tts_engine=args.tts_engine,
-        # Speaker map differs by TTS engine:
-        # - Edge TTS: 'es-ES-AlvaroNeural', 'es-ES-XimenaNeural'
-        # - Coqui TTS (XTTS): Spanish-sounding speakers for natural Spanish audio
         podcast_speaker_map=(
             {'host': 'Luis Moray', 'guest': 'Alma María'}
             if args.tts_engine == 'coqui'
+            else None if args.tts_engine == 'chatterbox'
             else {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'}
         ),
         target_audience=None,

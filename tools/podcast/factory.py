@@ -10,7 +10,7 @@ from .base_engine import BaseTTSEngine
 
 
 # Available engine types
-EngineType = Literal["edge", "coqui", "chatterbox"]
+EngineType = Literal["edge", "coqui", "chatterbox", "elevenlabs"]
 
 
 def create_tts_engine(
@@ -65,8 +65,16 @@ def create_tts_engine(
             exaggeration=kwargs.get("exaggeration", 0.5),
             cfg_weight=kwargs.get("cfg_weight", 0.5),
         )
+    elif engine == "elevenlabs":
+        from .elevenlabs.client import ElevenLabsTTSEngine
+        return ElevenLabsTTSEngine(
+            language=language,
+            speaker_map=speaker_map,
+            model_id=kwargs.get("model_id", "eleven_multilingual_v2"),
+            api_key=kwargs.get("api_key"),
+        )
     else:
-        available = ["edge", "coqui", "chatterbox"]
+        available = ["edge", "coqui", "chatterbox", "elevenlabs"]
         raise ValueError(f"Unknown engine '{engine}'. Available: {available}")
 
 
@@ -102,6 +110,16 @@ def get_engine_info(engine: EngineType) -> dict:
                 "sw", "tr", "zh",
             ],
         },
+        "elevenlabs": {
+            "name": "ElevenLabs TTS",
+            "description": "ElevenLabs cloud API - ultra-realistic voices, 29+ languages",
+            "requires_internet": True,
+            "languages": [
+                "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi",
+                "it", "ja", "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv",
+                "tr", "zh",
+            ],
+        },
     }
     
     if engine not in info:
@@ -120,5 +138,6 @@ def list_engines() -> list[dict]:
         {"engine": "edge", **get_engine_info("edge")},
         {"engine": "coqui", **get_engine_info("coqui")},
         {"engine": "chatterbox", **get_engine_info("chatterbox")},
+        {"engine": "elevenlabs", **get_engine_info("elevenlabs")},
     ]
 
