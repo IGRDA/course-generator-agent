@@ -14,7 +14,7 @@ from .prompts import conversation_prompt
 
 
 # TTS Engine types
-TTSEngineType = Literal["edge", "coqui", "elevenlabs", "chatterbox"]
+TTSEngineType = Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"]
 
 # Language mapping from course language to TTS language code
 LANGUAGE_MAP = {
@@ -221,7 +221,7 @@ def generate_module_podcast(
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Generate conversation
-    engine_names = {"edge": "Edge TTS", "coqui": "Coqui TTS", "elevenlabs": "ElevenLabs", "chatterbox": "Chatterbox TTS"}
+    engine_names = {"edge": "Edge TTS", "coqui": "Coqui TTS", "elevenlabs": "ElevenLabs", "chatterbox": "Chatterbox TTS", "openai_tts": "OpenAI TTS"}
     engine_name = engine_names.get(tts_engine, tts_engine)
     print(f"🎙️ Generating podcast conversation for module {module_idx + 1} ({engine_name})...")
     
@@ -304,6 +304,24 @@ def generate_module_podcast(
             from tools.podcast import generate_podcast_chatterbox
             
             generate_podcast_chatterbox(
+                conversation=conversation,
+                output_path=str(audio_path),
+                language=tts_language,
+                speaker_map=speaker_map,
+                title=f"Module {module_idx + 1}: {context['module_title']}",
+                artist="Adinhub",
+                album=context["course_title"],
+                track_number=module_idx + 1,
+                music_path=str(music_path) if music_path.exists() else None,
+                intro_duration_ms=10000,
+                outro_duration_ms=10000,
+                intro_fade_ms=5000,
+                outro_fade_ms=5000,
+            )
+        elif tts_engine == "openai_tts":
+            from tools.podcast import generate_podcast_openai_tts
+            
+            generate_podcast_openai_tts(
                 conversation=conversation,
                 output_path=str(audio_path),
                 language=tts_language,

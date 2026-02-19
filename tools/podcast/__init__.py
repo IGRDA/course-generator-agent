@@ -71,6 +71,16 @@ def __getattr__(name: str):
         }
         return _map[name]
 
+    # OpenAI TTS exports
+    if name in ("OpenAITTSEngine", "generate_podcast_openai_tts", "OPENAI_TTS_VOICE_MAP"):
+        from .openai_tts.client import OPENAI_TTS_VOICE_MAP, OpenAITTSEngine, generate_podcast_openai_tts
+        _map = {
+            "OpenAITTSEngine": OpenAITTSEngine,
+            "generate_podcast_openai_tts": generate_podcast_openai_tts,
+            "OPENAI_TTS_VOICE_MAP": OPENAI_TTS_VOICE_MAP,
+        }
+        return _map[name]
+
     # Audio utility exports
     if name in ("add_metadata", "add_background_music", "get_default_music_path"):
         from .audio_utils import add_metadata, add_background_music, get_default_music_path
@@ -111,6 +121,10 @@ __all__ = [
     "ElevenLabsTTSEngine",
     "generate_podcast_elevenlabs",
     "ELEVENLABS_VOICE_MAP",
+    # OpenAI TTS Engine
+    "OpenAITTSEngine",
+    "generate_podcast_openai_tts",
+    "OPENAI_TTS_VOICE_MAP",
     # Factory
     "create_tts_engine",
     "get_engine_info",

@@ -60,7 +60,7 @@ Examples:
     parser.add_argument(
         "--tts-engine", "-t",
         type=str,
-        choices=["edge", "coqui", "elevenlabs", "chatterbox"],
+        choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"],
         default="edge",
         help="TTS engine to use for audio synthesis (default: edge)",
     )
