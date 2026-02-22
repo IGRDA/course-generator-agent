@@ -65,7 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("pdf_path", type=str, help="Path to the PDF syllabus file")
     parser.add_argument("--total-pages", type=int, default=50, help="Total pages for the course (default: 50)")
     parser.add_argument("--target-words", type=int, default=600, help="Target word count per podcast (default: 600)")
-    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui"], default="edge", help="TTS engine (default: edge)")
+    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"], default="edge", help="TTS engine (default: edge)")
     parser.add_argument("--language", type=str, default="Español", help="Language for content generation (default: Español)")
     parser.add_argument("--provider", type=str, default="mistral", help="LLM provider (default: mistral)")
     args = parser.parse_args()
