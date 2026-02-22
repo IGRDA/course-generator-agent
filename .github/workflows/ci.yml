@@ -45,5 +45,5 @@ jobs:
           LANGSMITH_PROJECT: ${{ vars.LANGSMITH_PROJECT }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
         run: |
-          python3 -m main.workflow --total-pages 2
+          python3 -m main.workflow --total-pages 1
 
