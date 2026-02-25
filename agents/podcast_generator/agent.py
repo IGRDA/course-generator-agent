@@ -181,6 +181,42 @@ def generate_conversation(
     return clean_conversation(conversation)
 
 
+def build_timed_conversation(
+    conversation: list[dict],
+    segment_durations_ms: list[int],
+    intro_duration_ms: int = 0,
+    silence_duration_ms: int = 500,
+) -> list[dict]:
+    """Build conversation with per-message start/end timestamps in milliseconds.
+
+    Timestamps are relative to the full podcast timeline (intro + voice + outro).
+
+    Args:
+        conversation: Original conversation messages
+        segment_durations_ms: Duration of each synthesized audio segment
+        intro_duration_ms: Intro music duration prepended before voice
+        silence_duration_ms: Silence gap between consecutive messages
+
+    Returns:
+        List of message dicts with added start_ms and end_ms fields
+    """
+    timed: list[dict] = []
+    cursor = intro_duration_ms
+
+    for i, msg in enumerate(conversation):
+        start = cursor
+        end = start + segment_durations_ms[i]
+        timed.append({
+            "role": msg["role"],
+            "content": msg["content"],
+            "start_ms": start,
+            "end_ms": end,
+        })
+        cursor = end + silence_duration_ms
+
+    return timed
+
+
 def generate_module_podcast(
     course_path: str,
     module_idx: int,
@@ -268,118 +304,62 @@ def generate_module_podcast(
         project_root = Path(__file__).parent.parent.parent
         music_path = project_root / "tools" / "podcast" / "background_music.mp3"
         
+        has_music = music_path.exists()
+        intro_duration_ms = 10000
+        outro_duration_ms = 10000
+
+        common_kwargs = dict(
+            conversation=conversation,
+            output_path=str(audio_path),
+            language=tts_language,
+            speaker_map=speaker_map,
+            title=f"Module {module_idx + 1}: {context['module_title']}",
+            artist="Adinhub",
+            album=context["course_title"],
+            track_number=module_idx + 1,
+            music_path=str(music_path) if has_music else None,
+            intro_duration_ms=intro_duration_ms,
+            outro_duration_ms=outro_duration_ms,
+            intro_fade_ms=5000,
+            outro_fade_ms=5000,
+        )
+
         if tts_engine == "edge":
             from tools.podcast import generate_podcast_edge
-            
-            generate_podcast_edge(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_edge(**common_kwargs)
         elif tts_engine == "elevenlabs":
             from tools.podcast import generate_podcast_elevenlabs
-            
-            generate_podcast_elevenlabs(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_elevenlabs(**common_kwargs)
         elif tts_engine == "chatterbox":
             from tools.podcast import generate_podcast_chatterbox
-            
-            generate_podcast_chatterbox(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_chatterbox(**common_kwargs)
         elif tts_engine == "openai_tts":
             from tools.podcast import generate_podcast_openai_tts
-            
-            generate_podcast_openai_tts(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_openai_tts(**common_kwargs)
         elif tts_engine == "qwen_tts":
             from tools.podcast import generate_podcast_qwen_tts
-            
             extra = tts_kwargs or {}
-            generate_podcast_qwen_tts(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-                **extra,
-            )
+            tts_result = generate_podcast_qwen_tts(**common_kwargs, **extra)
         else:
             from tools.podcast import generate_podcast
-            
-            generate_podcast(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast(**common_kwargs)
         
         print(f"✅ Audio saved to: {audio_path}")
         result["audio_path"] = str(audio_path)
+
+        # Build and save timed conversation with per-message timestamps
+        segment_durations_ms = tts_result.get("segment_durations_ms", [])
+        if segment_durations_ms and len(segment_durations_ms) == len(conversation):
+            timed_conversation = build_timed_conversation(
+                conversation=conversation,
+                segment_durations_ms=segment_durations_ms,
+                intro_duration_ms=intro_duration_ms if has_music else 0,
+            )
+            timed_filename = f"module_{module_idx + 1}_time_conversation.json"
+            timed_path = output_path / timed_filename
+            with open(timed_path, "w", encoding="utf-8") as f:
+                json.dump(timed_conversation, f, indent=2, ensure_ascii=False)
+            print(f"✅ Timed conversation saved to: {timed_path}")
+            result["timed_conversation_path"] = str(timed_path)
     
     return result

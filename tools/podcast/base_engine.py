@@ -31,6 +31,7 @@ class BaseTTSEngine(ABC):
         """
         self.language = language
         self.speaker_map = speaker_map or {}
+        self.segment_durations_ms: list[int] = []
     
     @abstractmethod
     def get_speaker_for_role(self, role: str) -> str:

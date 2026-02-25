@@ -209,6 +209,7 @@ class ElevenLabsTTSEngine(BaseTTSEngine):
         with tempfile.TemporaryDirectory(prefix="elevenlabs_tts_") as temp_dir:
             audio_segments = []
             silence = AudioSegment.silent(duration=silence_duration_ms)
+            self.segment_durations_ms = []
 
             total = len(conversation)
             for idx, message in enumerate(conversation):
@@ -222,6 +223,7 @@ class ElevenLabsTTSEngine(BaseTTSEngine):
 
                 segment = AudioSegment.from_mp3(temp_audio_path)
                 audio_segments.append(segment)
+                self.segment_durations_ms.append(len(segment))
 
                 if progress_callback:
                     progress_callback(idx + 1, total)
@@ -359,4 +361,7 @@ def generate_podcast_elevenlabs(
             track_number=track_number,
         )
 
-    return output_path
+    return {
+        "path": output_path,
+        "segment_durations_ms": engine.segment_durations_ms,
+    }

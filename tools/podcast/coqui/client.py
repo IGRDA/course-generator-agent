@@ -173,6 +173,7 @@ class CoquiTTSEngine(BaseTTSEngine):
         with tempfile.TemporaryDirectory(prefix="podcast_tts_") as temp_dir:
             audio_segments = []
             silence = AudioSegment.silent(duration=silence_duration_ms)
+            self.segment_durations_ms = []
 
             total = len(conversation)
             for idx, message in enumerate(conversation):
@@ -188,6 +189,7 @@ class CoquiTTSEngine(BaseTTSEngine):
                 # Load the generated audio
                 segment = AudioSegment.from_wav(temp_audio_path)
                 audio_segments.append(segment)
+                self.segment_durations_ms.append(len(segment))
 
                 if progress_callback:
                     progress_callback(idx + 1, total)
@@ -342,7 +344,10 @@ def generate_podcast(
             track_number=track_number,
         )
 
-    return output_path
+    return {
+        "path": output_path,
+        "segment_durations_ms": engine.segment_durations_ms,
+    }
 
 
 def list_available_languages() -> list[str]:
