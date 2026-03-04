@@ -279,7 +279,7 @@ class CourseConfig(BaseModel):
         return self.podcast.target_words
     
     @property
-    def podcast_tts_engine(self) -> Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"]:
+    def podcast_tts_engine(self) -> Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"]:
         return self.podcast.tts_engine
     
     @property

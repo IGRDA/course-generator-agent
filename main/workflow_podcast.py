@@ -56,7 +56,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a course with podcasts (no activities, HTML, or images)")
     parser.add_argument("--total-pages", type=int, default=2, help="Total pages for the course (default: 2)")
     parser.add_argument("--target-words", type=int, default=600, help="Target word count per podcast (default: 600)")
-    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"], default="edge", help="TTS engine (default: edge)")
+    parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"], default="edge", help="TTS engine (default: edge)")
     args = parser.parse_args()
     
     # Build the graph
