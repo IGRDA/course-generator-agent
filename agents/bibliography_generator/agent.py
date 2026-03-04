@@ -1782,6 +1782,53 @@ def _create_module_bibliography_embed(
     )
 
 
+def _deduplicate_bibliography(
+    module_results: dict[int, tuple[list[BookReference], list]],
+) -> dict[int, tuple[list[BookReference], list]]:
+    """
+    Post-process parallel bibliography results to remove cross-module duplicates.
+    
+    Each module generated its bibliography independently, so the same book or
+    article may appear in multiple modules. This pass keeps only the first
+    occurrence (by module index order).
+    
+    Args:
+        module_results: Dict mapping module index to (books, articles) tuple.
+        
+    Returns:
+        Deduplicated module_results (same structure, duplicates removed).
+    """
+    seen_book_keys: set[str] = set()
+    seen_title_keys: set[str] = set()
+    seen_article_keys: set[str] = set()
+
+    deduped: dict[int, tuple[list[BookReference], list]] = {}
+
+    for idx in sorted(module_results.keys()):
+        books, articles = module_results[idx]
+
+        unique_books: list[BookReference] = []
+        for book in books:
+            dedup_key = book.get_dedup_key()
+            title_key = _get_normalized_title_key(book.title)
+            if dedup_key not in seen_book_keys and title_key not in seen_title_keys:
+                unique_books.append(book)
+                seen_book_keys.add(dedup_key)
+                seen_title_keys.add(title_key)
+
+        unique_articles = []
+        for article in articles:
+            title_key = _get_normalized_title_key(article["title"])
+            article_key = f"article:{title_key}"
+            if article_key not in seen_article_keys:
+                unique_articles.append(article)
+                seen_article_keys.add(article_key)
+
+        deduped[idx] = (unique_books, unique_articles)
+
+    return deduped
+
+
 def generate_course_bibliography(
     state: CourseState,
     provider: str | None = None,
@@ -1793,7 +1840,8 @@ def generate_course_bibliography(
     """
     Generate bibliography for entire course with deduplication.
     
-    Processes modules sequentially, tracking cited items to avoid repetition.
+    Processes modules in parallel using ThreadPoolExecutor, then deduplicates
+    across modules in a post-processing step.
     Also embeds bibliography data directly in each Module.
     
     Args:
@@ -1807,6 +1855,8 @@ def generate_course_bibliography(
     Returns:
         CourseBibliography with per-module and deduplicated master list
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     provider = provider or state.config.text_llm_provider
     books_per_module = books_per_module or state.config.bibliography_books_per_module
     articles_per_module = articles_per_module or state.config.bibliography_articles_per_module
@@ -1816,36 +1866,47 @@ def generate_course_bibliography(
     print(f"   Target: {books_per_module} books + {articles_per_module} articles per module")
     print(f"   Providers: LLM={provider}, Articles={article_provider}")
     
-    module_bibliographies: list[ModuleBibliography] = []
-    all_books: list[BookReference] = []
-    existing_keys: set[str] = set()
-    
-    for idx, module in enumerate(state.modules):
+    def _process_module(idx: int, module: Module) -> tuple[int, list[BookReference], list]:
         print(f"\n   📖 Module {idx + 1}/{len(state.modules)}: {module.title}")
-        
-        # Get books
-        books, existing_keys = _search_books_for_module(
+        books, _ = _search_books_for_module(
             module=module,
             course_title=state.title,
             language=state.config.language,
             provider=provider,
             num_books=books_per_module,
-            existing_keys=existing_keys,
+            existing_keys=set(),
         )
-        print(f"      ✓ Found {len(books)} books")
-        
-        # Get articles
-        articles, existing_keys = _search_articles_for_module(
+        print(f"      ✓ Module {idx + 1}: Found {len(books)} books")
+        articles, _ = _search_articles_for_module(
             module=module,
             language=state.config.language,
             article_provider=article_provider,
             num_articles=articles_per_module,
-            existing_keys=existing_keys,
+            existing_keys=set(),
             llm_provider=provider,
         )
-        print(f"      ✓ Found {len(articles)} articles")
-        
-        # Create backward-compatible ModuleBibliography
+        print(f"      ✓ Module {idx + 1}: Found {len(articles)} articles")
+        return idx, books, articles
+
+    raw_results: dict[int, tuple[list[BookReference], list]] = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_process_module, idx, module): idx
+            for idx, module in enumerate(state.modules)
+        }
+        for future in as_completed(futures):
+            idx, books, articles = future.result()
+            raw_results[idx] = (books, articles)
+
+    deduped_results = _deduplicate_bibliography(raw_results)
+
+    module_bibliographies: list[ModuleBibliography] = []
+    all_books: list[BookReference] = []
+
+    for idx in range(len(state.modules)):
+        books, articles = deduped_results[idx]
+        module = state.modules[idx]
+
         module_bib = ModuleBibliography(
             module_index=module.index,
             module_title=module.title,
@@ -1853,7 +1914,7 @@ def generate_course_bibliography(
         )
         module_bibliographies.append(module_bib)
         all_books.extend(books)
-        
+
         if embed_in_modules and (books or articles):
             module.bibliography = _create_module_bibliography_embed(
                 module=module,
@@ -1862,7 +1923,6 @@ def generate_course_bibliography(
                 language=state.config.language,
             )
     
-    # Sort all_books alphabetically by first author
     all_books_sorted = sorted(
         all_books,
         key=lambda b: b.authors[0].lower() if b.authors else "zzz"

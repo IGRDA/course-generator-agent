@@ -38,6 +38,7 @@ _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     "include_quotes_in_html": ("html", "include_quotes"),
     "include_tables_in_html": ("html", "include_tables"),
     # Image
+    "generate_images": ("image", "enabled"),
     "image_search_provider": ("image", "search_provider"),
     "use_vision_ranking": ("image", "use_vision_ranking"),
     "num_images_to_fetch": ("image", "num_to_fetch"),
@@ -245,6 +246,10 @@ class CourseConfig(BaseModel):
         return self.html.include_tables
     
     # ---- Image aliases ----
+    @property
+    def generate_images(self) -> bool:
+        return self.image.enabled
+    
     @property
     def image_search_provider(self) -> str:
         return self.image.search_provider

@@ -225,7 +225,7 @@ def generate_course_mindmaps(
     """
     Generate mind maps for all modules in the course.
     
-    Processes modules sequentially, embedding mind maps directly in each module.
+    Processes modules in parallel using ThreadPoolExecutor.
     
     Args:
         state: CourseState with modules
@@ -235,6 +235,8 @@ def generate_course_mindmaps(
     Returns:
         Updated CourseState with mind maps embedded in modules
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     provider = provider or state.config.mindmap_llm_provider or state.config.text_llm_provider
     max_nodes = max_nodes or state.config.mindmap_max_nodes
     
@@ -242,13 +244,8 @@ def generate_course_mindmaps(
     print(f"   Max nodes per map: {max_nodes}")
     print(f"   Provider: {provider}")
     
-    total_nodes = 0
-    total_relations = 0
-    successful = 0
-    
-    for idx, module in enumerate(state.modules):
+    def _process_module(idx: int, module):
         print(f"\n   🗺️ Module {idx + 1}/{len(state.modules)}: {module.title}")
-        
         mindmap = generate_module_mindmap(
             module=module,
             course_title=state.title,
@@ -257,16 +254,34 @@ def generate_course_mindmaps(
             max_nodes=max_nodes,
             max_retries=state.config.max_retries,
         )
-        
         if mindmap:
-            module.mindmap = mindmap
+            print(f"      ✓ Module {idx + 1}: Generated {len(mindmap.nodes)} nodes, {len(mindmap.relations)} relations")
+        else:
+            print(f"      ✗ Module {idx + 1}: Failed to generate mind map")
+        return idx, mindmap
+
+    results: dict[int, object] = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_process_module, idx, module): idx
+            for idx, module in enumerate(state.modules)
+        }
+        for future in as_completed(futures):
+            idx, mindmap = future.result()
+            results[idx] = mindmap
+
+    total_nodes = 0
+    total_relations = 0
+    successful = 0
+    for idx in range(len(state.modules)):
+        mindmap = results[idx]
+        if mindmap:
+            state.modules[idx].mindmap = mindmap
             total_nodes += len(mindmap.nodes)
             total_relations += len(mindmap.relations)
             successful += 1
-            print(f"      ✓ Generated {len(mindmap.nodes)} nodes, {len(mindmap.relations)} relations")
         else:
-            module.mindmap = None
-            print(f"      ✗ Failed to generate mind map")
+            state.modules[idx].mindmap = None
     
     print(f"\n✅ Mind map generation complete!")
     print(f"   Successful: {successful}/{len(state.modules)} modules")

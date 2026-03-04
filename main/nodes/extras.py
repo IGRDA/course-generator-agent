@@ -173,6 +173,68 @@ def generate_mindmap_node(state: CourseState, config: Optional[RunnableConfig] =
     return state
 
 
+def generate_all_enrichments_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Run videos, bibliography, people, and mindmap enrichments concurrently.
+    
+    Each enrichment writes to non-overlapping fields on state.modules[i],
+    so they are safe to run in parallel.
+
+    Args:
+        state: CourseState with populated course structure.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Updated CourseState with all enrichments applied.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _run_videos():
+        return generate_videos_node(state, config)
+
+    def _run_bibliography():
+        return generate_bibliography_node(state, config)
+
+    def _run_people():
+        return generate_people_node(state, config)
+
+    def _run_mindmap():
+        return generate_mindmap_node(state, config)
+
+    enrichment_map = {
+        "videos": (state.config.generate_videos, _run_videos),
+        "bibliography": (state.config.generate_bibliography, _run_bibliography),
+        "people": (state.config.generate_people, _run_people),
+        "mindmap": (state.config.generate_mindmap, _run_mindmap),
+    }
+
+    enabled = {name: fn for name, (flag, fn) in enrichment_map.items() if flag}
+
+    if not enabled:
+        print("All enrichments disabled, skipping...")
+        return state
+
+    print(f"🚀 Running {len(enabled)} enrichments in parallel: {', '.join(enabled.keys())}")
+
+    with ThreadPoolExecutor(max_workers=len(enabled)) as executor:
+        futures = {
+            executor.submit(fn): name
+            for name, fn in enabled.items()
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                future.result()
+                print(f"   ✅ {name} enrichment complete")
+            except Exception as e:
+                print(f"   ❌ {name} enrichment failed: {e}")
+
+    output_mgr = get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("enrichments", state)
+
+    return state
+
+
 def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
     """Generate podcasts for all modules in the course.
     

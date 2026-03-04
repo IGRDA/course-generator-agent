@@ -9,9 +9,8 @@ podcasts, and PDF book -- all selectable via CLI flags.
 Pipeline:
     parse_markdown -> restructure_content -> calculate_metadata
     -> generate_activities -> generate_html -> generate_images
-    -> inject_local_images -> generate_videos -> generate_bibliography
-    -> generate_people -> generate_mindmap -> generate_podcasts
-    -> generate_pdf_book
+    -> inject_local_images -> all_enrichments (videos | bibliography | people | mindmap in parallel)
+    -> generate_podcasts -> generate_pdf_book
 """
 
 from langgraph.graph import StateGraph, START, END
@@ -27,10 +26,7 @@ from main.nodes import (
     generate_html_node,
     generate_images_node,
     inject_local_images_node,
-    generate_videos_node,
-    generate_bibliography_node,
-    generate_people_node,
-    generate_mindmap_node,
+    generate_all_enrichments_node,
     generate_podcasts_node,
     generate_pdf_book_node,
 )
@@ -74,6 +70,9 @@ def _conditional_html_node(state: CourseState, config=None) -> CourseState:
 
 
 def _conditional_images_node(state: CourseState, config=None) -> CourseState:
+    if not state.config.generate_images:
+        print("Image generation skipped (--no-images)")
+        return state
     if not state.config.generate_html_output and not state.config.generate_pdf:
         print("Image generation skipped (no --html or --pdf flag)")
         return state
@@ -113,10 +112,7 @@ def build_digitalize_graph_conditional():
     graph.add_node("generate_html", _conditional_html_node)
     graph.add_node("generate_images", _conditional_images_node)
     graph.add_node("inject_local_images", inject_local_images_node)
-    graph.add_node("generate_videos", generate_videos_node)
-    graph.add_node("generate_bibliography", generate_bibliography_node)
-    graph.add_node("generate_people", generate_people_node)
-    graph.add_node("generate_mindmap", generate_mindmap_node)
+    graph.add_node("all_enrichments", generate_all_enrichments_node)
     graph.add_node("generate_podcasts", _conditional_podcast_node)
     graph.add_node("generate_pdf_book", _conditional_pdf_node)
 
@@ -127,11 +123,8 @@ def build_digitalize_graph_conditional():
     graph.add_edge("generate_activities", "generate_html")
     graph.add_edge("generate_html", "generate_images")
     graph.add_edge("generate_images", "inject_local_images")
-    graph.add_edge("inject_local_images", "generate_videos")
-    graph.add_edge("generate_videos", "generate_bibliography")
-    graph.add_edge("generate_bibliography", "generate_people")
-    graph.add_edge("generate_people", "generate_mindmap")
-    graph.add_edge("generate_mindmap", "generate_podcasts")
+    graph.add_edge("inject_local_images", "all_enrichments")
+    graph.add_edge("all_enrichments", "generate_podcasts")
     graph.add_edge("generate_podcasts", "generate_pdf_book")
     graph.add_edge("generate_pdf_book", END)
 
@@ -237,6 +230,7 @@ Examples:
         include_quotes_in_html=True,
         include_tables_in_html=True,
         # Image search (internet)
+        generate_images=not args.no_images,
         image_search_provider="freepik",
         use_vision_ranking=False,
         num_images_to_fetch=8,

@@ -133,7 +133,7 @@ def generate_course_people(
     """
     Generate relevant people for entire course.
     
-    Processes modules sequentially, embedding people directly in each module.
+    Processes modules in parallel using ThreadPoolExecutor.
     
     Args:
         state: CourseState with modules
@@ -144,6 +144,8 @@ def generate_course_people(
     Returns:
         Updated CourseState with people embedded in modules
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     provider = provider or state.config.people_llm_provider or state.config.text_llm_provider
     people_per_module = people_per_module or state.config.people_per_module
     concurrency = concurrency or state.config.people_concurrency
@@ -152,9 +154,8 @@ def generate_course_people(
     print(f"   Target: {people_per_module} people per module")
     print(f"   Provider: {provider}")
     
-    for idx, module in enumerate(state.modules):
+    def _process_module(idx: int, module):
         print(f"\n   👤 Module {idx + 1}/{len(state.modules)}: {module.title}")
-        
         people = generate_module_people(
             module=module,
             course_title=state.title,
@@ -163,11 +164,22 @@ def generate_course_people(
             num_people=people_per_module,
             concurrency=concurrency,
         )
-        
-        # Embed in module
-        module.relevant_people = people if people else None
-        
-        print(f"      ✓ Found {len(people)} people")
+        print(f"      ✓ Module {idx + 1}: Found {len(people)} people")
+        return idx, people
+
+    results: dict[int, list] = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_process_module, idx, module): idx
+            for idx, module in enumerate(state.modules)
+        }
+        for future in as_completed(futures):
+            idx, people = future.result()
+            results[idx] = people
+
+    for idx in range(len(state.modules)):
+        people = results[idx]
+        state.modules[idx].relevant_people = people if people else None
     
     total_people = sum(
         len(m.relevant_people) for m in state.modules if m.relevant_people

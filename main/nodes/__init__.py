@@ -52,6 +52,7 @@ def __getattr__(name: str):
         "generate_pdf_book_node",
         "generate_people_node",
         "generate_mindmap_node",
+        "generate_all_enrichments_node",
     }
     if name in _extras:
         from .extras import (
@@ -61,6 +62,7 @@ def __getattr__(name: str):
             generate_pdf_book_node,
             generate_people_node,
             generate_mindmap_node,
+            generate_all_enrichments_node,
         )
         _map = {
             "generate_bibliography_node": generate_bibliography_node,
@@ -69,6 +71,7 @@ def __getattr__(name: str):
             "generate_pdf_book_node": generate_pdf_book_node,
             "generate_people_node": generate_people_node,
             "generate_mindmap_node": generate_mindmap_node,
+            "generate_all_enrichments_node": generate_all_enrichments_node,
         }
         return _map[name]
 
@@ -94,6 +97,7 @@ __all__ = [
     "generate_videos_node",
     "generate_people_node",
     "generate_mindmap_node",
+    "generate_all_enrichments_node",
     "generate_podcasts_node",
     "generate_pdf_book_node",
     # Digitalize

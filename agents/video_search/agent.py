@@ -456,7 +456,7 @@ def generate_course_videos(
     """
     Generate video recommendations for entire course.
     
-    Processes modules sequentially, generating video recommendations for each.
+    Processes modules in parallel using ThreadPoolExecutor.
     Also embeds video data directly in each Module.
     
     Args:
@@ -469,6 +469,8 @@ def generate_course_videos(
     Returns:
         CourseVideos with per-module video recommendations
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
     provider = provider or state.config.text_llm_provider
     videos_per_module = videos_per_module or state.config.videos_per_module
     video_search_provider = video_search_provider or state.config.video_search_provider
@@ -478,11 +480,8 @@ def generate_course_videos(
     print(f"   Provider: {provider}")
     print(f"   Search: {video_search_provider}")
     
-    module_videos_list: list[ModuleVideos] = []
-    
-    for idx, module in enumerate(state.modules):
+    def _process_module(idx: int, module: Module) -> tuple[int, ModuleVideos]:
         print(f"\n   🎥 Module {idx + 1}/{len(state.modules)}: {module.title}")
-        
         module_videos = generate_module_videos(
             module=module,
             course_title=state.title,
@@ -491,14 +490,25 @@ def generate_course_videos(
             num_videos=videos_per_module,
             video_search_provider=video_search_provider,
         )
-        
-        module_videos_list.append(module_videos)
-        
-        # Embed in module
-        if embed_in_modules and module_videos.videos:
-            module.video = _create_module_video_embed(module_videos)
-        
-        print(f"      ✓ Found {len(module_videos.videos)} videos")
+        print(f"      ✓ Module {idx + 1}: Found {len(module_videos.videos)} videos")
+        return idx, module_videos
+
+    results: dict[int, ModuleVideos] = {}
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_process_module, idx, module): idx
+            for idx, module in enumerate(state.modules)
+        }
+        for future in as_completed(futures):
+            idx, module_videos = future.result()
+            results[idx] = module_videos
+
+    module_videos_list: list[ModuleVideos] = []
+    for idx in range(len(state.modules)):
+        mv = results[idx]
+        module_videos_list.append(mv)
+        if embed_in_modules and mv.videos:
+            state.modules[idx].video = _create_module_video_embed(mv)
     
     course_videos = CourseVideos(modules=module_videos_list)
     
