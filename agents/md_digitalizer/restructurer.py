@@ -55,11 +55,14 @@ text like "ATHLETIC", "Infection", "EXIT OF WORMHOLE").
 6. **Merge tiny sections**: If a section has fewer than 100 words of theory \
 (check theory_length) and the previous section covers the same topic, set \
 "keep" to "merge_with_previous" to merge it into the preceding section.
-7. **Section summaries**: For each section with keep=true, write a 2-3 \
+7. **Submodule descriptions**: For each submodule, write a 1–2 sentence \
+"description" that is distinct from the title — it should expand on the \
+scope, key topics, or learning goals covered by that submodule.
+8. **Section summaries**: For each section with keep=true, write a 2-3 \
 sentence "summary" capturing the key takeaway from the theory_snippet.
-8. **Language**: Detect the dominant language of the theory text and ensure \
+9. **Language**: Detect the dominant language of the theory text and ensure \
 titles, descriptions, and summaries use that same language.
-9. Return ONLY a valid JSON object — no markdown fences, no commentary."""
+10. Return ONLY a valid JSON object — no markdown fences, no commentary."""
 
 _RESTRUCTURE_USER = """\
 Course title: {course_title}
@@ -78,6 +81,7 @@ Return the improved module as a JSON object with this exact schema:
   "submodules": [
     {{
       "title": "submodule title (NO numbered prefixes like 1.1 or 2.3)",
+      "description": "1-2 sentence description of what this submodule covers (distinct from the title, richer and more informative)",
       "sections": [
         {{
           "title": "section title (descriptive, NO numbered prefixes)",
@@ -215,6 +219,7 @@ def _apply_restructure(module: Module, llm_result: dict) -> Module:
             })
         sm_lookup.append({
             "title": _strip_numbered_prefix(sm.get("title", "")),
+            "description": sm.get("description", ""),
             "norm": _normalize_title_for_match(sm.get("title", "")),
             "sections": sec_list,
         })
@@ -243,6 +248,8 @@ def _apply_restructure(module: Module, llm_result: dict) -> Module:
 
         if llm_sm is not None:
             orig_sm.title = _strip_numbered_prefix(llm_sm["title"] or orig_sm.title)
+            if llm_sm.get("description"):
+                orig_sm.description = llm_sm["description"]
 
         llm_secs = llm_sm["sections"] if llm_sm else []
 
@@ -270,6 +277,7 @@ def _apply_restructure(module: Module, llm_result: dict) -> Module:
 
             if matched and matched.get("summary"):
                 sec.summary = matched["summary"]
+                sec.description = matched["summary"]
 
             kept_sections.append(sec)
 
@@ -285,6 +293,93 @@ def _apply_restructure(module: Module, llm_result: dict) -> Module:
         module.submodules = new_submodules
 
     return module
+
+
+# ---------------------------------------------------------------------------
+# Description back-fill
+# ---------------------------------------------------------------------------
+
+_DESC_SYSTEM = """\
+You are a course description writer. Given a list of submodule and section \
+titles with theory snippets, generate a concise 1-2 sentence description for \
+each item. The description must be distinct from the title and explain what \
+the item covers.  Write in {language}. Return ONLY a JSON array — no markdown \
+fences, no commentary."""
+
+_DESC_USER = """\
+Items needing descriptions:
+{items_json}
+
+Return a JSON array with one object per item:
+[{{"index": 0, "description": "..."}}, ...]
+
+Rules:
+- Each description must be 1-2 sentences.
+- The description must NOT repeat the title verbatim.
+- Write in {language}.
+- Return ONLY the JSON array."""
+
+_desc_prompt = ChatPromptTemplate.from_messages([
+    ("system", _DESC_SYSTEM),
+    ("human", _DESC_USER),
+])
+
+
+def _backfill_descriptions(module: Module, llm, language: str) -> None:
+    """Generate descriptions for any submodules/sections still missing one."""
+    items = []
+    targets = []  # (type, sm_idx, sec_idx_or_None)
+
+    for sm_idx, sm in enumerate(module.submodules):
+        if not sm.description or sm.description == sm.title:
+            snippet = ""
+            for sec in sm.sections:
+                snippet += sec.theory[:150] + " "
+            items.append({
+                "index": len(items),
+                "type": "submodule",
+                "title": sm.title,
+                "theory_snippet": snippet.strip()[:300],
+            })
+            targets.append(("submodule", sm_idx, None))
+
+        for sec_idx, sec in enumerate(sm.sections):
+            if not sec.description or sec.description == sec.title:
+                items.append({
+                    "index": len(items),
+                    "type": "section",
+                    "title": sec.title,
+                    "theory_snippet": sec.theory[:300],
+                })
+                targets.append(("section", sm_idx, sec_idx))
+
+    if not items:
+        return
+
+    chain = _desc_prompt | llm | StrOutputParser()
+    try:
+        raw = chain.invoke({
+            "language": language or "Español",
+            "items_json": json.dumps(items, ensure_ascii=False, indent=2),
+        })
+        descriptions = _robust_json_loads(raw) if raw.strip().startswith("{") else json.loads(_strip_markdown_fences(raw.strip()))
+    except Exception as e:
+        logger.warning("Description backfill LLM call failed: %s", e)
+        return
+
+    if isinstance(descriptions, dict):
+        descriptions = descriptions.get("items", descriptions.get("descriptions", []))
+
+    for entry in descriptions:
+        idx = entry.get("index")
+        desc = entry.get("description", "").strip()
+        if idx is None or not desc or idx >= len(targets):
+            continue
+        kind, sm_idx, sec_idx = targets[idx]
+        if kind == "submodule":
+            module.submodules[sm_idx].description = desc
+        elif kind == "section" and sec_idx is not None:
+            module.submodules[sm_idx].sections[sec_idx].description = desc
 
 
 # ---------------------------------------------------------------------------
@@ -312,6 +407,7 @@ def restructure_module(
 
     chain = _restructure_prompt | llm | StrOutputParser()
 
+    detected_lang = None
     for attempt in range(max_retries):
         try:
             raw = chain.invoke({
@@ -323,7 +419,7 @@ def restructure_module(
 
             detected_lang = result.get("language")
             module = _apply_restructure(module, result)
-            return module, detected_lang
+            break
 
         except json.JSONDecodeError as e:
             logger.warning(
@@ -335,9 +431,12 @@ def restructure_module(
                 "Restructure attempt %d/%d failed: %s",
                 attempt + 1, max_retries, e,
             )
+    else:
+        logger.error("All restructure attempts failed for module %d, keeping original", module.index)
+        return module, None
 
-    logger.error("All restructure attempts failed for module %d, keeping original", module.index)
-    return module, None
+    _backfill_descriptions(module, llm, detected_lang or "Español")
+    return module, detected_lang
 
 
 def restructure_course(

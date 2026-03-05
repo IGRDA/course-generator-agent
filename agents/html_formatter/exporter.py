@@ -483,8 +483,15 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         .submodule-title {{ 
             color: #764ba2; 
             font-size: 1.8em; 
-            margin-bottom: 20px;
+            margin-bottom: 8px;
             font-weight: 400;
+        }}
+        .submodule-description {{
+            color: #555;
+            font-size: 1.05em;
+            font-style: italic;
+            margin-bottom: 20px;
+            line-height: 1.5;
         }}
         
         /* Section */
@@ -1209,6 +1216,8 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         for submodule_idx, submodule in enumerate(module.submodules, 1):
             html += f'<div class="submodule">'
             html += f'<h3 class="submodule-title">{module_idx}.{submodule_idx} {escape_html(submodule.title)}</h3>'
+            if submodule.description and submodule.description != submodule.title:
+                html += f'<p class="submodule-description">{escape_html(submodule.description)}</p>'
             
             for section in submodule.sections:
                 section_counter += 1

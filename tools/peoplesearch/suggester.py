@@ -8,8 +8,9 @@ returning candidate names for Wikipedia validation.
 import logging
 from typing import Literal
 
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+from langchain_core.output_parsers import PydanticOutputParser, StrOutputParser
+from langchain.output_parsers import RetryWithErrorOutputParser
 
 from LLMs.text2text.factory import create_text_llm
 from .models import PeopleSuggestionResponse
@@ -67,12 +68,36 @@ def suggest_people(
     
     try:
         llm = create_text_llm(provider=llm_provider, temperature=temperature)
-        chain = prompt | llm | parser
+        chain = prompt | llm | StrOutputParser()
         
-        result = chain.invoke({
+        raw = chain.invoke({
             "topic": topic,
             "count": count,
         })
+        
+        try:
+            result = parser.parse(raw)
+        except Exception as e:
+            logger.warning(f"Initial parse failed for topic '{topic}', attempting retry correction: {e}")
+            fix_parser = RetryWithErrorOutputParser.from_llm(
+                llm=llm,
+                parser=parser,
+                max_retries=3,
+            )
+            correction_prompt = PromptTemplate.from_template(
+                "The previous output had validation errors.\n\n"
+                "ERROR: {error}\n\n"
+                "ORIGINAL OUTPUT:\n{completion}\n\n"
+                "Please fix the errors and return valid JSON:\n{format_instructions}"
+            )
+            result = fix_parser.parse_with_prompt(
+                completion=raw,
+                prompt_value=correction_prompt.format_prompt(
+                    error=str(e),
+                    completion=raw,
+                    format_instructions=parser.get_format_instructions(),
+                ),
+            )
         
         return [person.name for person in result.people]
         

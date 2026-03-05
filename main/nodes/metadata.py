@@ -35,18 +35,10 @@ def calculate_metadata_node(state: CourseState, config: Optional[RunnableConfig]
             module.description = module.title
             
         for sm_idx, submodule in enumerate(module.submodules):
-            # Submodules only have index, no id
             submodule.index = sm_idx + 1
             
-            if not submodule.description:
-                submodule.description = submodule.title
-            
             for s_idx, section in enumerate(submodule.sections):
-                # Sections only have index, no id
                 section.index = s_idx + 1
-                
-                if not section.description:
-                    section.description = section.title
             
             # Calculate submodule duration: 0.1 hours per section
             submodule.duration = round(len(submodule.sections) * 0.1, 1)

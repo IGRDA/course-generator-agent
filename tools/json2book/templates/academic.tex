@@ -11,18 +11,34 @@
 \usepackage{iftex}
 \ifxetex
     \usepackage{fontspec}
-    % Clean sans-serif for modern look
-    \setmainfont{Helvetica Neue}[
-        Ligatures=TeX,
-        BoldFont=Helvetica Neue Bold,
-        ItalicFont=Helvetica Neue Italic,
-        BoldItalicFont=Helvetica Neue Bold Italic
-    ]
-    \setsansfont{Helvetica Neue}[
-        Ligatures=TeX,
-        BoldFont=Helvetica Neue Bold
-    ]
-    \setmonofont{Menlo}[Scale=0.85]
+    % Try Helvetica Neue (macOS), fall back to TeX Gyre Heros (cross-platform)
+    \IfFontExistsTF{Helvetica Neue}{%
+        \setmainfont{Helvetica Neue}[
+            Ligatures=TeX,
+            BoldFont=Helvetica Neue Bold,
+            ItalicFont=Helvetica Neue Italic,
+            BoldItalicFont=Helvetica Neue Bold Italic
+        ]
+        \setsansfont{Helvetica Neue}[
+            Ligatures=TeX,
+            BoldFont=Helvetica Neue Bold
+        ]
+    }{%
+        \IfFontExistsTF{TeX Gyre Heros}{%
+            \setmainfont{TeX Gyre Heros}[Ligatures=TeX]
+            \setsansfont{TeX Gyre Heros}[Ligatures=TeX]
+        }{%
+            % Last resort: use default Latin Modern Sans
+            \renewcommand{\familydefault}{\sfdefault}
+        }
+    }
+    \IfFontExistsTF{Menlo}{%
+        \setmonofont{Menlo}[Scale=0.85]
+    }{%
+        \IfFontExistsTF{DejaVu Sans Mono}{%
+            \setmonofont{DejaVu Sans Mono}[Scale=0.85]
+        }{}
+    }
 \else
     \usepackage[utf8]{inputenc}
     \usepackage[T1]{fontenc}
@@ -31,7 +47,7 @@
 \fi
 
 % Language support
-\usepackage[english,spanish,es-noquoting]{babel}
+\usepackage[BABEL_LANGUAGES]{babel}
 
 % Page geometry
 \usepackage[

@@ -655,17 +655,28 @@ def _convert_numbered_lists(text: str) -> str:
 # ============================================
 
 def download_image(url: str, output_dir: Path, timeout: int = 30) -> Optional[Path]:
-    """Download an image from URL to local directory.
+    """Download an image from URL or copy a local file to the output directory.
     
     Args:
-        url: Image URL
+        url: Image URL or local file path
         output_dir: Directory to save the image
         timeout: Request timeout in seconds
         
     Returns:
-        Path to downloaded image, or None if download failed
+        Path to downloaded/copied image, or None if failed
     """
-    if not url or not url.startswith(('http://', 'https://')):
+    if not url:
+        return None
+    
+    if not url.startswith(('http://', 'https://')):
+        local_path = Path(url)
+        if local_path.exists():
+            import shutil
+            output_dir.mkdir(parents=True, exist_ok=True)
+            dest = output_dir / local_path.name
+            if not dest.exists():
+                shutil.copy2(local_path, dest)
+            return dest
         return None
     
     try:
@@ -859,18 +870,13 @@ def _book_to_bibtex(book: dict, key: str) -> str:
 
 
 def _escape_bibtex_field(text: str) -> str:
-    """Escape special characters in BibTeX field values.
-    
-    Note: Biber handles most special characters internally,
-    so we only need to escape braces to maintain BibTeX structure.
-    The & character is properly handled by biber/biblatex.
-    """
+    """Escape special characters in BibTeX field values."""
     if not text:
         return ""
-    # Only escape braces to maintain BibTeX structure
-    # Biber handles other special characters internally
     text = text.replace('{', r'\{')
     text = text.replace('}', r'\}')
+    text = text.replace('%', r'\%')
+    text = text.replace('&', r'\&')
     return text
 
 

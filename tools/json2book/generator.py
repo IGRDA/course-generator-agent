@@ -72,6 +72,7 @@ def generate_pdf_book(
     
     # Download images if requested
     images_dir = output_dir / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
     if download_images:
         print("📷 Downloading images...")
         image_urls = extract_image_urls(course_data)
@@ -158,7 +159,17 @@ def _generate_latex_document(
     # Replace metadata placeholders
     latex = latex.replace('COURSE_TITLE', escape_latex_simple(title))
     latex = latex.replace('COURSE_DESCRIPTION', escape_latex_simple(description[:500]))  # Limit description
-    latex = latex.replace('COURSE_LANGUAGE', get_babel_language(language))
+    babel_lang = get_babel_language(language)
+    latex = latex.replace('COURSE_LANGUAGE', babel_lang)
+    
+    # Build babel language list: always include english + the course language
+    babel_parts = ['english']
+    if babel_lang != 'english':
+        extra = babel_lang
+        if babel_lang == 'spanish':
+            extra = 'spanish,es-noquoting'
+        babel_parts.append(extra)
+    latex = latex.replace('BABEL_LANGUAGES', ','.join(babel_parts))
     
     # Handle cover image
     cover_image = _find_cover_image(images_dir)
@@ -267,9 +278,9 @@ def _generate_content(course_data: dict, images_dir: Path = None) -> str:
             lines.append(f'\n\\section{{{escape_latex_simple(submodule_title)}}}')
             
             submodule_desc = submodule.get('description', '')
-            if submodule_desc:
+            if submodule_desc and submodule_desc != submodule_title:
                 lines.append('')
-                lines.append(escape_latex(submodule_desc))
+                lines.append(r'\textit{' + escape_latex_simple(submodule_desc) + '}')
                 lines.append('')
             
             # Sections become subsections
@@ -515,8 +526,8 @@ def _compile_pdf(tex_path: Path, has_bibliography: bool) -> Optional[Path]:
             cwd=work_dir,
             capture_output=True,
             encoding='utf-8',
-            errors='replace',  # Handle non-UTF8 characters in pdflatex output
-            timeout=120,
+            errors='replace',
+            timeout=300,
         )
         
         if result.returncode != 0:
@@ -538,7 +549,7 @@ def _compile_pdf(tex_path: Path, has_bibliography: bool) -> Optional[Path]:
             if biber_result.returncode != 0:
                 print(f"⚠️  Biber warning (continuing): {biber_result.stderr[:500]}")
         
-        # Second pass (for references)
+        # Second pass (for references and TOC)
         print("   Pass 3/4: Second compilation...")
         result = subprocess.run(
             [latex_cmd] + latex_options + [tex_filename],
@@ -546,8 +557,10 @@ def _compile_pdf(tex_path: Path, has_bibliography: bool) -> Optional[Path]:
             capture_output=True,
             encoding='utf-8',
             errors='replace',
-            timeout=120,
+            timeout=300,
         )
+        if result.returncode != 0:
+            print(f"⚠️  Pass 2 warnings (continuing): {result.stdout[-500:]}")
         
         # Third pass (for bookmarks and final references)
         print("   Pass 4/4: Final compilation...")
@@ -557,8 +570,10 @@ def _compile_pdf(tex_path: Path, has_bibliography: bool) -> Optional[Path]:
             capture_output=True,
             encoding='utf-8',
             errors='replace',
-            timeout=120,
+            timeout=300,
         )
+        if result.returncode != 0:
+            print(f"⚠️  Pass 3 warnings (continuing): {result.stdout[-500:]}")
         
         pdf_path = work_dir / f"{tex_name}.pdf"
         if pdf_path.exists():

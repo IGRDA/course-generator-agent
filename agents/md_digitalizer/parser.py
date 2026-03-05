@@ -141,14 +141,38 @@ def strip_images(text: str) -> str:
     return _IMAGE_RE.sub("", text)
 
 
+def _is_content_image(path: Path, min_pixels: int = 10000, max_aspect: float = 6.0) -> bool:
+    """Return True if the image is likely real visual content, not a text-only OCR fragment.
+
+    Text-only OCR images (scanned titles, headers) tend to be very wide and
+    short (extreme aspect ratio) and/or have a tiny total pixel area.  Real
+    content images (maps, schemas, illustrations) are larger and more square.
+    """
+    try:
+        from PIL import Image
+        img = Image.open(path)
+        w, h = img.size
+        img.close()
+        aspect = max(w, h) / max(min(w, h), 1)
+        return (w * h) >= min_pixels and aspect <= max_aspect
+    except Exception:
+        return False
+
+
 def _resolve_image_paths(images: list[dict], md_file: Path, source_folder: Path) -> list[dict]:
-    """Resolve relative image paths to absolute paths based on the markdown file location."""
+    """Resolve relative image paths to absolute paths based on the markdown file location.
+
+    Also filters out text-only OCR fragments using dimension heuristics.
+    """
     resolved = []
     for img in images:
         raw_path = img["path"]
         candidate = (md_file.parent / raw_path).resolve()
         if not candidate.exists():
             candidate = (source_folder / raw_path).resolve()
+        if candidate.exists() and not _is_content_image(candidate):
+            logger.debug("Skipping text-only image: %s", candidate.name)
+            continue
         resolved.append({
             "alt": img["alt"],
             "path": str(candidate),

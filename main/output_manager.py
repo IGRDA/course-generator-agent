@@ -37,6 +37,7 @@ class OutputManager:
         "parse_markdown": 12,
         "inject_images": 13,
         "restructure": 14,
+        "enrichments": 15,
     }
     
     def __init__(self, title: str, output_dir: str = "output"):
