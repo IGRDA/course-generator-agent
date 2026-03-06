@@ -37,12 +37,17 @@ def generate_bibliography_node(state: CourseState, config: Optional[RunnableConf
     
     from agents.bibliography_generator.agent import generate_course_bibliography
 
-    bibliography = generate_course_bibliography(state)
-    state.bibliography = bibliography
+    try:
+        bibliography = generate_course_bibliography(state)
+        state.bibliography = bibliography
+
+        modules_with_bib = sum(1 for m in state.modules if m.bibliography is not None)
+        print(f"   Bibliography: {modules_with_bib}/{len(state.modules)} modules enriched")
+        if modules_with_bib == 0:
+            print("   WARNING: No modules received bibliography data")
+    except Exception as e:
+        print(f"   ERROR in bibliography generation: {e}")
     
-    print("Bibliography generation completed!")
-    
-    # Save step snapshot if OutputManager is available
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("bibliography", state)
@@ -72,12 +77,17 @@ def generate_videos_node(state: CourseState, config: Optional[RunnableConfig] = 
     
     from agents.video_search.agent import generate_course_videos
 
-    course_videos = generate_course_videos(state)
-    state.videos = course_videos
+    try:
+        course_videos = generate_course_videos(state)
+        state.videos = course_videos
+
+        modules_with_video = sum(1 for m in state.modules if m.video is not None)
+        print(f"   Videos: {modules_with_video}/{len(state.modules)} modules enriched")
+        if modules_with_video == 0:
+            print("   WARNING: No modules received video data")
+    except Exception as e:
+        print(f"   ERROR in video generation: {e}")
     
-    print("Video generation completed!")
-    
-    # Save step snapshot if OutputManager is available
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("videos", state)
@@ -107,11 +117,16 @@ def generate_people_node(state: CourseState, config: Optional[RunnableConfig] = 
     
     from agents.people_search.agent import generate_course_people
 
-    state = generate_course_people(state)
+    try:
+        state = generate_course_people(state)
+
+        modules_with_people = sum(1 for m in state.modules if m.relevant_people)
+        print(f"   People: {modules_with_people}/{len(state.modules)} modules enriched")
+        if modules_with_people == 0:
+            print("   WARNING: No modules received people data")
+    except Exception as e:
+        print(f"   ERROR in people generation: {e}")
     
-    print("People generation completed!")
-    
-    # Save step snapshot if OutputManager is available
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("people", state)
@@ -141,15 +156,82 @@ def generate_mindmap_node(state: CourseState, config: Optional[RunnableConfig] =
     
     from agents.mind_map_generator.agent import generate_course_mindmaps
 
-    state = generate_course_mindmaps(state)
+    try:
+        state = generate_course_mindmaps(state)
+
+        modules_with_mindmap = sum(1 for m in state.modules if m.mindmap is not None)
+        print(f"   Mindmaps: {modules_with_mindmap}/{len(state.modules)} modules enriched")
+        if modules_with_mindmap == 0:
+            print("   WARNING: No modules received mindmap data")
+    except Exception as e:
+        print(f"   ERROR in mindmap generation: {e}")
     
-    print("Mind map generation completed!")
-    
-    # Save step snapshot if OutputManager is available
     output_mgr = get_output_manager(config)
     if output_mgr:
         output_mgr.save_step("mindmap", state)
     
+    return state
+
+
+def generate_all_enrichments_node(state: CourseState, config: Optional[RunnableConfig] = None) -> CourseState:
+    """Run videos, bibliography, people, and mindmap enrichments concurrently.
+    
+    Each enrichment writes to non-overlapping fields on state.modules[i],
+    so they are safe to run in parallel.
+
+    Args:
+        state: CourseState with populated course structure.
+        config: LangGraph RunnableConfig for accessing OutputManager.
+        
+    Returns:
+        Updated CourseState with all enrichments applied.
+    """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    def _run_videos():
+        return generate_videos_node(state, config)
+
+    def _run_bibliography():
+        return generate_bibliography_node(state, config)
+
+    def _run_people():
+        return generate_people_node(state, config)
+
+    def _run_mindmap():
+        return generate_mindmap_node(state, config)
+
+    enrichment_map = {
+        "videos": (state.config.generate_videos, _run_videos),
+        "bibliography": (state.config.generate_bibliography, _run_bibliography),
+        "people": (state.config.generate_people, _run_people),
+        "mindmap": (state.config.generate_mindmap, _run_mindmap),
+    }
+
+    enabled = {name: fn for name, (flag, fn) in enrichment_map.items() if flag}
+
+    if not enabled:
+        print("All enrichments disabled, skipping...")
+        return state
+
+    print(f"🚀 Running {len(enabled)} enrichments in parallel: {', '.join(enabled.keys())}")
+
+    with ThreadPoolExecutor(max_workers=len(enabled)) as executor:
+        futures = {
+            executor.submit(fn): name
+            for name, fn in enabled.items()
+        }
+        for future in as_completed(futures):
+            name = futures[future]
+            try:
+                future.result()
+                print(f"   ✅ {name} enrichment complete")
+            except Exception as e:
+                print(f"   ❌ {name} enrichment failed: {e}")
+
+    output_mgr = get_output_manager(config)
+    if output_mgr:
+        output_mgr.save_step("enrichments", state)
+
     return state
 
 
@@ -306,6 +388,42 @@ def generate_podcasts_node(state: CourseState, config: Optional[RunnableConfig] 
                 intro_fade_ms=5000,
                 outro_fade_ms=5000,
             )
+        elif tts_engine == "qwen_tts":
+            from tools.podcast import generate_podcast_qwen_tts
+
+            generate_podcast_qwen_tts(
+                conversation=conversation,
+                output_path=str(audio_path),
+                language=tts_language,
+                speaker_map=speaker_map,
+                title=f"Module {module_idx + 1}: {module.title}",
+                artist="Adinhub",
+                album=state.title,
+                track_number=module_idx + 1,
+                music_path=music_path_str,
+                intro_duration_ms=10000,
+                outro_duration_ms=10000,
+                intro_fade_ms=5000,
+                outro_fade_ms=5000,
+            )
+        elif tts_engine == "mlx_tts":
+            from tools.podcast import generate_podcast_mlx_tts
+
+            generate_podcast_mlx_tts(
+                conversation=conversation,
+                output_path=str(audio_path),
+                language=tts_language,
+                speaker_map=speaker_map,
+                title=f"Module {module_idx + 1}: {module.title}",
+                artist="Adinhub",
+                album=state.title,
+                track_number=module_idx + 1,
+                music_path=music_path_str,
+                intro_duration_ms=10000,
+                outro_duration_ms=10000,
+                intro_fade_ms=5000,
+                outro_fade_ms=5000,
+            )
         else:
             from tools.podcast import generate_podcast
             
@@ -370,7 +488,7 @@ def generate_pdf_book_node(state: CourseState, config: Optional[RunnableConfig] 
         print(f"   💾 Bibliography saved: bibliography.json")
     
     # Generate PDF book
-    from tools.pdf_book import generate_pdf_book
+    from tools.json2book import generate_pdf_book
     
     try:
         pdf_path = generate_pdf_book(

@@ -6,6 +6,10 @@ from pydantic import BaseModel, Field
 class ImageConfig(BaseModel):
     """Configuration for image search and generation."""
     
+    enabled: bool = Field(
+        default=True,
+        description="Whether to generate images for the course"
+    )
     search_provider: str = Field(
         default="freepik",
         description="Image search provider (bing | freepik | ddg | google)"

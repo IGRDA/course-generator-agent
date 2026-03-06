@@ -10,7 +10,8 @@ from .base_engine import BaseTTSEngine
 
 
 # Available engine types
-EngineType = Literal["edge", "coqui", "chatterbox", "elevenlabs", "openai_tts"]
+EngineType = Literal[
+"edge", "coqui", "chatterbox", "elevenlabs", "openai_tts", "qwen_tts", "mlx_tts"]
 
 
 def create_tts_engine(
@@ -82,8 +83,32 @@ def create_tts_engine(
             api_key=kwargs.get("api_key"),
             instructions=kwargs.get("instructions"),
         )
+    elif engine == "qwen_tts":
+        from .qwen_tts.client import QwenTTSEngine
+        return QwenTTSEngine(
+            language=language,
+            speaker_map=speaker_map,
+            task_type=kwargs.get("task_type", "custom_voice"),
+            device=kwargs.get("device"),
+            instruct=kwargs.get("instruct"),
+            model_name=kwargs.get("model_name"),
+        )
+    elif engine == "mlx_tts":
+        from .mlx_tts.client import MLXTTSEngine
+        return MLXTTSEngine(
+            language=language,
+            speaker_map=speaker_map,
+            task_type=kwargs.get("task_type", "voice_clone"),
+            instruct=kwargs.get("instruct"),
+            model_name=kwargs.get("model_name"),
+            temperature=kwargs.get("temperature", 0.7),
+            speed=kwargs.get("speed", 1.0),
+        )
     else:
-        available = ["edge", "coqui", "chatterbox", "elevenlabs", "openai_tts"]
+        available = [
+            "edge", "coqui", "chatterbox", "elevenlabs", "openai_tts",
+            "qwen_tts", "mlx_tts",
+        ]
         raise ValueError(f"Unknown engine '{engine}'. Available: {available}")
 
 
@@ -142,6 +167,18 @@ def get_engine_info(engine: EngineType) -> dict:
                 "zh",
             ],
         },
+        "qwen_tts": {
+            "name": "Qwen3-TTS",
+            "description": "Alibaba Qwen3-TTS - local GPU, 9 built-in speakers + voice cloning, 10 languages",
+            "requires_internet": False,
+            "languages": ["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"],
+        },
+        "mlx_tts": {
+            "name": "MLX Qwen3-TTS",
+            "description": "Qwen3-TTS via MLX-Audio - Apple Silicon optimized, offline, voice cloning, 10 languages",
+            "requires_internet": False,
+            "languages": ["zh", "en", "ja", "ko", "de", "fr", "ru", "pt", "es", "it"],
+        },
     }
     
     if engine not in info:
@@ -162,5 +199,7 @@ def list_engines() -> list[dict]:
         {"engine": "chatterbox", **get_engine_info("chatterbox")},
         {"engine": "elevenlabs", **get_engine_info("elevenlabs")},
         {"engine": "openai_tts", **get_engine_info("openai_tts")},
+        {"engine": "qwen_tts", **get_engine_info("qwen_tts")},
+        {"engine": "mlx_tts", **get_engine_info("mlx_tts")},
     ]
 

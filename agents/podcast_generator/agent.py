@@ -14,7 +14,7 @@ from .prompts import conversation_prompt
 
 
 # TTS Engine types
-TTSEngineType = Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"]
+TTSEngineType = Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"]
 
 # Language mapping from course language to TTS language code
 LANGUAGE_MAP = {
@@ -181,6 +181,79 @@ def generate_conversation(
     return clean_conversation(conversation)
 
 
+import re
+
+_SENTENCE_SPLIT_RE = re.compile(
+    r'(?<=[.!?…¿¡])\s+'
+)
+
+
+def _split_sentences(text: str) -> list[str]:
+    """Split text into sentences using punctuation boundaries.
+
+    Keeps the terminating punctuation attached to each sentence.
+    Falls back to the full text as a single sentence if no split is found.
+    """
+    parts = _SENTENCE_SPLIT_RE.split(text.strip())
+    return [p.strip() for p in parts if p.strip()]
+
+
+def build_timed_conversation(
+    conversation: list[dict],
+    segment_durations_ms: list[int],
+    intro_duration_ms: int = 0,
+    silence_duration_ms: int = 500,
+) -> list[dict]:
+    """Build per-sentence timestamps for the entire podcast timeline.
+
+    Each message is split into sentences. The message's known audio duration
+    is distributed across its sentences proportionally by character count,
+    giving approximate but practical sentence-level timestamps.
+
+    Args:
+        conversation: Original conversation messages
+        segment_durations_ms: Duration of each synthesized audio segment
+        intro_duration_ms: Intro music duration prepended before voice
+        silence_duration_ms: Silence gap between consecutive messages
+
+    Returns:
+        Flat list of sentence dicts with role, text, start_ms, end_ms
+    """
+    timed: list[dict] = []
+    cursor = intro_duration_ms
+
+    for i, msg in enumerate(conversation):
+        msg_start = cursor
+        msg_duration = segment_durations_ms[i]
+        sentences = _split_sentences(msg["content"])
+
+        total_chars = sum(len(s) for s in sentences)
+        if total_chars == 0:
+            cursor = msg_start + msg_duration + silence_duration_ms
+            continue
+
+        sent_cursor = msg_start
+        for j, sentence in enumerate(sentences):
+            is_last = j == len(sentences) - 1
+            if is_last:
+                sent_end = msg_start + msg_duration
+            else:
+                proportion = len(sentence) / total_chars
+                sent_end = sent_cursor + round(msg_duration * proportion)
+
+            timed.append({
+                "role": msg["role"],
+                "text": sentence,
+                "start_ms": sent_cursor,
+                "end_ms": sent_end,
+            })
+            sent_cursor = sent_end
+
+        cursor = msg_start + msg_duration + silence_duration_ms
+
+    return timed
+
+
 def generate_module_podcast(
     course_path: str,
     module_idx: int,
@@ -190,6 +263,7 @@ def generate_module_podcast(
     skip_tts: bool = False,
     tts_engine: TTSEngineType = "edge",
     speaker_map: Optional[dict[str, str]] = None,
+    tts_kwargs: Optional[dict] = None,
 ) -> dict:
     """Generate podcast conversation and optionally synthesize audio.
     
@@ -200,8 +274,11 @@ def generate_module_podcast(
         provider: LLM provider override
         target_words: Target word count
         skip_tts: If True, only generate conversation JSON
-        tts_engine: TTS engine to use ("edge" or "coqui")
-        speaker_map: Custom speaker mapping for voices (e.g., {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'})
+        tts_engine: TTS engine to use ("edge", "coqui", "qwen_tts", etc.)
+        speaker_map: Custom speaker mapping for voices.
+            For edge: {'host': 'es-ES-AlvaroNeural', 'guest': 'es-ES-XimenaNeural'}
+            For qwen_tts voice_clone: {'host': 'path/to/ref.wav', 'guest': 'path/to/ref.wav'}
+        tts_kwargs: Extra engine-specific keyword arguments (e.g. task_type, device for qwen_tts).
         
     Returns:
         Dict with conversation_path, audio_path (if not skipped), metadata
@@ -221,7 +298,7 @@ def generate_module_podcast(
     output_path.mkdir(parents=True, exist_ok=True)
     
     # Generate conversation
-    engine_names = {"edge": "Edge TTS", "coqui": "Coqui TTS", "elevenlabs": "ElevenLabs", "chatterbox": "Chatterbox TTS", "openai_tts": "OpenAI TTS"}
+    engine_names = {"edge": "Edge TTS", "coqui": "Coqui TTS", "elevenlabs": "ElevenLabs", "chatterbox": "Chatterbox TTS", "openai_tts": "OpenAI TTS", "qwen_tts": "Qwen3-TTS", "mlx_tts": "MLX Qwen3-TTS"}
     engine_name = engine_names.get(tts_engine, tts_engine)
     print(f"🎙️ Generating podcast conversation for module {module_idx + 1} ({engine_name})...")
     
@@ -264,98 +341,66 @@ def generate_module_podcast(
         project_root = Path(__file__).parent.parent.parent
         music_path = project_root / "tools" / "podcast" / "background_music.mp3"
         
+        has_music = music_path.exists()
+        intro_duration_ms = 10000
+        outro_duration_ms = 10000
+
+        common_kwargs = dict(
+            conversation=conversation,
+            output_path=str(audio_path),
+            language=tts_language,
+            speaker_map=speaker_map,
+            title=f"Module {module_idx + 1}: {context['module_title']}",
+            artist="Adinhub",
+            album=context["course_title"],
+            track_number=module_idx + 1,
+            music_path=str(music_path) if has_music else None,
+            intro_duration_ms=intro_duration_ms,
+            outro_duration_ms=outro_duration_ms,
+            intro_fade_ms=5000,
+            outro_fade_ms=5000,
+        )
+
         if tts_engine == "edge":
             from tools.podcast import generate_podcast_edge
-            
-            generate_podcast_edge(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_edge(**common_kwargs)
         elif tts_engine == "elevenlabs":
             from tools.podcast import generate_podcast_elevenlabs
-            
-            generate_podcast_elevenlabs(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_elevenlabs(**common_kwargs)
         elif tts_engine == "chatterbox":
             from tools.podcast import generate_podcast_chatterbox
-            
-            generate_podcast_chatterbox(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_chatterbox(**common_kwargs)
         elif tts_engine == "openai_tts":
             from tools.podcast import generate_podcast_openai_tts
-            
-            generate_podcast_openai_tts(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast_openai_tts(**common_kwargs)
+        elif tts_engine == "qwen_tts":
+            from tools.podcast import generate_podcast_qwen_tts
+            extra = tts_kwargs or {}
+            tts_result = generate_podcast_qwen_tts(**common_kwargs, **extra)
+        elif tts_engine == "mlx_tts":
+            from tools.podcast import generate_podcast_mlx_tts
+            extra = tts_kwargs or {}
+            tts_result = generate_podcast_mlx_tts(**common_kwargs, **extra)
         else:
             from tools.podcast import generate_podcast
-            
-            generate_podcast(
-                conversation=conversation,
-                output_path=str(audio_path),
-                language=tts_language,
-                speaker_map=speaker_map,
-                title=f"Module {module_idx + 1}: {context['module_title']}",
-                artist="Adinhub",
-                album=context["course_title"],
-                track_number=module_idx + 1,
-                music_path=str(music_path) if music_path.exists() else None,
-                intro_duration_ms=10000,
-                outro_duration_ms=10000,
-                intro_fade_ms=5000,
-                outro_fade_ms=5000,
-            )
+            tts_result = generate_podcast(**common_kwargs)
         
         print(f"✅ Audio saved to: {audio_path}")
         result["audio_path"] = str(audio_path)
+
+        # Build and save timed conversation with per-message timestamps
+        segment_durations_ms = tts_result.get("segment_durations_ms", [])
+        if segment_durations_ms and len(segment_durations_ms) == len(conversation):
+            timed_conversation = build_timed_conversation(
+                conversation=conversation,
+                segment_durations_ms=segment_durations_ms,
+                intro_duration_ms=intro_duration_ms if has_music else 0,
+            )
+            timed_filename = f"module_{module_idx + 1}_time_conversation.json"
+            timed_path = output_path / timed_filename
+            with open(timed_path, "w", encoding="utf-8") as f:
+                json.dump(timed_conversation, f, indent=2, ensure_ascii=False)
+            print(f"✅ Timed conversation saved to: {timed_path}")
+            result["timed_conversation_path"] = str(timed_path)
     
     return result

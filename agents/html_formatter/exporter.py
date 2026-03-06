@@ -9,22 +9,23 @@ from main.state import CourseState, Section, HtmlElement
 
 def is_valid_image_url(url: str) -> bool:
     """
-    Quick validation that a URL is suitable for embedding in HTML.
+    Quick validation that a URL or local path is suitable for embedding in HTML.
     
     Args:
-        url: The image URL to validate
+        url: The image URL or local file path to validate
         
     Returns:
-        True if the URL appears valid for HTML embedding
+        True if the URL/path appears valid for HTML embedding
     """
     if not url or not isinstance(url, str):
         return False
     
     url = url.strip()
     
-    # Must start with http:// or https://
+    # Accept local file paths (relative or absolute) pointing to image files
     if not url.startswith(('http://', 'https://')):
-        return False
+        import os
+        return os.path.isfile(url) or url.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'))
     
     # URL shouldn't be too long
     if len(url) > 2000:
@@ -397,6 +398,19 @@ def render_section(section: Section, section_num: int) -> str:
     return html
 
 
+def _make_image_path_relative(img_path: str, html_dir: str) -> str:
+    """Convert an absolute or project-relative image path to be relative to the HTML file."""
+    import os
+    if not img_path or img_path.startswith(('http://', 'https://')):
+        return img_path
+    abs_img = os.path.abspath(img_path)
+    abs_html_dir = os.path.abspath(html_dir)
+    try:
+        return os.path.relpath(abs_img, abs_html_dir)
+    except ValueError:
+        return img_path
+
+
 def export_to_html(course_state: CourseState, output_path: str) -> None:
     """
     Export the complete course to a clean, readable HTML file.
@@ -469,8 +483,15 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         .submodule-title {{ 
             color: #764ba2; 
             font-size: 1.8em; 
-            margin-bottom: 20px;
+            margin-bottom: 8px;
             font-weight: 400;
+        }}
+        .submodule-description {{
+            color: #555;
+            font-size: 1.05em;
+            font-style: italic;
+            margin-bottom: 20px;
+            line-height: 1.5;
         }}
         
         /* Section */
@@ -1195,6 +1216,8 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
         for submodule_idx, submodule in enumerate(module.submodules, 1):
             html += f'<div class="submodule">'
             html += f'<h3 class="submodule-title">{module_idx}.{submodule_idx} {escape_html(submodule.title)}</h3>'
+            if submodule.description and submodule.description != submodule.title:
+                html += f'<p class="submodule-description">{escape_html(submodule.description)}</p>'
             
             for section in submodule.sections:
                 section_counter += 1
@@ -1213,6 +1236,16 @@ def export_to_html(course_state: CourseState, output_path: str) -> None:
 </html>
 """
     
+    # Fix local image paths to be relative to the HTML file
+    import os, re as _re
+    html_dir = os.path.dirname(os.path.abspath(output_path))
+    def _fix_src(match):
+        prefix, src, quote = match.group(1), match.group(2), match.group(3)
+        if not src.startswith(('http://', 'https://')):
+            src = _make_image_path_relative(src, html_dir)
+        return f'{prefix}{src}{quote}'
+    html = _re.sub(r'(<img[^>]+src=")([^"]+)(")', _fix_src, html)
+
     # Write to file
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)

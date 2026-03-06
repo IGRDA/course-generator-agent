@@ -88,8 +88,8 @@ Examples:
         "--engine", "-e",
         type=str,
         default="edge",
-        choices=["edge", "coqui", "chatterbox"],
-        help="TTS engine to use. 'edge' (default) is fast and online, 'coqui' works offline, 'chatterbox' for zero-shot TTS."
+        choices=["edge", "coqui", "chatterbox", "elevenlabs", "openai_tts", "qwen_tts", "mlx_tts"],
+        help="TTS engine to use. 'edge' (default) is fast and online, 'coqui' works offline, 'mlx_tts' for Apple Silicon."
     )
     
     parser.add_argument(
@@ -392,6 +392,46 @@ def main():
                 album=args.album,
                 track_number=args.track_number,
                 # Background music
+                music_path=music_path,
+                intro_duration_ms=args.intro_duration,
+                outro_duration_ms=args.outro_duration,
+                intro_fade_ms=args.intro_fade,
+                outro_fade_ms=args.outro_fade,
+                music_volume_db=args.music_volume,
+            )
+        elif args.engine == "mlx_tts":
+            from .mlx_tts.client import generate_podcast_mlx_tts
+            output_path = generate_podcast_mlx_tts(
+                conversation=conversation,
+                output_path=args.output,
+                language=args.language,
+                speaker_map=speaker_map,
+                silence_duration_ms=args.silence,
+                progress_callback=progress_callback,
+                title=args.title,
+                artist=args.artist,
+                album=args.album,
+                track_number=args.track_number,
+                music_path=music_path,
+                intro_duration_ms=args.intro_duration,
+                outro_duration_ms=args.outro_duration,
+                intro_fade_ms=args.intro_fade,
+                outro_fade_ms=args.outro_fade,
+                music_volume_db=args.music_volume,
+            )
+        elif args.engine == "qwen_tts":
+            from .qwen_tts.client import generate_podcast_qwen_tts
+            output_path = generate_podcast_qwen_tts(
+                conversation=conversation,
+                output_path=args.output,
+                language=args.language,
+                speaker_map=speaker_map,
+                silence_duration_ms=args.silence,
+                progress_callback=progress_callback,
+                title=args.title,
+                artist=args.artist,
+                album=args.album,
+                track_number=args.track_number,
                 music_path=music_path,
                 intro_duration_ms=args.intro_duration,
                 outro_duration_ms=args.outro_duration,

@@ -34,6 +34,16 @@ def __getattr__(name: str):
         from .metadata import calculate_metadata_node
         return calculate_metadata_node
 
+    # Digitalize
+    if name in ("parse_markdown_folder_node", "inject_local_images_node", "restructure_parsed_content_node"):
+        from .digitalize import parse_markdown_folder_node, inject_local_images_node, restructure_parsed_content_node
+        _dmap = {
+            "parse_markdown_folder_node": parse_markdown_folder_node,
+            "inject_local_images_node": inject_local_images_node,
+            "restructure_parsed_content_node": restructure_parsed_content_node,
+        }
+        return _dmap[name]
+
     # Extras
     _extras = {
         "generate_bibliography_node",
@@ -42,6 +52,7 @@ def __getattr__(name: str):
         "generate_pdf_book_node",
         "generate_people_node",
         "generate_mindmap_node",
+        "generate_all_enrichments_node",
     }
     if name in _extras:
         from .extras import (
@@ -51,6 +62,7 @@ def __getattr__(name: str):
             generate_pdf_book_node,
             generate_people_node,
             generate_mindmap_node,
+            generate_all_enrichments_node,
         )
         _map = {
             "generate_bibliography_node": generate_bibliography_node,
@@ -59,6 +71,7 @@ def __getattr__(name: str):
             "generate_pdf_book_node": generate_pdf_book_node,
             "generate_people_node": generate_people_node,
             "generate_mindmap_node": generate_mindmap_node,
+            "generate_all_enrichments_node": generate_all_enrichments_node,
         }
         return _map[name]
 
@@ -84,6 +97,11 @@ __all__ = [
     "generate_videos_node",
     "generate_people_node",
     "generate_mindmap_node",
+    "generate_all_enrichments_node",
     "generate_podcasts_node",
     "generate_pdf_book_node",
+    # Digitalize
+    "parse_markdown_folder_node",
+    "inject_local_images_node",
+    "restructure_parsed_content_node",
 ]

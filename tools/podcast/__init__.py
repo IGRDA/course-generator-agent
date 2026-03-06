@@ -81,6 +81,24 @@ def __getattr__(name: str):
         }
         return _map[name]
 
+    # Qwen TTS exports
+    if name in ("QwenTTSEngine", "generate_podcast_qwen_tts"):
+        from .qwen_tts.client import QwenTTSEngine, generate_podcast_qwen_tts
+        _map = {
+            "QwenTTSEngine": QwenTTSEngine,
+            "generate_podcast_qwen_tts": generate_podcast_qwen_tts,
+        }
+        return _map[name]
+
+    # MLX TTS exports
+    if name in ("MLXTTSEngine", "generate_podcast_mlx_tts"):
+        from .mlx_tts.client import MLXTTSEngine, generate_podcast_mlx_tts
+        _map = {
+            "MLXTTSEngine": MLXTTSEngine,
+            "generate_podcast_mlx_tts": generate_podcast_mlx_tts,
+        }
+        return _map[name]
+
     # Audio utility exports
     if name in ("add_metadata", "add_background_music", "get_default_music_path"):
         from .audio_utils import add_metadata, add_background_music, get_default_music_path
@@ -125,6 +143,12 @@ __all__ = [
     "OpenAITTSEngine",
     "generate_podcast_openai_tts",
     "OPENAI_TTS_VOICE_MAP",
+    # Qwen TTS Engine
+    "QwenTTSEngine",
+    "generate_podcast_qwen_tts",
+    # MLX TTS Engine
+    "MLXTTSEngine",
+    "generate_podcast_mlx_tts",
     # Factory
     "create_tts_engine",
     "get_engine_info",

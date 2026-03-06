@@ -38,6 +38,7 @@ _FLAT_TO_NESTED: dict[str, tuple[str, str]] = {
     "include_quotes_in_html": ("html", "include_quotes"),
     "include_tables_in_html": ("html", "include_tables"),
     # Image
+    "generate_images": ("image", "enabled"),
     "image_search_provider": ("image", "search_provider"),
     "use_vision_ranking": ("image", "use_vision_ranking"),
     "num_images_to_fetch": ("image", "num_to_fetch"),
@@ -98,6 +99,11 @@ class CourseConfig(BaseModel):
         description="Target audience for content adaptation"
     )
     pdf_syllabus_path: str = Field(default="", description="Path to PDF syllabus file")
+    md_source_path: str = Field(default="", description="Path to local markdown folder for content digitalization")
+    generate_html_output: bool = Field(default=False, description="Generate interactive HTML output (digitalizer workflow)")
+    generate_podcast: bool = Field(default=False, description="Generate podcast audio (digitalizer workflow)")
+    generate_pdf: bool = Field(default=False, description="Generate PDF book output (digitalizer workflow)")
+    generate_activities: bool = Field(default=True, description="Generate activities, glossary, and meta-elements (digitalizer workflow)")
     max_retries: int = Field(default=3, description="Maximum number of retries for generation")
     concurrency: int = Field(default=8, description="Number of concurrent section theory generations")
     use_reflection: bool = Field(
@@ -241,6 +247,10 @@ class CourseConfig(BaseModel):
     
     # ---- Image aliases ----
     @property
+    def generate_images(self) -> bool:
+        return self.image.enabled
+    
+    @property
     def image_search_provider(self) -> str:
         return self.image.search_provider
     
@@ -274,7 +284,7 @@ class CourseConfig(BaseModel):
         return self.podcast.target_words
     
     @property
-    def podcast_tts_engine(self) -> Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts"]:
+    def podcast_tts_engine(self) -> Literal["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"]:
         return self.podcast.tts_engine
     
     @property

@@ -57,6 +57,10 @@ def generate_images_node(state: CourseState, config: Optional[RunnableConfig] = 
     Returns:
         Updated CourseState with all images assigned.
     """
+    if not state.config.generate_images:
+        print("🖼️ Image generation disabled, skipping...")
+        return state
+    
     print(f"Generating images for HTML blocks using {state.config.image_search_provider}...")
     if state.config.use_vision_ranking:
         print(f"   Vision ranking enabled: fetching {state.config.num_images_to_fetch} images, ranking with {state.config.vision_llm_provider}")
