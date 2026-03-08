@@ -76,6 +76,9 @@ if __name__ == "__main__":
         print(f"❌ Error: PDF file not found: {pdf_path}")
         exit(1)
     
+    from LLMs.api_keys import validate_api_keys
+    validate_api_keys()
+
     # Build the graph
     app = build_pdf2podcast_graph()
     
@@ -88,7 +91,7 @@ if __name__ == "__main__":
         words_per_page=400,
         language=args.language,
         max_retries=8,
-        concurrency=10,
+        concurrency=20,
         use_reflection=True,
         num_reflection_queries=5,
         # Research configuration

@@ -59,6 +59,9 @@ if __name__ == "__main__":
     parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"], default="edge", help="TTS engine (default: edge)")
     args = parser.parse_args()
     
+    from LLMs.api_keys import validate_api_keys
+    validate_api_keys()
+
     # Build the graph
     app = build_podcast_generation_graph()
     
@@ -72,7 +75,7 @@ if __name__ == "__main__":
         language="Español",
         description="",
         max_retries=8,
-        concurrency=10,
+        concurrency=20,
         use_reflection=True,
         num_reflection_queries=7,
         # Research configuration

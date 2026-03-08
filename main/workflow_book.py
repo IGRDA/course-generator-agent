@@ -135,6 +135,9 @@ Examples:
     )
     args = parser.parse_args()
     
+    from LLMs.api_keys import validate_api_keys
+    validate_api_keys()
+
     # Build the graph
     app = build_book_generation_graph()
     
@@ -148,7 +151,7 @@ Examples:
         language=args.language,
         description="",
         max_retries=8,
-        concurrency=10,
+        concurrency=20,
         use_reflection=True,
         num_reflection_queries=5,
         # Research configuration (enabled for better content)
@@ -161,7 +164,7 @@ Examples:
         use_vision_ranking=args.vision_ranking,
         num_images_to_fetch=8,
         vision_llm_provider="pixtral",
-        image_concurrency=3,
+        image_concurrency=5,
         imagetext2text_concurrency=5,
         vision_ranking_batch_size=8,
         # Bibliography configuration (enabled by default for books)

@@ -66,6 +66,8 @@ def build_course_generation_graph():
 if __name__ == "__main__":
     import argparse
     
+    from LLMs.api_keys import validate_api_keys
+    
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Generate a course")
     parser.add_argument("--total-pages", type=int, default=2, help="Total pages for the course (default: 2)")
@@ -76,7 +78,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
-    # Ensure you have set: export MISTRAL_API_KEY=your_key
+    validate_api_keys()
     
     # Build the graph
     app = build_course_generation_graph()
@@ -91,7 +93,7 @@ if __name__ == "__main__":
         language="Español",        
         description="",
         max_retries=8,
-        concurrency=10,  # Number of concurrent section theory generations
+        concurrency=20,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification (default: False)
         num_reflection_queries=7,  # Number of verification queries per section (default: 3)
         # Research configuration
@@ -99,11 +101,11 @@ if __name__ == "__main__":
         research_max_queries=7,  # Number of search queries to generate
         research_max_results_per_query=5,  # Results per search query
         # Activities configuration
-        activities_concurrency=30,  # Number of concurrent activity generations
+        activities_concurrency=60,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
         sections_per_activity=1,  # Generate activities every N sections within each submodule (1 = every section)
         # HTML configuration
-        html_concurrency=15,  # Number of concurrent HTML generations
+        html_concurrency=30,  # Number of concurrent HTML generations
         select_html="LLM",  # "LLM" | "random"
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",  # Pipe-separated list
         html_random_seed=42,  # Seed for deterministic random selection
@@ -114,7 +116,7 @@ if __name__ == "__main__":
         use_vision_ranking=False,  # Use vision LLM to rank images (slower but better quality)
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider for image ranking
-        image_concurrency=3,  # Number of image blocks to process in parallel
+        image_concurrency=5,  # Number of image blocks to process in parallel
         imagetext2text_concurrency=5,  # Number of Pixtral vision LLM calls in parallel
         vision_ranking_batch_size=8,  # Number of images per batch for Pixtral ranking
         target_audience=None,  # Target audience: None | "kids" | "general" | "advanced"
