@@ -200,8 +200,8 @@ Examples:
     if not (args.html or args.podcast or args.pdf):
         parser.error("Specify at least one output: --html, --podcast, or --pdf")
 
-    from LLMs.api_keys import validate_api_keys
-    validate_api_keys()
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys(args.provider)
 
     # Set module-level flag so conditional node can check it
     _skip_restructure = args.no_restructure

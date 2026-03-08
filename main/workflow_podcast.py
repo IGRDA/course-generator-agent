@@ -59,8 +59,8 @@ if __name__ == "__main__":
     parser.add_argument("--tts-engine", type=str, choices=["edge", "coqui", "elevenlabs", "chatterbox", "openai_tts", "qwen_tts", "mlx_tts"], default="edge", help="TTS engine (default: edge)")
     args = parser.parse_args()
     
-    from LLMs.api_keys import validate_api_keys
-    validate_api_keys()
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys("mistral")
 
     # Build the graph
     app = build_podcast_generation_graph()

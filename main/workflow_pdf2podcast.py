@@ -76,8 +76,8 @@ if __name__ == "__main__":
         print(f"❌ Error: PDF file not found: {pdf_path}")
         exit(1)
     
-    from LLMs.api_keys import validate_api_keys
-    validate_api_keys()
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys(args.provider)
 
     # Build the graph
     app = build_pdf2podcast_graph()

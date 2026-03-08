@@ -66,7 +66,7 @@ def build_course_generation_graph():
 if __name__ == "__main__":
     import argparse
     
-    from LLMs.api_keys import validate_api_keys
+    from LLMs.text2text.health_check import validate_provider_keys
     
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description="Generate a course")
@@ -78,7 +78,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     
-    validate_api_keys()
+    validate_provider_keys("mistral")
     
     # Build the graph
     app = build_course_generation_graph()

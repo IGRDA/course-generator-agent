@@ -135,8 +135,8 @@ Examples:
     )
     args = parser.parse_args()
     
-    from LLMs.api_keys import validate_api_keys
-    validate_api_keys()
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys(args.provider)
 
     # Build the graph
     app = build_book_generation_graph()
