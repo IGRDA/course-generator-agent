@@ -78,6 +78,9 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys("mistral")
+
     # Build the graph
     app = build_course_generation_graph_from_pdf()
     
@@ -92,7 +95,7 @@ if __name__ == "__main__":
         words_per_page=400,  # Target words per page
         language="Español",
         max_retries=8,
-        concurrency=5,  # Number of concurrent section theory generations
+        concurrency=10,  # Number of concurrent section theory generations
         use_reflection=True,  # Enable reflection pattern for fact verification
         num_reflection_queries=5,  # Number of verification queries per section
         # Research configuration
@@ -100,11 +103,11 @@ if __name__ == "__main__":
         research_max_queries=5,  # Number of search queries to generate
         research_max_results_per_query=3,  # Results per search query
         # Activities configuration
-        activities_concurrency=4,  # Number of concurrent activity generations
+        activities_concurrency=8,  # Number of concurrent activity generations
         activity_selection_mode="deterministic",  # "random" or "deterministic"
         sections_per_activity=1,  # Generate activities every N sections (1 = every section)
         # HTML configuration
-        html_concurrency=4,  # Number of concurrent HTML generations
+        html_concurrency=8,  # Number of concurrent HTML generations
         select_html="LLM",  # "LLM" | "random"
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",
         include_quotes_in_html=True,  # Include quote elements
@@ -114,7 +117,7 @@ if __name__ == "__main__":
         use_vision_ranking=False,  # Use vision LLM to rank images
         num_images_to_fetch=8,  # Number of images to fetch for ranking
         vision_llm_provider="pixtral",  # Vision LLM provider
-        image_concurrency=3,  # Number of image blocks to process in parallel
+        image_concurrency=5,  # Number of image blocks to process in parallel
         # Video generation configuration
         generate_videos=True,  # Enable video recommendations
         videos_per_module=3,   # Number of videos per module

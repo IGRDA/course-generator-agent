@@ -200,6 +200,9 @@ Examples:
     if not (args.html or args.podcast or args.pdf):
         parser.error("Specify at least one output: --html, --podcast, or --pdf")
 
+    from LLMs.text2text.health_check import validate_provider_keys
+    validate_provider_keys(args.provider)
+
     # Set module-level flag so conditional node can check it
     _skip_restructure = args.no_restructure
 
@@ -220,11 +223,11 @@ Examples:
         generate_pdf=args.pdf,
         # Activities
         generate_activities=not args.no_activities,
-        activities_concurrency=30,
+        activities_concurrency=60,
         activity_selection_mode="deterministic",
         sections_per_activity=1,
         # HTML formatting
-        html_concurrency=15,
+        html_concurrency=30,
         select_html="LLM",
         html_formats="paragraphs|accordion|tabs|carousel|flip|timeline|conversation",
         include_quotes_in_html=True,
@@ -234,7 +237,7 @@ Examples:
         image_search_provider="freepik",
         use_vision_ranking=False,
         num_images_to_fetch=8,
-        image_concurrency=3,
+        image_concurrency=5,
         # Videos
         generate_videos=not args.no_videos,
         videos_per_module=3,
@@ -257,7 +260,7 @@ Examples:
             else None
         ),
         max_retries=8,
-        concurrency=10,
+        concurrency=20,
     )
 
     initial_state = CourseState(
